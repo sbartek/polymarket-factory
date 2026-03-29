@@ -18,7 +18,7 @@ You (idea) → new file in factory/strategies/ → add to STRATEGIES registry �
                                                                 └── WhatsApp summary → Polymarket Signals group
 ```
 
-**Stack:** Python 3.11+ · uv · Gamma API · DDGS news · Claude API (+ CLI fallback) · OpenClaw WhatsApp
+**Stack:** Python 3.11+ · uv · Gamma API · DDGS news · Claude API · OpenClaw WhatsApp (Leon Kowalski bot, github-copilot/gpt-4o)
 
 ---
 
@@ -123,6 +123,9 @@ tail -f factory.log
 
 # Open positions
 cat data/trades.csv
+
+# Test /details skill
+uv run openclaw-skill/scripts/strategy_details.py fade
 ```
 
 **LaunchAgent:** `com.polymarket.factory` — fires at 09:30 / 14:30 / 19:30 CEST.
