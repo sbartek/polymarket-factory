@@ -54,3 +54,41 @@ def format_summary(stats: dict) -> str:
             f"ROI {roi:+.1f}% | WR {wr:.0f}%"
         )
     return "\n".join(lines)
+
+
+def format_wa_table(stats: dict, new_by_strategy: dict[str, int]) -> str:
+    """
+    Compact per-strategy table for WhatsApp.
+    new_by_strategy: {strategy_name: count_of_new_positions_this_run}
+    Staked/P&L/ROI only shown for strategies with at least one closed trade.
+    """
+    lines = []
+    for name, s in stats["by_strategy"].items():
+        new = new_by_strategy.get(name, 0)
+        new_str = f"+{new}" if new else " 0"
+        closed_str = str(s["closed"])
+
+        if s["staked"] > 0:
+            roi = s["pnl"] / s["staked"] * 100
+            pnl_sign = "+" if s["pnl"] >= 0 else ""
+            staked_str = f"${s['staked']:.0f}"
+            pnl_str = f"{pnl_sign}${s['pnl']:.1f}"
+            roi_str = f"{roi:+.0f}%"
+        else:
+            staked_str = pnl_str = roi_str = "—"
+
+        lines.append(
+            f"  {name:<16} {new_str:>3} opened  "
+            f"{closed_str:>2} closed  "
+            f"{staked_str:>6} staked  {pnl_str:>7}  {roi_str:>6}"
+        )
+
+    total_roi = stats["roi"] or 0
+    total_pnl_sign = "+" if stats["total_pnl"] >= 0 else ""
+    total_line = (
+        f"Total: {stats['open']} open | "
+        f"${stats['total_staked']} staked | "
+        f"{total_pnl_sign}${stats['total_pnl']:.1f} P&L | "
+        f"{total_roi*100:+.0f}% ROI"
+    )
+    return "\n".join(lines) + "\n\n" + total_line

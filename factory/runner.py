@@ -13,7 +13,7 @@ from .broker import PaperBroker
 from .feed import fetch_top, fetch_closed, get_market_winner, get_submarket_outcome, get_yes_price
 from .models import Signal
 from .notify import send_whatsapp
-from .portfolio import summary, format_summary
+from .portfolio import summary, format_summary, format_wa_table
 from .strategies import STRATEGIES
 
 
@@ -53,25 +53,18 @@ def resolve_open_positions(broker: PaperBroker):
 
 
 def format_wa_summary(new_trades: list[tuple], closed_count: int, stats: dict, now: str) -> str:
-    lines = [f"*PPLayouts — {now}*\n"]
+    # Count new positions per strategy this run
+    new_by_strategy: dict[str, int] = {}
+    for sig, _ in new_trades:
+        new_by_strategy[sig.strategy] = new_by_strategy.get(sig.strategy, 0) + 1
 
-    if new_trades:
-        lines.append(f"*New positions ({len(new_trades)}):*")
-        for sig, amount in new_trades:
-            flag = "⚡" if sig.ev_pp >= 15 else "  "
-            lines.append(
-                f"{flag} [{sig.strategy}] {sig.outcome} {sig.market_title[:45]}\n"
-                f"   Market: {sig.market_price*100:.0f}% | p̂: {sig.p_hat*100:.0f}% | "
-                f"EV: +{sig.ev_pp:.0f}pp | ${amount} | {sig.confidence}"
-            )
-    else:
-        lines.append("No new positions this run.")
+    lines = [f"*PPLayouts — {now}*\n"]
+    lines.append(format_wa_table(stats, new_by_strategy))
 
     if closed_count:
-        lines.append(f"\n{closed_count} position(s) resolved — see portfolio for P&L.")
+        lines.append(f"\n{closed_count} position(s) resolved this run.")
 
-    lines.append(f"\n{format_summary(stats)}")
-    lines.append("\n_Paper trading only — not financial advice._")
+    lines.append("\n_/details <strategy> for trade breakdown_")
     return "\n".join(lines)
 
 
