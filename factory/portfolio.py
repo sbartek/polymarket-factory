@@ -69,19 +69,19 @@ def format_wa_table(stats: dict, new_by_strategy: dict[str, int]) -> str:
 
         if s["staked"] > 0:
             roi = s["pnl"] / s["staked"] * 100
-            pnl_sign = "+" if s["pnl"] >= 0 else ""
-            perf = f" · ${s['staked']:.0f} → {pnl_sign}${s['pnl']:.1f} ({roi:+.0f}%)"
+            pnl_sign = "+" if s["pnl"] >= 0 else "-"
+            perf = f" · ${s['staked']:.0f} → {pnl_sign}${abs(s['pnl']):.1f} ({roi:+.0f}%)"
         else:
             perf = ""
 
         lines.append(f"*{name}:* {new_str} new · {s['closed']} cls{perf}")
 
     total_roi = stats["roi"] or 0
-    total_pnl_sign = "+" if stats["total_pnl"] >= 0 else ""
+    total_pnl_sign = "+" if stats["total_pnl"] >= 0 else "-"
     total_line = (
         f"*Total: {stats['open']} open · "
         f"${stats['total_staked']} staked · "
-        f"{total_pnl_sign}${stats['total_pnl']:.1f} P&L · "
+        f"{total_pnl_sign}${abs(stats['total_pnl']):.1f} P&L · "
         f"{total_roi*100:+.0f}% ROI*"
     )
     return "\n".join(lines) + "\n\n" + total_line

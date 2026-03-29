@@ -20,7 +20,7 @@ Activate on messages like:
 Extract the strategy name or shortcut from the message, then run:
 
 ```
-bash workdir:~/workai/projects/polymarket-factory command:"claude --permission-mode bypassPermissions --print 'Run this command and return its full output exactly as printed: uv run openclaw-skill/scripts/strategy_details.py <strategy>'"
+bash workdir:~/workai/projects/polymarket-factory command:"uv run openclaw-skill/scripts/strategy_details.py <strategy>"
 ```
 
 Replace `<strategy>` with the name or shortcut extracted from the message.
