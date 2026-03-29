@@ -128,8 +128,11 @@ def run():
 
     # Step 5: WhatsApp notification
     wa_msg = format_wa_summary(new_trades, closed_count, stats, now)
-    send_whatsapp(wa_msg)
-    print("\nWhatsApp notification sent.")
+    sent = send_whatsapp(wa_msg)
+    if sent:
+        print("\nWhatsApp notification sent. ✓")
+    else:
+        print("\nWhatsApp notification FAILED — check openclaw.")
     print(f"\n{'='*60}\n")
 
 
