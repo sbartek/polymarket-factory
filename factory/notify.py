@@ -2,6 +2,23 @@
 import os
 import shutil
 import subprocess
+from pathlib import Path
+
+
+def _load_dotenv():
+    """Load .env from project root if env vars not already set."""
+    env_file = Path(__file__).parents[1] / ".env"
+    if not env_file.exists():
+        return
+    for line in env_file.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        k, v = line.split("=", 1)
+        os.environ.setdefault(k.strip(), v.strip())
+
+
+_load_dotenv()
 
 
 def send_whatsapp(text: str):
