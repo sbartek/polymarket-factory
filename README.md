@@ -80,6 +80,7 @@ Run weekly: `uv run eval/report.py`
 
 - [x] **`ev_news`** — Claude scans top markets + news headlines, picks 3 topics, estimates p̂ per market from news. Min EV 10pp. LLM-heavy, 3 Claude calls/run.
 - [x] **`fade_certainty`** — Statistical fade of markets >93% or <7%. Min volume $30K, 7–120 days to close, excludes price-oracle markets. No LLM. Fast.
+- [x] **`weather_edge`** — Open-Meteo ensemble (50 ECMWF members) vs Polymarket weather market prices. One Claude call per candidate to parse title → geocode → ensemble probability. Min EV 12pp, markets closing ≤10 days out.
 
 ### Planned — Week 2
 
