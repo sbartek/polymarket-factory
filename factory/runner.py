@@ -53,7 +53,7 @@ def resolve_open_positions(broker: PaperBroker):
 
 
 def format_wa_summary(new_trades: list[tuple], closed_count: int, stats: dict, now: str) -> str:
-    lines = [f"*Polymarket Factory — {now}*\n"]
+    lines = [f"*PPLayouts — {now}*\n"]
 
     if new_trades:
         lines.append(f"*New positions ({len(new_trades)}):*")
