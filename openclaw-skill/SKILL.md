@@ -1,6 +1,6 @@
 ---
-name: ppplayouts
-description: Show PPLayouts trading strategy details — open positions, closed trades, P&L, ROI, win rate. Use when the user sends "/details" followed by a strategy name, or asks about a specific strategy like "show me weather trades", "how is fade_certainty doing?", "details for arb". Strategy names and shortcuts: ev_news (ev), fade_certainty (fade), weather_edge (weather), spread_arb (arb), resolution_hunter (resolution).
+name: details
+description: PPLayouts trading strategy details — open positions, closed trades, P&L, ROI, win rate. Use when user sends "/details <strategy>" or asks about a strategy. Strategies and shortcuts: ev_news (ev), fade_certainty (fade), weather_edge (weather), spread_arb (arb), resolution_hunter (resolution).
 ---
 
 # PPLayouts — Strategy Details
