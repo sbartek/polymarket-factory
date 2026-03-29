@@ -10,7 +10,7 @@ import sys
 from datetime import datetime
 
 from .broker import PaperBroker
-from .feed import fetch_top, fetch_closed, get_market_winner, get_yes_price
+from .feed import fetch_top, fetch_closed, get_market_winner, get_submarket_outcome, get_yes_price
 from .models import Signal
 from .notify import send_whatsapp
 from .portfolio import summary, format_summary
@@ -22,21 +22,33 @@ def resolve_open_positions(broker: PaperBroker):
     open_positions = broker.get_open_positions()
     closed_count = 0
     for t in open_positions:
-        slug = t["market_id"]
-        if not slug:
+        market_id = t["market_id"]
+        if not market_id:
             continue
+
+        # Handle compound market IDs: "event-slug:submarket_id"
+        if ":" in market_id:
+            event_slug, submarket_id = market_id.split(":", 1)
+        else:
+            event_slug, submarket_id = market_id, None
+
         try:
-            events = fetch_closed(slug)
+            events = fetch_closed(event_slug)
             if not events:
                 continue
-            winner = get_market_winner(events[0])
+            ev = events[0]
+            winner = (
+                get_submarket_outcome(ev, submarket_id)
+                if submarket_id
+                else get_market_winner(ev)
+            )
             if winner:
                 broker.close_position(t["id"], winner)
                 closed_count += 1
                 print(f"  Closed [{t['strategy']}] {t['market_title'][:50]} → {winner} | "
                       f"P&L ${float(t.get('pnl_usdc', 0)):+.2f}")
         except Exception as e:
-            print(f"  Error resolving {slug}: {e}")
+            print(f"  Error resolving {market_id}: {e}")
     return closed_count
 
 

@@ -80,13 +80,11 @@ Run weekly: `uv run eval/report.py`
 
 - [x] **`ev_news`** — Claude scans top markets + news headlines, picks 3 topics, estimates p̂ per market from news. Min EV 10pp. LLM-heavy, 3 Claude calls/run.
 - [x] **`fade_certainty`** — Statistical fade of markets >93% or <7%. Min volume $30K, 7–120 days to close, excludes price-oracle markets. No LLM. Fast.
-- [x] **`weather_edge`** — Open-Meteo ensemble (50 ECMWF members) vs Polymarket weather market prices. One Claude call per candidate to parse title → geocode → ensemble probability. Min EV 12pp, markets closing ≤10 days out.
+- [x] **`weather_edge`** — Open-Meteo ensemble (~30 ECMWF members) vs Polymarket temperature sub-market prices. Regex-parses structured questions (range/above/below °F or °C), no LLM. Min EV 12pp, markets closing ≤10 days out.
+- [x] **`spread_arb`** — Multi-outcome markets (elections, sports, awards) where sum of all YES prices < 0.93. Buys all outcomes as a basket for near-guaranteed profit. Fully mechanical, no LLM.
+- [x] **`resolution_hunter`** — Markets closing within 45 days, priced 10–85%. Fetches recent news per candidate, asks Claude whether the event has already resolved. Only trades when Claude ≥85% confident.
 
-### Planned — Week 2
-
-- [ ] **`spread_arb`** — YES + NO prices should sum to ~$1. When they don't (gap > 2% fees), buy both sides for near risk-free arb. Fully mechanical, no LLM. *Priority: high — free money when it occurs.*
-
-- [ ] **`resolution_hunter`** — Markets where the outcome is already known (event happened) but not yet officially settled. Still trading at 20–50% when it should be 0% or 100%. LLM cross-checks current facts vs market price. *Priority: high — potentially highest single-trade EV.*
+### Planned — Week 3+
 
 ### Planned — Week 3+
 

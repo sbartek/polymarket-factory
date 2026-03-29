@@ -64,6 +64,27 @@ def get_market_winner(event: dict) -> str | None:
     return None
 
 
+def get_submarket_outcome(event: dict, submarket_id: str) -> str | None:
+    """
+    For multi-outcome events (weather, elections), get the YES/NO resolution
+    of a specific sub-market identified by its numeric id.
+    """
+    for m in event.get("markets", []):
+        if str(m.get("id", "")) != str(submarket_id):
+            continue
+        prices_raw = m.get("outcomePrices", "[]")
+        try:
+            prices = json.loads(prices_raw) if isinstance(prices_raw, str) else prices_raw
+            yes_price = float(prices[0])
+            if yes_price >= 0.99:
+                return "YES"
+            if yes_price <= 0.01:
+                return "NO"
+        except (ValueError, TypeError, IndexError):
+            pass
+    return None
+
+
 def event_url(ev: dict) -> str:
     slug = ev.get("slug") or ev.get("ticker") or ""
     return f"https://polymarket.com/event/{slug}" if slug else ""
