@@ -1,29 +1,29 @@
 ---
 name: details
-description: PPLayouts trading strategy details — open positions, closed trades, P&L, ROI, win rate. Use when user sends "/details <strategy>" or asks about a strategy. Strategies and shortcuts: ev_news (ev), fade_certainty (fade), weather_edge (weather), spread_arb (arb), resolution_hunter (resolution).
+description: PPLayouts slash command router. Activate for ANY message that starts with "/" (slash command). Handles /details and replies "Unknown command" for anything else.
 ---
 
-# PPLayouts — Strategy Details
+# PPLayouts — Slash Command Router
 
 ## When to trigger
 
-Activate on messages like:
-- `/details weather`
+Activate on ANY message that starts with `/`:
 - `/details fade`
-- `details arb`
-- `show me ev_news trades`
-- `how is spread_arb doing?`
-- `weather_edge results`
+- `/details weather`
+- `/anything`
+- `/foo`
+- `/help`
 
-## How to respond
+## Known commands
 
-Extract the strategy name or shortcut from the message, then run:
+### /details <strategy>
 
+Run:
 ```
 bash workdir:~/workai/projects/polymarket-factory command:"uv run openclaw-skill/scripts/strategy_details.py <strategy>"
 ```
 
-Replace `<strategy>` with the name or shortcut extracted from the message.
+Replace `<strategy>` with the name or shortcut from the message.
 
 Valid strategies and shortcuts:
 - `ev_news` or `ev`
@@ -31,15 +31,24 @@ Valid strategies and shortcuts:
 - `weather_edge` or `weather`
 - `spread_arb` or `arb`
 - `resolution_hunter` or `resolution` or `hunter`
+- `stale_market` or `stale`
+- `correlated_pairs` or `corr` or `pairs`
 
-## WhatsApp formatting rules
+Return the script output as-is — already formatted for WhatsApp.
 
-- Return the script output as-is — already formatted for WhatsApp
-- No extra commentary needed
-- If strategy is unknown, the script will say so
+## Unknown commands
 
-## Example
+If the message starts with `/` but is NOT `/details`, reply with exactly:
 
-User: `/details weather`
+```
+Unknown command: /<command>
+Available commands: /details <strategy>
+Strategies: ev, fade, weather, arb, resolution
+```
 
-Run with strategy=`weather`, return output directly.
+## Examples
+
+User: `/details fade` → run script with strategy=fade, return output
+User: `/details ev` → run script with strategy=ev, return output
+User: `/foo` → reply "Unknown command: /foo\nAvailable commands: /details <strategy>\nStrategies: ev, fade, weather, arb, resolution"
+User: `/help` → reply "Unknown command: /help\nAvailable commands: /details <strategy>\nStrategies: ev, fade, weather, arb, resolution"
