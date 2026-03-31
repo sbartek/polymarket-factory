@@ -417,6 +417,7 @@ Remaining optional work:
 - use `scripts/new_review_note.py` to reduce friction for review follow-ups
 - keep at least 1–2 active forward-looking experiment threads alive for currently evolving strategies
 - expose active experiment threads operationally via a lightweight report (now `scripts/active_experiments.py`)
+- route new strategy intake through the WhatsApp group and proposal drafts (`/new_strategy` → `improvement/proposals/`) before implementation work begins
 
 Outcome:
 - operator visibility is now dramatically better
