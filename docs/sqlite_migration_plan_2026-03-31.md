@@ -374,6 +374,21 @@ Success criteria:
 
 ---
 
+Status: **DONE (2026-03-31)**
+
+Delivered:
+- `spread_arb_baskets`
+- `resolution_hunter_checks`
+- `stale_market_checks`
+- `correlated_pairs_checks`
+- runner hooks to persist strategy-specific details after scans
+
+Outcome:
+- strategy tuning no longer depends only on console output
+- candidate/basket/pair reasoning is now queryable from SQLite
+
+---
+
 ## Phase 4 — Reporting migration
 
 Deliverables:
