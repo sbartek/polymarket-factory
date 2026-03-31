@@ -415,6 +415,7 @@ Remaining optional work:
 - continue tying reporting and strategy changes back to explicit improvement records
 - use `scripts/new_change_record.py` to reduce friction for future harness entries
 - keep at least 1–2 active forward-looking experiment threads alive for currently evolving strategies
+- expose active experiment threads operationally via a lightweight report (now `scripts/active_experiments.py`)
 
 Outcome:
 - operator visibility is now dramatically better
