@@ -33,6 +33,9 @@ Valid strategies and shortcuts:
 - `resolution_hunter` or `resolution` or `hunter`
 - `stale_market` or `stale`
 - `correlated_pairs` or `corr` or `pairs`
+- `portfolio` or `book`
+- `legacy`
+- `latest` or `run`
 
 Return the script output as-is — already formatted for WhatsApp.
 
@@ -52,3 +55,4 @@ User: `/details fade` → run script with strategy=fade, return output
 User: `/details ev` → run script with strategy=ev, return output
 User: `/foo` → reply "Unknown command: /foo\nAvailable commands: /details <strategy>\nStrategies: ev, fade, weather, arb, resolution"
 User: `/help` → reply "Unknown command: /help\nAvailable commands: /details <strategy>\nStrategies: ev, fade, weather, arb, resolution"
+�� reply "Unknown command: /help\nAvailable commands: /details <strategy>\nStrategies: ev, fade, weather, arb, resolution"

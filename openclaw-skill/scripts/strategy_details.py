@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-/details <strategy> — returns compact SQLite-backed strategy details for WhatsApp.
+/details <strategy|portfolio|legacy|latest> — compact SQLite-backed details for WhatsApp.
 Called by the PPLayouts OpenClaw skill.
-Usage: uv run openclaw-skill/scripts/strategy_details.py <strategy_name>
+Usage: uv run openclaw-skill/scripts/strategy_details.py <name>
 """
 from __future__ import annotations
 
@@ -12,11 +12,15 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from factory.broker import PaperBroker
+from factory.portfolio import format_wa_table, summary
 from factory.queries import (
     get_correlated_pairs_checks,
     get_decisions,
     get_latest_runs,
+    get_legacy_open_positions,
+    get_open_positions,
     get_resolution_hunter_checks,
+    get_run_analytics,
     get_spread_arb_baskets,
     get_stale_market_checks,
     open_db,
@@ -33,6 +37,11 @@ STRATEGY_ALIASES = {
     "stale": "stale_market",
     "corr": "correlated_pairs",
     "pairs": "correlated_pairs",
+    "portfolio": "portfolio",
+    "book": "portfolio",
+    "legacy": "legacy",
+    "latest": "latest",
+    "run": "latest",
 }
 
 VALID_STRATEGIES = [
@@ -43,6 +52,9 @@ VALID_STRATEGIES = [
     "resolution_hunter",
     "stale_market",
     "correlated_pairs",
+    "portfolio",
+    "legacy",
+    "latest",
 ]
 
 
@@ -107,22 +119,52 @@ def _format_trade(t: dict) -> str:
     return f"  {sign} {outcome} {title}\n       ${amount:.1f} → {pnl:+.2f} | {resolved}"
 
 
-def main():
-    if len(sys.argv) < 2:
-        print("Usage: strategy_details.py <strategy_name>")
-        print(f"Valid: {', '.join(VALID_STRATEGIES)}")
-        print("Shortcuts: ev, fade, weather, arb, resolution, stale, corr")
-        sys.exit(1)
+def _render_portfolio() -> str:
+    broker = PaperBroker(export_csv=False)
+    stats = summary(broker)
+    return "*PPLayouts — portfolio*\n\n" + format_wa_table(stats, {})
 
-    arg = sys.argv[1].lower().strip().lstrip("/")
-    strategy = STRATEGY_ALIASES.get(arg, arg)
-    if strategy not in VALID_STRATEGIES:
-        print(f"Unknown strategy '{arg}'.")
-        print(f"Valid: {', '.join(VALID_STRATEGIES)}")
-        print("Shortcuts: ev, fade, weather, arb, resolution, stale, corr")
-        sys.exit(1)
 
-    db = open_db()
+def _render_legacy(db) -> str:
+    rows = get_legacy_open_positions(db)
+    total = sum(float(r.get("amount_usdc") or 0) for r in rows)
+    by_strategy: dict[str, tuple[int, float]] = {}
+    for r in rows:
+        s = r["strategy"]
+        cnt, exp = by_strategy.get(s, (0, 0.0))
+        by_strategy[s] = (cnt + 1, exp + float(r.get("amount_usdc") or 0))
+
+    lines = ["*PPLayouts — legacy*\n"]
+    lines.append(f"{len(rows)} legacy open | ${total:.2f} exposure\n")
+    for s, (cnt, exp) in sorted(by_strategy.items(), key=lambda kv: kv[1][1], reverse=True):
+        lines.append(f"  {s}: {cnt} open | ${exp:.2f}")
+    if rows:
+        lines.append("\nOldest legacy:")
+        for r in rows[:6]:
+            lines.append(f"  {r['strategy']}: {r['market_title'][:44]} | ${float(r['amount_usdc']):.2f}")
+    return "\n".join(lines)
+
+
+def _render_latest(db) -> str:
+    runs = get_latest_runs(db, n=1)
+    if not runs:
+        return "*PPLayouts — latest*\n\nNo runs recorded yet."
+    run = runs[0]
+    analytics = get_run_analytics(db, limit_runs=10)
+    lines = ["*PPLayouts — latest*\n"]
+    lines.append(
+        f"run {run['id']} | {run['mode']} | {run['status']}\n"
+        f"{run.get('markets_fetched') or 0} mkts | {run.get('closed_count') or 0} closed | +{run.get('new_positions_count') or 0} new\n"
+    )
+    top_reasons = analytics.get("decision_reason_counts", [])[:4]
+    if top_reasons:
+        lines.append("Top recent reasons:")
+        for row in top_reasons:
+            lines.append(f"  {row.get('reason')}: {row.get('cnt')}x")
+    return "\n".join(lines)
+
+
+def _render_strategy(db, strategy: str) -> str:
     trades = load_trades(strategy)
     meta = strategy_metadata().get(strategy, {})
     latest_run = get_latest_runs(db, n=1)
@@ -181,7 +223,33 @@ def main():
     if not trades and not checks:
         lines.append("No trades or recent checks found.")
 
-    print("\n".join(lines))
+    return "\n".join(lines)
+
+
+def main():
+    if len(sys.argv) < 2:
+        print("Usage: strategy_details.py <strategy_name>")
+        print(f"Valid: {', '.join(VALID_STRATEGIES)}")
+        print("Shortcuts: ev, fade, weather, arb, resolution, stale, corr, portfolio, legacy, latest")
+        sys.exit(1)
+
+    arg = sys.argv[1].lower().strip().lstrip("/")
+    strategy = STRATEGY_ALIASES.get(arg, arg)
+    if strategy not in VALID_STRATEGIES:
+        print(f"Unknown strategy '{arg}'.")
+        print(f"Valid: {', '.join(VALID_STRATEGIES)}")
+        print("Shortcuts: ev, fade, weather, arb, resolution, stale, corr, portfolio, legacy, latest")
+        sys.exit(1)
+
+    db = open_db()
+    if strategy == "portfolio":
+        print(_render_portfolio())
+    elif strategy == "legacy":
+        print(_render_legacy(db))
+    elif strategy == "latest":
+        print(_render_latest(db))
+    else:
+        print(_render_strategy(db, strategy))
 
 
 if __name__ == "__main__":
