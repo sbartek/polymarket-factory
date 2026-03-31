@@ -132,6 +132,18 @@ The report aggregates by:
 ## Operations
 
 ```bash
+# Show open book (all groups + full position list)
+uv run python scripts/open_positions.py
+
+# Show only the 5 oldest open positions
+uv run python scripts/open_positions.py --top-oldest 5
+
+# Filter by strategy
+uv run python scripts/open_positions.py --strategy ev_news
+
+# Filter by time window
+uv run python scripts/open_positions.py --time-window medium
+
 # Manual run
 uv run python -m factory.runner
 
@@ -144,6 +156,21 @@ uv run python -c "from factory.runner import run; run(dry_run=True, fast_dry_run
 
 # Weekly evaluation
 uv run eval/report.py
+
+# Latest run summary
+uv run python scripts/latest_run.py -n 1
+
+# Inspect recent decisions
+uv run python scripts/inspect_decisions.py --limit 20
+
+# Inspect strategy-specific checks
+uv run python scripts/strategy_checks.py stale_market --limit 10
+
+# Inspect current open book
+uv run python scripts/open_positions.py --top-oldest 10
+
+# Backfill missing legacy trade metadata after imports/migrations
+uv run python scripts/backfill_trade_metadata.py
 
 # Test /details skill
 uv run openclaw-skill/scripts/strategy_details.py fade

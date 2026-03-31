@@ -9,6 +9,7 @@ from factory.queries import (
     get_decisions,
     get_decisions_summary,
     get_latest_runs,
+    get_open_positions,
     get_resolution_hunter_checks,
     get_spread_arb_baskets,
     get_stale_market_checks,
@@ -32,6 +33,32 @@ def _insert_run(db: FactoryDB, mode: str = "dry_run") -> str:
 
 def _insert_decision(db: FactoryDB, run_id: str, strategy: str = "ev_news", decision_type: str = "execution", decision: str = "open"):
     db.log_decision(run_id, decision_type=decision_type, decision=decision, strategy=strategy, market_id="m1", reason="test")
+
+
+def _insert_trade(
+    db: FactoryDB,
+    trade_id: str,
+    strategy: str = "ev_news",
+    status: str = "open",
+    time_window: str | None = "medium",
+    opened_at: str = "2026-01-15T09:00:00",
+    amount_usdc: float = 10.0,
+) -> None:
+    db.insert_trade({
+        "id": trade_id,
+        "strategy": strategy,
+        "market_id": f"market-{trade_id}",
+        "market_title": f"Market {trade_id}",
+        "outcome": "YES",
+        "amount_usdc": amount_usdc,
+        "entry_price": 0.5,
+        "shares": amount_usdc / 0.5,
+        "opened_at": opened_at,
+        "closes": "2026-06-01",
+        "url": "",
+        "status": status,
+        "time_window": time_window,
+    })
 
 
 # ---------------------------------------------------------------------------
@@ -149,6 +176,70 @@ class TestGetDecisionsSummary:
 # Strategy detail table queries
 # ---------------------------------------------------------------------------
 
+class TestOpenPositions:
+    def test_open_positions_empty(self, db):
+        assert get_open_positions(db) == []
+
+    def test_open_positions_only_returns_open(self, db):
+        db.insert_trade({
+            "id": "o1", "strategy": "ev_news", "market_id": "m1", "market_title": "Open",
+            "outcome": "YES", "amount_usdc": 10.0, "entry_price": 0.5, "shares": 20.0,
+            "opened_at": "2026-01-01T00:00:00", "status": "open", "time_window": "medium",
+        })
+        db.insert_trade({
+            "id": "c1", "strategy": "ev_news", "market_id": "m2", "market_title": "Closed",
+            "outcome": "YES", "amount_usdc": 8.0, "entry_price": 0.4, "shares": 20.0,
+            "opened_at": "2026-01-02T00:00:00", "status": "closed", "time_window": "medium",
+        })
+        rows = get_open_positions(db)
+        assert len(rows) == 1
+        assert rows[0]["id"] == "o1"
+
+    def test_open_positions_filter_by_strategy(self, db):
+        db.insert_trade({
+            "id": "o1", "strategy": "ev_news", "market_id": "m1", "market_title": "A",
+            "outcome": "YES", "amount_usdc": 10.0, "entry_price": 0.5, "shares": 20.0,
+            "opened_at": "2026-01-01T00:00:00", "status": "open", "time_window": "medium",
+        })
+        db.insert_trade({
+            "id": "o2", "strategy": "spread_arb", "market_id": "m2", "market_title": "B",
+            "outcome": "YES", "amount_usdc": 5.0, "entry_price": 0.2, "shares": 25.0,
+            "opened_at": "2026-01-02T00:00:00", "status": "open", "time_window": "medium",
+        })
+        rows = get_open_positions(db, strategy="spread_arb")
+        assert len(rows) == 1
+        assert rows[0]["strategy"] == "spread_arb"
+
+    def test_open_positions_filter_by_time_window(self, db):
+        db.insert_trade({
+            "id": "o1", "strategy": "ev_news", "market_id": "m1", "market_title": "A",
+            "outcome": "YES", "amount_usdc": 10.0, "entry_price": 0.5, "shares": 20.0,
+            "opened_at": "2026-01-01T00:00:00", "status": "open", "time_window": "medium",
+        })
+        db.insert_trade({
+            "id": "o2", "strategy": "resolution_hunter", "market_id": "m2", "market_title": "B",
+            "outcome": "YES", "amount_usdc": 5.0, "entry_price": 0.2, "shares": 25.0,
+            "opened_at": "2026-01-02T00:00:00", "status": "open", "time_window": "short",
+        })
+        rows = get_open_positions(db, time_window="short")
+        assert len(rows) == 1
+        assert rows[0]["time_window"] == "short"
+
+    def test_open_positions_oldest_first(self, db):
+        db.insert_trade({
+            "id": "o2", "strategy": "ev_news", "market_id": "m2", "market_title": "Later",
+            "outcome": "YES", "amount_usdc": 10.0, "entry_price": 0.5, "shares": 20.0,
+            "opened_at": "2026-01-02T00:00:00", "status": "open", "time_window": "medium",
+        })
+        db.insert_trade({
+            "id": "o1", "strategy": "ev_news", "market_id": "m1", "market_title": "Earlier",
+            "outcome": "YES", "amount_usdc": 10.0, "entry_price": 0.5, "shares": 20.0,
+            "opened_at": "2026-01-01T00:00:00", "status": "open", "time_window": "medium",
+        })
+        rows = get_open_positions(db)
+        assert [r["id"] for r in rows] == ["o1", "o2"]
+
+
 class TestStrategyDetailTables:
     def _setup_run(self, db):
         return _insert_run(db)
@@ -219,3 +310,59 @@ class TestStrategyDetailTables:
             db.log_spread_arb_basket(run_id, {"event_slug": f"s{i}", "title": f"T{i}", "decision": "open"})
         rows = get_spread_arb_baskets(db, limit=3)
         assert len(rows) == 3
+
+
+# ---------------------------------------------------------------------------
+# get_open_positions
+# ---------------------------------------------------------------------------
+
+class TestGetOpenPositions:
+    def test_empty_db_returns_empty(self, db):
+        assert get_open_positions(db) == []
+
+    def test_returns_only_open_trades(self, db):
+        _insert_trade(db, "t1", status="open")
+        _insert_trade(db, "t2", status="closed")
+        rows = get_open_positions(db)
+        assert len(rows) == 1
+        assert rows[0]["id"] == "t1"
+
+    def test_ordered_oldest_first(self, db):
+        _insert_trade(db, "t1", opened_at="2026-03-01T10:00:00")
+        _insert_trade(db, "t2", opened_at="2026-01-01T10:00:00")
+        _insert_trade(db, "t3", opened_at="2026-02-01T10:00:00")
+        rows = get_open_positions(db)
+        assert [r["id"] for r in rows] == ["t2", "t3", "t1"]
+
+    def test_filter_by_strategy(self, db):
+        _insert_trade(db, "t1", strategy="ev_news")
+        _insert_trade(db, "t2", strategy="spread_arb")
+        rows = get_open_positions(db, strategy="ev_news")
+        assert len(rows) == 1
+        assert rows[0]["strategy"] == "ev_news"
+
+    def test_filter_by_time_window(self, db):
+        _insert_trade(db, "t1", time_window="medium")
+        _insert_trade(db, "t2", time_window="short")
+        rows = get_open_positions(db, time_window="short")
+        assert len(rows) == 1
+        assert rows[0]["time_window"] == "short"
+
+    def test_filter_by_strategy_and_time_window(self, db):
+        _insert_trade(db, "t1", strategy="ev_news", time_window="medium")
+        _insert_trade(db, "t2", strategy="ev_news", time_window="short")
+        _insert_trade(db, "t3", strategy="spread_arb", time_window="medium")
+        rows = get_open_positions(db, strategy="ev_news", time_window="medium")
+        assert len(rows) == 1
+        assert rows[0]["id"] == "t1"
+
+    def test_exposure_amounts_correct(self, db):
+        _insert_trade(db, "t1", amount_usdc=7.5)
+        _insert_trade(db, "t2", amount_usdc=12.0)
+        rows = get_open_positions(db)
+        total = sum(r["amount_usdc"] for r in rows)
+        assert total == pytest.approx(19.5)
+
+    def test_no_match_returns_empty(self, db):
+        _insert_trade(db, "t1", strategy="ev_news")
+        assert get_open_positions(db, strategy="nonexistent") == []

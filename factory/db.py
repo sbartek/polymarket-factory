@@ -8,6 +8,8 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from .strategy_meta import ACTIVE_STRATEGIES, strategy_metadata
+
 DB_PATH = Path(__file__).parents[1] / "data" / "factory.sqlite3"
 TRADES_CSV = Path(__file__).parents[1] / "data" / "trades.csv"
 TRADE_FIELDS = [
@@ -306,6 +308,30 @@ class FactoryDB:
             )
             conn.commit()
             return True
+
+    def backfill_trade_metadata(self) -> int:
+        meta = strategy_metadata()
+        updated = 0
+        with self._connect() as conn:
+            rows = conn.execute("SELECT id, strategy, lifecycle_group, time_window, edge_type FROM trades").fetchall()
+            for row in rows:
+                trade = dict(row)
+                strategy = trade.get("strategy")
+                strategy_meta = meta.get(strategy, {})
+                lifecycle_group = trade.get("lifecycle_group") or ("active" if strategy in ACTIVE_STRATEGIES else "legacy")
+                time_window = trade.get("time_window") or strategy_meta.get("time_window")
+                edge_type = trade.get("edge_type") or strategy_meta.get("edge_type")
+
+                if trade.get("lifecycle_group") and trade.get("time_window") and trade.get("edge_type"):
+                    continue
+
+                conn.execute(
+                    "UPDATE trades SET lifecycle_group = ?, time_window = ?, edge_type = ? WHERE id = ?",
+                    (lifecycle_group, time_window, edge_type, trade["id"]),
+                )
+                updated += 1
+            conn.commit()
+        return updated
 
     def start_run(self, mode: str, notes: str | None = None) -> str:
         run_id = uuid.uuid4().hex[:12]

@@ -81,6 +81,35 @@ def _sample_row(**overrides) -> dict:
     return base
 
 
+class TestBackfillTradeMetadata:
+    def test_backfills_missing_trade_metadata_from_strategy_defaults(self, db):
+        db.insert_trade({
+            "id": "legacy1", "strategy": "ev_news", "market_id": "m1", "market_title": "T",
+            "outcome": "YES", "amount_usdc": 10.0, "entry_price": 0.5, "shares": 20.0,
+            "opened_at": "2026-01-01T00:00:00", "status": "open",
+        })
+        updated = db.backfill_trade_metadata()
+        assert updated == 1
+        row = db.load_trades()[0]
+        assert row["lifecycle_group"] == "active"
+        assert row["time_window"] == "medium"
+        assert row["edge_type"] == "information"
+
+    def test_preserves_existing_trade_metadata(self, db):
+        db.insert_trade({
+            "id": "legacy2", "strategy": "fade_certainty", "market_id": "m2", "market_title": "T2",
+            "outcome": "YES", "amount_usdc": 10.0, "entry_price": 0.5, "shares": 20.0,
+            "opened_at": "2026-01-01T00:00:00", "status": "open",
+            "lifecycle_group": "legacy", "time_window": "long", "edge_type": "other",
+        })
+        updated = db.backfill_trade_metadata()
+        assert updated == 0
+        row = db.load_trades()[0]
+        assert row["lifecycle_group"] == "legacy"
+        assert row["time_window"] == "long"
+        assert row["edge_type"] == "other"
+
+
 class TestCsvImport:
     def test_imports_rows_from_csv(self, tmp_path, db):
         csv_path = tmp_path / "trades.csv"

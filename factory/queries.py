@@ -129,6 +129,33 @@ DETAIL_TABLE_GETTERS = {
 }
 
 
+# ---------------------------------------------------------------------------
+# Open positions
+# ---------------------------------------------------------------------------
+
+def get_open_positions(
+    db: FactoryDB,
+    strategy: str | None = None,
+    time_window: str | None = None,
+) -> list[dict]:
+    """Return open trades, optionally filtered. Ordered by opened_at ASC (oldest first)."""
+    clauses = ["status = 'open'"]
+    params: list = []
+    if strategy:
+        clauses.append("strategy = ?")
+        params.append(strategy)
+    if time_window:
+        clauses.append("time_window = ?")
+        params.append(time_window)
+    where = "WHERE " + " AND ".join(clauses)
+    with db._connect() as conn:
+        rows = conn.execute(
+            f"SELECT * FROM trades {where} ORDER BY opened_at ASC",
+            params,
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
 def open_db(path: Path | None = None) -> FactoryDB:
     """Open the factory DB from an optional override path."""
     return FactoryDB(path=path or DB_PATH)
