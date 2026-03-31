@@ -414,6 +414,7 @@ Remaining optional work:
 - more portfolio-level analytics in chat-facing output
 - continue tying reporting and strategy changes back to explicit improvement records
 - use `scripts/new_change_record.py` to reduce friction for future harness entries
+- keep at least 1–2 active forward-looking experiment threads alive for currently evolving strategies
 
 Outcome:
 - operator visibility is now dramatically better
