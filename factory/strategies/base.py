@@ -1,6 +1,8 @@
 """Base Strategy class — all strategies implement this interface."""
 from abc import ABC, abstractmethod
+
 from ..models import Signal
+from ..strategy_meta import EdgeType, TimeWindow, expected_window_from_days
 
 
 class Strategy(ABC):
@@ -8,6 +10,21 @@ class Strategy(ABC):
     mode: str = "paper"           # "paper" | "live"
     max_position_usdc: float = 10.0
     min_ev_pp: float = 10.0
+
+    # portfolio metadata
+    edge_type: EdgeType = "other"
+    time_window: TimeWindow | None = None
+    target_hold_min_days: float = 1.0
+    target_hold_max_days: float = 30.0
+    scan_frequency: str = "3x/day"
+    paused: bool = False
+
+    @property
+    def resolved_time_window(self) -> TimeWindow:
+        return self.time_window or expected_window_from_days(
+            self.target_hold_min_days,
+            self.target_hold_max_days,
+        )
 
     @abstractmethod
     def scan(self, markets: list[dict]) -> list[Signal]:

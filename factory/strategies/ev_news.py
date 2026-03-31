@@ -7,6 +7,7 @@ Frequency: 3x/day (same as runner schedule).
 """
 import json
 import re
+from datetime import date
 
 from ddgs import DDGS
 
@@ -16,11 +17,30 @@ from ..models import Signal
 from .base import Strategy
 
 
+def _days_to_close(end_date: str | None) -> int | None:
+    if not end_date:
+        return None
+    try:
+        return (date.fromisoformat(end_date[:10]) - date.today()).days
+    except ValueError:
+        return None
+
+
 class EvNewsStrategy(Strategy):
     name = "ev_news"
+    edge_type = "information"
+    time_window = "medium"
+    target_hold_min_days = 7
+    target_hold_max_days = 30
+    scan_frequency = "3x/day"
     max_position_usdc = 15.0
     min_ev_pp = 10.0
     n_topics = 3
+    min_volume = 10_000
+    min_days_to_close = 7
+    max_days_to_close = 60
+    max_trades_per_run = 3
+    fast_dry_run_topics = 1
 
     def _fetch_news(self, query: str, n: int = 5) -> list[dict]:
         try:
@@ -110,6 +130,16 @@ Only include markets where |ev_pp| >= {self.min_ev_pp}. Return <signals>[]</sign
                 ev_pp = float(s.get("ev_pp", 0))
                 if abs(ev_pp) < self.min_ev_pp:
                     continue
+
+                confidence = (s.get("confidence", "medium") or "medium").lower()
+                if confidence not in ("medium", "high"):
+                    continue
+
+                closes = s.get("closes") or ""
+                days = _days_to_close(closes)
+                if days is None or not (self.min_days_to_close <= days <= self.max_days_to_close):
+                    continue
+
                 outcome = s.get("outcome", "YES").upper()
                 mp_pct = float(s.get("market_price", 50))
                 ph_pct = float(s.get("p_hat", 50))
@@ -124,8 +154,8 @@ Only include markets where |ev_pp| >= {self.min_ev_pp}. Return <signals>[]</sign
                     market_price=mp,
                     p_hat=ph,
                     ev_pp=abs(ev_pp),
-                    confidence=s.get("confidence", "medium"),
-                    closes=s.get("closes") or "",
+                    confidence=confidence,
+                    closes=closes,
                     url=s.get("url", ""),
                     rationale=f"news-ev:{query}",
                 ))
@@ -135,15 +165,37 @@ Only include markets where |ev_pp| >= {self.min_ev_pp}. Return <signals>[]</sign
         return signals
 
     def scan(self, markets: list[dict]) -> list[Signal]:
-        print(f"  [{self.name}] picking topics...", end=" ", flush=True)
-        topics = self._pick_topics(markets)
+        filtered_markets = []
+        for m in markets:
+            vol = float(m.get("volume24hr") or m.get("volume") or 0)
+            if vol < self.min_volume:
+                continue
+            days = _days_to_close(m.get("endDate"))
+            if days is None or not (self.min_days_to_close <= days <= self.max_days_to_close):
+                continue
+            filtered_markets.append(m)
+
+        print(f"  [{self.name}] {len(filtered_markets)} filtered markets → picking topics...", end=" ", flush=True)
+        topics = self._pick_topics(filtered_markets or markets)
+        limit_topics = getattr(self, "_fast_dry_run_topics_override", None)
+        if limit_topics is not None:
+            topics = topics[:limit_topics]
         print(f"{topics}")
 
         signals = []
+        seen_market_ids: set[str] = set()
         for topic in topics:
             print(f"  [{self.name}] analyzing '{topic}'...", end=" ", flush=True)
-            found = self._analyze_topic(topic, markets)
-            print(f"{len(found)} signals")
-            signals.extend(found)
+            found = self._analyze_topic(topic, filtered_markets or markets)
+            kept = []
+            for sig in found:
+                if sig.market_id in seen_market_ids:
+                    continue
+                seen_market_ids.add(sig.market_id)
+                kept.append(sig)
+            print(f"{len(kept)} signals")
+            signals.extend(kept)
+            if len(signals) >= self.max_trades_per_run:
+                break
 
-        return signals
+        return signals[:self.max_trades_per_run]

@@ -3,4 +3,7 @@ __pycache__/
 *.pyc
 .DS_Store
 data/*.csv
+data/*.sqlite3
+backups/*.sqlite3
+backups/*.csv
 factory.log

@@ -18,7 +18,7 @@ You (idea) → new file in factory/strategies/ → add to STRATEGIES registry �
                                                                 └── WhatsApp summary → Polymarket Signals group
 ```
 
-**Stack:** Python 3.11+ · uv · Gamma API · DDGS news · Claude API · OpenClaw WhatsApp (Leon Kowalski bot, github-copilot/gpt-4o)
+**Stack:** Python 3.11+ · uv · Gamma API · DDGS news · Claude API · OpenClaw WhatsApp
 
 ---
 
@@ -35,14 +35,10 @@ You (idea) → new file in factory/strategies/ → add to STRATEGIES registry �
        min_ev_pp = 10.0
 
        def scan(self, markets: list[dict]) -> list[Signal]:
-           ...  # return list of Signal objects
+           ...
    ```
-2. Register in `factory/strategies/__init__.py`:
-   ```python
-   from .my_strategy import MyStrategy
-   STRATEGIES = [..., MyStrategy()]
-   ```
-3. Test: `uv run python -m factory.runner`
+2. Register in `factory/strategies/__init__.py`.
+3. Test with a safe dry run before trusting it.
 
 ---
 
@@ -55,10 +51,31 @@ class Strategy(ABC):
     max_position_usdc: float
     min_ev_pp: float
 
-    def scan(self, markets) -> list[Signal]   # find opportunities
-    def size(self, signal) -> float           # Kelly sizing (override if needed)
-    def should_exit(self, trade, price) -> bool  # early exit logic (default: hold to resolution)
+    # portfolio taxonomy
+    edge_type: str
+    time_window: str        # super_short | intraday | short | medium | long
+    target_hold_min_days: float
+    target_hold_max_days: float
+    scan_frequency: str
+
+    def scan(self, markets) -> list[Signal]
+    def size(self, signal) -> float
+    def should_exit(self, trade, price) -> bool
 ```
+
+## Time Window Taxonomy
+
+- `super_short` = under 1 hour
+- `intraday` = 1h to 24h
+- `short` = 1–7 days
+- `medium` = 8–30 days
+- `long` = 31+ days
+
+The runner uses time windows operationally:
+- faster buckets run every cycle
+- `medium` can skip midday churn
+- `long` ideas can run once per day
+- open exposure is capped by both strategy and time window
 
 ---
 
@@ -72,40 +89,43 @@ Run weekly: `uv run eval/report.py`
 | ROI | < -10% | > 0% |
 | Min trades to evaluate | 5 | — |
 
+The report aggregates by:
+- strategy
+- time window
+- edge type
+- active vs legacy
+
 ---
 
 ## Strategy Roadmap
 
 ### Active (paper trading)
 
-- [x] **`ev_news`** — Claude scans top markets + news headlines, picks 3 topics, estimates p̂ per market from news. Min EV 10pp. LLM-heavy, 3 Claude calls/run.
-- [x] **`fade_certainty`** — Statistical fade of markets >93% or <7%. Min volume $30K, 7–120 days to close, excludes price-oracle markets. No LLM. Fast.
-- [x] **`weather_edge`** — Open-Meteo ensemble (~30 ECMWF members) vs Polymarket temperature sub-market prices. Regex-parses structured questions (range/above/below °F or °C), no LLM. Min EV 12pp, markets closing ≤10 days out.
-- [x] **`spread_arb`** — Multi-outcome markets (elections, sports, awards) where sum of all YES prices < 0.93. Buys all outcomes as a basket for near-guaranteed profit. Fully mechanical, no LLM.
-- [x] **`resolution_hunter`** — Markets closing within 45 days, priced 10–85%. Fetches recent news per candidate, asks Claude whether the event has already resolved. Only trades when Claude ≥85% confident.
+- [x] **`ev_news`** — Claude scans top markets + news headlines, picks topics, estimates p̂ per market from news.
+- [x] **`spread_arb`** — Multi-outcome markets where sum of YES prices is materially below 1.0, with stricter practical filtering.
+- [x] **`resolution_hunter`** — Looks for markets likely already resolved in the real world but not yet settled by the market.
+- [x] **`stale_market`** — Looks for liquid near/medium-term markets whose prices appear stale versus recent news.
+- [x] **`correlated_pairs`** — MVP for logically inconsistent market pairs (prerequisite vs downstream, broader vs narrower).
 
-### Planned — Week 3+
+### Paused after early paper results
 
-### Planned — Week 3+
+- [ ] **`fade_certainty`** — Paused after ugly early paper results.
+- [ ] **`weather_edge`** — Paused after negative early paper results; maybe worth revisiting later as a much narrower v2.
 
-- [ ] **`polling_vs_market`** — For election markets: compare Polymarket price vs polling aggregates. Trade toward polls when gap > 10pp. No LLM beyond initial setup. Requires active election markets.
+### Planned — next builds
 
-- [ ] **`base_rate`** — Statistical only: "what % of the time does this *type* of event occur?" (e.g., incumbent party loses X% of elections, central bank cuts when CPI > Z%). Compare historical frequency vs market price. No LLM.
-
-- [ ] **`correlated_pairs`** — Find two logically linked markets priced inconsistently (e.g., "Trump imposes 50% tariffs on China" at 30% AND "US-China trade war escalates" at 75%). LLM identifies inconsistent pairs, trade the cheaper side.
-
-- [ ] **`stale_market`** — Markets with no trades in 48h+ have stale prices. After relevant news, these reprice slowly. Find stale markets where news changes the outcome probability.
-
-- [ ] **`crypto_options_basis`** — Compare Polymarket crypto price markets against Deribit options-implied probabilities (free API). Trade when they disagree by >10pp.
-
-- [ ] **`pre_event_drift`** — Before scheduled events (Fed meeting, election day), markets drift toward 50% as uncertainty peaks. Buy the base-rate-favored side 3–5 days before.
+- [ ] **`polling_vs_market`**
+- [ ] **`base_rate`**
+- [ ] **`crypto_options_basis`**
+- [ ] **`pre_event_drift`**
 
 ### Future (post-validation)
 
-- [ ] Live trading via Polymarket CLOB API (MetaMask + USDC on Polygon, ~€50 to start)
-- [ ] Strategy parameter tuning (EV threshold, sizing, hold period)
-- [ ] Multi-outcome market support (currently only binary YES/NO)
-- [ ] Portfolio-level risk limits (max total exposure, max per-topic concentration)
+- [ ] Live trading via Polymarket CLOB API
+- [ ] Strategy parameter tuning
+- [ ] Multi-outcome market support improvements
+- [ ] Portfolio-level risk limits refinement
+- [ ] Full trade-state migration from CSV to SQLite
 
 ---
 
@@ -115,26 +135,71 @@ Run weekly: `uv run eval/report.py`
 # Manual run
 uv run python -m factory.runner
 
+# Safe manual dry run (no writes, no closes, no sends)
+uv run python -c "from factory.runner import run; run(dry_run=True)"
+
+# Faster safe dry run for debugging the whole cycle
+# (currently skips `ev_news` and trims other expensive strategy workloads)
+uv run python -c "from factory.runner import run; run(dry_run=True, fast_dry_run=True)"
+
 # Weekly evaluation
 uv run eval/report.py
-
-# Logs
-tail -f factory.log
-
-# Open positions
-cat data/trades.csv
 
 # Test /details skill
 uv run openclaw-skill/scripts/strategy_details.py fade
 ```
 
-**LaunchAgent:** `com.polymarket.factory` — fires at 09:30 / 14:30 / 19:30 CEST.
-Logs: `factory.log`. Trades: `data/trades.csv`.
+## SQLite logging (Phase 1)
+
+Runner executions also log to `data/factory.sqlite3`:
+- `runs`
+- `signals`
+- `decisions`
+- `run_logs`
+
+Trade state is now SQLite-backed in `data/factory.sqlite3`. The runner/broker still exports `data/trades.csv` during the migration period for compatibility and easy inspection.
+
+## Daily backups
+
+Create local daily snapshots with retention cleanup:
+
+```bash
+uv run python scripts/backup_db.py --keep 14
+```
+
+This currently backs up:
+- `data/factory.sqlite3` → `backups/factory-YYYY-MM-DD.sqlite3`
+- `data/trades.csv` → `backups/trades-YYYY-MM-DD.csv` (when present)
+
+The live DB and local backups are gitignored.
+
+## Launchd
+
+Main factory job:
+- `com.polymarket.factory` — 09:30 / 14:30 / 19:30 CEST
+
+Backup template included in repo:
+- `launchd/com.polymarket.factory.backup.plist`
+- default schedule: `03:45` daily
+
+Logs:
+- runner: `factory.log`
+- backup job: `factory-backup.log`
 
 `.env` (not committed):
-```
+```env
 WHATSAPP_GROUP_ID=120363425524943226@g.us
 ```
+
+---
+
+## Running Tests
+
+```bash
+uv run pytest tests/ -v
+```
+
+Tests use temporary directories and never touch the real database or backups.
 
 ---
 
@@ -142,4 +207,4 @@ WHATSAPP_GROUP_ID=120363425524943226@g.us
 
 - Polymarket Gamma API: https://gamma-api.polymarket.com/markets
 - Polymarket CLOB API: https://clob.polymarket.com
-- Deribit API (for crypto_options_basis): https://docs.deribit.com
+- Deribit API: https://docs.deribit.com
