@@ -413,6 +413,7 @@ Remaining optional work:
 - deeper SQL-native reporting for every view
 - more portfolio-level analytics in chat-facing output
 - continue tying reporting and strategy changes back to explicit improvement records
+- use `scripts/new_change_record.py` to reduce friction for future harness entries
 
 Outcome:
 - operator visibility is now dramatically better
