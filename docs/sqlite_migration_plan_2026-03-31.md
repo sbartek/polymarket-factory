@@ -414,6 +414,7 @@ Remaining optional work:
 - more portfolio-level analytics in chat-facing output
 - continue tying reporting and strategy changes back to explicit improvement records
 - use `scripts/new_change_record.py` to reduce friction for future harness entries
+- use `scripts/new_review_note.py` to reduce friction for review follow-ups
 - keep at least 1–2 active forward-looking experiment threads alive for currently evolving strategies
 - expose active experiment threads operationally via a lightweight report (now `scripts/active_experiments.py`)
 

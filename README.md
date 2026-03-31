@@ -178,6 +178,9 @@ uv run python scripts/run_analytics.py --runs 20
 # Show active improvement-harness experiment threads
 uv run python scripts/active_experiments.py
 
+# Create a new review-note stub for an active thread
+uv run python scripts/new_review_note.py "correlated pairs 10-run review"
+
 # Backfill missing legacy trade metadata after imports/migrations
 uv run python scripts/backfill_trade_metadata.py
 
