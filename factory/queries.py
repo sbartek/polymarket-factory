@@ -169,6 +169,51 @@ def get_legacy_open_positions(db: FactoryDB, strategy: str | None = None) -> lis
     return [dict(r) for r in rows]
 
 
+def get_run_analytics(db: FactoryDB, limit_runs: int = 20) -> dict:
+    """Aggregate recent run and decision data for operator analytics."""
+    runs = get_latest_runs(db, n=limit_runs)
+    run_ids = [r["id"] for r in runs]
+    if not run_ids:
+        return {
+            "runs": [],
+            "status_counts": {},
+            "mode_counts": {},
+            "decision_reason_counts": [],
+            "opens_by_strategy": [],
+            "skips_by_strategy": [],
+        }
+
+    placeholders = ",".join("?" for _ in run_ids)
+    with db._connect() as conn:
+        decision_reason_counts = [dict(r) for r in conn.execute(
+            f"SELECT COALESCE(reason, decision_type) AS reason, COUNT(*) AS cnt FROM decisions WHERE run_id IN ({placeholders}) GROUP BY COALESCE(reason, decision_type) ORDER BY cnt DESC LIMIT 12",
+            run_ids,
+        ).fetchall()]
+        opens_by_strategy = [dict(r) for r in conn.execute(
+            f"SELECT strategy, COUNT(*) AS cnt FROM decisions WHERE run_id IN ({placeholders}) AND decision IN ('open','dry_open') GROUP BY strategy ORDER BY cnt DESC",
+            run_ids,
+        ).fetchall()]
+        skips_by_strategy = [dict(r) for r in conn.execute(
+            f"SELECT strategy, COUNT(*) AS cnt FROM decisions WHERE run_id IN ({placeholders}) AND decision = 'skip' GROUP BY strategy ORDER BY cnt DESC",
+            run_ids,
+        ).fetchall()]
+
+    status_counts: dict[str, int] = {}
+    mode_counts: dict[str, int] = {}
+    for r in runs:
+        status_counts[r["status"]] = status_counts.get(r["status"], 0) + 1
+        mode_counts[r["mode"]] = mode_counts.get(r["mode"], 0) + 1
+
+    return {
+        "runs": runs,
+        "status_counts": status_counts,
+        "mode_counts": mode_counts,
+        "decision_reason_counts": decision_reason_counts,
+        "opens_by_strategy": opens_by_strategy,
+        "skips_by_strategy": skips_by_strategy,
+    }
+
+
 def open_db(path: Path | None = None) -> FactoryDB:
     """Open the factory DB from an optional override path."""
     return FactoryDB(path=path or DB_PATH)
