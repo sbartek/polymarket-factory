@@ -412,10 +412,12 @@ Delivered:
 Remaining optional work:
 - deeper SQL-native reporting for every view
 - more portfolio-level analytics in chat-facing output
+- continue tying reporting and strategy changes back to explicit improvement records
 
 Outcome:
 - operator visibility is now dramatically better
 - ad hoc CSV inspection is no longer the normal path
+- the new `improvement/` ledger can now be used as the durable memory for why changes were made and how they were evaluated
 
 ---
 
