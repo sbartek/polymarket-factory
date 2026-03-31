@@ -391,15 +391,31 @@ Outcome:
 
 ## Phase 4 — Reporting migration
 
-Deliverables:
-- portfolio summary from SQL
-- eval report from SQL
-- `/details` data source migrated from SQL
-- active vs legacy / window / edge grouping fully SQL-backed
+Status: **MOSTLY DONE (2026-03-31)**
 
-Success criteria:
-- reports no longer depend on ad hoc CSV scans
-- richer diagnostics become easy
+Delivered:
+- portfolio summary effectively SQL-backed through SQLite-backed broker/trade state
+- eval report reads through broker/SQLite path
+- `/details` strategy output upgraded to use SQLite-backed data
+- portfolio-level `/details` variants added:
+  - `portfolio`
+  - `legacy`
+  - `latest`
+- terminal query/report tooling added:
+  - `latest_run.py`
+  - `inspect_decisions.py`
+  - `strategy_checks.py`
+  - `open_positions.py`
+  - `legacy_positions.py`
+  - `run_analytics.py`
+
+Remaining optional work:
+- deeper SQL-native reporting for every view
+- more portfolio-level analytics in chat-facing output
+
+Outcome:
+- operator visibility is now dramatically better
+- ad hoc CSV inspection is no longer the normal path
 
 ---
 
