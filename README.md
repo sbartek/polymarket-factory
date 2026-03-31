@@ -169,6 +169,9 @@ uv run python scripts/strategy_checks.py stale_market --limit 10
 # Inspect current open book
 uv run python scripts/open_positions.py --top-oldest 10
 
+# Inspect legacy open baggage specifically
+uv run python scripts/legacy_positions.py --top-oldest 20
+
 # Backfill missing legacy trade metadata after imports/migrations
 uv run python scripts/backfill_trade_metadata.py
 

@@ -156,6 +156,19 @@ def get_open_positions(
     return [dict(r) for r in rows]
 
 
+def get_legacy_open_positions(db: FactoryDB, strategy: str | None = None) -> list[dict]:
+    """Return open legacy trades, oldest first."""
+    clauses = ["status = 'open'", "(lifecycle_group = 'legacy' OR strategy NOT IN (?, ?, ?, ?, ?))"]
+    params: list = ["ev_news", "spread_arb", "resolution_hunter", "stale_market", "correlated_pairs"]
+    if strategy:
+        clauses.append("strategy = ?")
+        params.append(strategy)
+    where = "WHERE " + " AND ".join(clauses)
+    with db._connect() as conn:
+        rows = conn.execute(f"SELECT * FROM trades {where} ORDER BY opened_at ASC", params).fetchall()
+    return [dict(r) for r in rows]
+
+
 def open_db(path: Path | None = None) -> FactoryDB:
     """Open the factory DB from an optional override path."""
     return FactoryDB(path=path or DB_PATH)
