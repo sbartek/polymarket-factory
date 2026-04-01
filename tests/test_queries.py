@@ -5,6 +5,7 @@ import pytest
 
 from factory.db import FactoryDB
 from factory.queries import (
+    get_celebrity_tabloid_checks,
     get_esport48_checks,
     get_correlated_laggard_checks,
     get_correlated_pairs_checks,
@@ -341,6 +342,23 @@ class TestStrategyDetailTables:
         rows = get_esport48_checks(db)
         assert len(rows) == 1
         assert rows[0]["market_slug"] == "valorant-final"
+
+    def test_celebrity_tabloid_inserted_and_retrieved(self, db):
+        run_id = self._setup_run(db)
+        db.log_celebrity_tabloid_check(run_id, {
+            "market_slug": "swift-kelce-engaged",
+            "title": "Will Taylor Swift and Travis Kelce get engaged in 2026?",
+            "subject_names": "Taylor Swift,Travis Kelce",
+            "signal_family": "romance_up",
+            "candidate_score": 5.5,
+            "news_hits": 2,
+            "corroboration_score": 3.0,
+            "decision": "alert",
+            "reason": "romance_up",
+        })
+        rows = get_celebrity_tabloid_checks(db)
+        assert len(rows) == 1
+        assert rows[0]["market_slug"] == "swift-kelce-engaged"
 
     def test_limit_respected(self, db):
         run_id = self._setup_run(db)

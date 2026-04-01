@@ -1,3 +1,4 @@
+from .celebrity_tabloid import CelebrityTabloidStrategy
 from .correlated_laggard import CorrelatedLaggardStrategy
 from .correlated_pairs import CorrelatedPairsStrategy
 from .esport48 import Esport48Strategy
@@ -20,4 +21,5 @@ STRATEGIES = [
     CorrelatedPairsStrategy(),
     CorrelatedLaggardStrategy(),
     Esport48Strategy(),
+    CelebrityTabloidStrategy(),
 ]

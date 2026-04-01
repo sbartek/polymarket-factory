@@ -39,9 +39,10 @@ STRATEGY_EXPOSURE_CAPS = {
     "correlated_pairs": 30.0,
     "correlated_laggard": 0.0,
     "esport48": 0.0,
+    "celebrity_tabloid": 0.0,
 }
 
-ACTIVE_STRATEGIES = {"ev_news", "spread_arb", "resolution_hunter", "stale_market", "correlated_pairs", "correlated_laggard", "esport48"}
+ACTIVE_STRATEGIES = {"ev_news", "spread_arb", "resolution_hunter", "stale_market", "correlated_pairs", "correlated_laggard", "esport48", "celebrity_tabloid"}
 
 
 def expected_window_from_days(min_days: float | int, max_days: float | int) -> TimeWindow:

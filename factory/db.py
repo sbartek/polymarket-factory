@@ -214,6 +214,22 @@ CREATE TABLE IF NOT EXISTS esport48_checks (
     FOREIGN KEY(run_id) REFERENCES runs(id)
 );
 
+CREATE TABLE IF NOT EXISTS celebrity_tabloid_checks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id TEXT NOT NULL,
+    market_slug TEXT,
+    title TEXT,
+    subject_names TEXT,
+    signal_family TEXT,
+    candidate_score REAL,
+    news_hits INTEGER,
+    corroboration_score REAL,
+    decision TEXT,
+    reason TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(run_id) REFERENCES runs(id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_trades_strategy ON trades(strategy);
 CREATE INDEX IF NOT EXISTS idx_trades_status ON trades(status);
 CREATE INDEX IF NOT EXISTS idx_trades_market_id ON trades(market_id);
@@ -465,6 +481,26 @@ class FactoryDB:
                     row.get("volume"),
                     row.get("liquidity"),
                     row.get("ev_pp"),
+                    row.get("decision"),
+                    row.get("reason"),
+                    utcnow(),
+                ),
+            )
+            conn.commit()
+
+    def log_celebrity_tabloid_check(self, run_id: str, row: dict):
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT INTO celebrity_tabloid_checks (run_id, market_slug, title, subject_names, signal_family, candidate_score, news_hits, corroboration_score, decision, reason, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    run_id,
+                    row.get("market_slug"),
+                    row.get("title"),
+                    row.get("subject_names"),
+                    row.get("signal_family"),
+                    row.get("candidate_score"),
+                    row.get("news_hits"),
+                    row.get("corroboration_score"),
                     row.get("decision"),
                     row.get("reason"),
                     utcnow(),
