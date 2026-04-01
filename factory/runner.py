@@ -103,6 +103,12 @@ def _log_strategy_details(db: FactoryDB, run_id: str, strategy):
     elif strategy.name == "correlated_pairs":
         for row in getattr(strategy, "last_check_details", []):
             db.log_correlated_pairs_check(run_id, row)
+    elif strategy.name == "correlated_laggard":
+        for row in getattr(strategy, "last_check_details", []):
+            db.log_correlated_laggard_check(run_id, row)
+    elif strategy.name == "esport48":
+        for row in getattr(strategy, "last_check_details", []):
+            db.log_esport48_check(run_id, row)
 
 
 def resolve_open_positions(broker, dry_run: bool = False, db: FactoryDB | None = None, run_id: str | None = None):
@@ -186,7 +192,7 @@ def _restore_fast_dry_run_overrides(saved: list[tuple[object, dict]]):
                 setattr(strategy, attr, value)
 
 
-def format_wa_summary(new_trades: list[tuple], closed_count: int, stats: dict, now: str, skipped: list[str], dry_run: bool = False, fast_dry_run: bool = False) -> str:
+def format_wa_summary(new_trades: list[tuple], alert_signals: list[Signal], closed_count: int, stats: dict, now: str, skipped: list[str], dry_run: bool = False, fast_dry_run: bool = False) -> str:
     new_by_strategy: dict[str, int] = {}
     for sig, _ in new_trades:
         new_by_strategy[sig.strategy] = new_by_strategy.get(sig.strategy, 0) + 1
@@ -198,6 +204,10 @@ def format_wa_summary(new_trades: list[tuple], closed_count: int, stats: dict, n
     lines = [title + "\n", format_wa_table(stats, new_by_strategy)]
     if closed_count:
         lines.append(f"\n{closed_count} position(s) {'would resolve' if dry_run else 'resolved'} this run.")
+    if alert_signals:
+        lines.append("\nAlerts:")
+        for sig in alert_signals[:5]:
+            lines.append(f"- [{sig.strategy}] {sig.outcome} {sig.market_title[:55]} | gap {sig.ev_pp:.0f}pp")
     if skipped:
         lines.append("\nSkipped this cycle: " + ", ".join(skipped))
     lines.append("\n_/details <strategy> for trade breakdown_")
@@ -255,6 +265,7 @@ def run(dry_run: bool = False, send: bool = True, fast_dry_run: bool = False):
         db.log_event(run_id, "info", "markets_fetched", payload={"count": markets_fetched})
 
         new_trades: list[tuple[Signal, float]] = []
+        alert_signals: list[Signal] = []
         skipped_this_cycle: list[str] = []
         exposure_by_strategy, exposure_by_window = _current_exposure_by_strategy_and_window(broker, meta)
 
@@ -285,6 +296,26 @@ def run(dry_run: bool = False, send: bool = True, fast_dry_run: bool = False):
                 sig_dict = _signal_to_dict(sig)
                 db.log_signal(run_id, strategy.name, sig_dict, time_window=strategy_meta.get("time_window"), edge_type=strategy_meta.get("edge_type"), decision_status="generated")
 
+                if not strategy_meta.get("trading_enabled", True):
+                    alert_signals.append(sig)
+                    print(f"  [{strategy.name}] ALERT {sig.outcome} {sig.market_title[:45]} | gap {sig.ev_pp:.0f}pp | {sig.confidence}")
+                    db.log_decision(
+                        run_id,
+                        "alert",
+                        "alert_only",
+                        strategy=strategy.name,
+                        market_id=sig.market_id,
+                        reason="trading_disabled",
+                        details={
+                            "ev_pp": sig.ev_pp,
+                            "confidence": sig.confidence,
+                            "alert_only": strategy_meta.get("alert_only", False),
+                            "promotable": strategy_meta.get("promotable", False),
+                            "live_ready": strategy_meta.get("live_ready", False),
+                        },
+                    )
+                    continue
+
                 if broker.has_position(sig.market_id, strategy.name):
                     print(f"  [{strategy.name}] skip duplicate: {sig.market_title[:45]}")
                     db.log_decision(run_id, "duplicate_check", "skip", strategy=strategy.name, market_id=sig.market_id, reason="already_open")
@@ -314,7 +345,7 @@ def run(dry_run: bool = False, send: bool = True, fast_dry_run: bool = False):
 
         stats = summary(broker)
         print(format_summary(stats))
-        wa_msg = format_wa_summary(new_trades, closed_count, stats, now, skipped_this_cycle, dry_run=dry_run, fast_dry_run=fast_dry_run)
+        wa_msg = format_wa_summary(new_trades, alert_signals, closed_count, stats, now, skipped_this_cycle, dry_run=dry_run, fast_dry_run=fast_dry_run)
         if dry_run or not send:
             print("\n--- WHATSAPP PREVIEW ---")
             print(wa_msg)

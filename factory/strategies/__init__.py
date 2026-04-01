@@ -1,4 +1,6 @@
+from .correlated_laggard import CorrelatedLaggardStrategy
 from .correlated_pairs import CorrelatedPairsStrategy
+from .esport48 import Esport48Strategy
 from .ev_news import EvNewsStrategy
 from .fade_certainty import FadeCertaintyStrategy
 from .resolution_hunter import ResolutionHunterStrategy
@@ -16,4 +18,6 @@ STRATEGIES = [
     ResolutionHunterStrategy(),
     StaleMarketStrategy(),
     CorrelatedPairsStrategy(),
+    CorrelatedLaggardStrategy(),
+    Esport48Strategy(),
 ]

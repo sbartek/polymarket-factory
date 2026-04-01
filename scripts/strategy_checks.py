@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Inspect strategy-specific detail tables (spread_arb, resolution_hunter, stale_market, correlated_pairs)."""
+"""Inspect strategy-specific detail tables (spread_arb, resolution_hunter, stale_market, correlated_pairs, correlated_laggard, esport48)."""
 from __future__ import annotations
 
 import argparse
@@ -46,6 +46,26 @@ _COLUMNS: dict[str, list[tuple[str, str, int]]] = {
         ("chosen_slug", "chosen", 30),
         ("slug_a", "slug_a", 25),
         ("slug_b", "slug_b", 25),
+    ],
+    "correlated_laggard": [
+        ("created_at", "time", 19),
+        ("decision", "decision", 10),
+        ("topic_key", "topic", 24),
+        ("divergence_pp", "div_pp", 7),
+        ("volume_ratio", "vol_rt", 7),
+        ("leader_slug", "leader", 25),
+        ("laggard_slug", "laggard", 25),
+    ],
+    "esport48": [
+        ("created_at", "time", 19),
+        ("decision", "decision", 10),
+        ("signal_type", "signal", 28),
+        ("ev_pp", "ev_pp", 6),
+        ("hours_to_close", "hours", 5),
+        ("current_price", "yes_px", 6),
+        ("volume", "vol", 8),
+        ("liquidity", "liq", 8),
+        ("title", "title", 42),
     ],
 }
 

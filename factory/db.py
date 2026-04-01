@@ -181,6 +181,39 @@ CREATE TABLE IF NOT EXISTS correlated_pairs_checks (
     FOREIGN KEY(run_id) REFERENCES runs(id)
 );
 
+CREATE TABLE IF NOT EXISTS correlated_laggard_checks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id TEXT NOT NULL,
+    leader_slug TEXT,
+    laggard_slug TEXT,
+    topic_key TEXT,
+    leader_price REAL,
+    laggard_price REAL,
+    divergence_pp REAL,
+    volume_ratio REAL,
+    decision TEXT,
+    reason TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(run_id) REFERENCES runs(id)
+);
+
+CREATE TABLE IF NOT EXISTS esport48_checks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id TEXT NOT NULL,
+    market_slug TEXT,
+    title TEXT,
+    signal_type TEXT,
+    current_price REAL,
+    hours_to_close REAL,
+    volume REAL,
+    liquidity REAL,
+    ev_pp REAL,
+    decision TEXT,
+    reason TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(run_id) REFERENCES runs(id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_trades_strategy ON trades(strategy);
 CREATE INDEX IF NOT EXISTS idx_trades_status ON trades(status);
 CREATE INDEX IF NOT EXISTS idx_trades_market_id ON trades(market_id);
@@ -395,5 +428,46 @@ class FactoryDB:
             conn.execute(
                 "INSERT INTO correlated_pairs_checks (run_id, slug_a, slug_b, relationship, violation_pp, chosen_slug, decision, reason, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (run_id, row.get("slug_a"), row.get("slug_b"), row.get("relationship"), row.get("violation_pp"), row.get("chosen_slug"), row.get("decision"), row.get("reason"), utcnow()),
+            )
+            conn.commit()
+
+    def log_correlated_laggard_check(self, run_id: str, row: dict):
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT INTO correlated_laggard_checks (run_id, leader_slug, laggard_slug, topic_key, leader_price, laggard_price, divergence_pp, volume_ratio, decision, reason, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    run_id,
+                    row.get("leader_slug"),
+                    row.get("laggard_slug"),
+                    row.get("topic_key"),
+                    row.get("leader_price"),
+                    row.get("laggard_price"),
+                    row.get("divergence_pp"),
+                    row.get("volume_ratio"),
+                    row.get("decision"),
+                    row.get("reason"),
+                    utcnow(),
+                ),
+            )
+            conn.commit()
+
+    def log_esport48_check(self, run_id: str, row: dict):
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT INTO esport48_checks (run_id, market_slug, title, signal_type, current_price, hours_to_close, volume, liquidity, ev_pp, decision, reason, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    run_id,
+                    row.get("market_slug"),
+                    row.get("title"),
+                    row.get("signal_type"),
+                    row.get("current_price"),
+                    row.get("hours_to_close"),
+                    row.get("volume"),
+                    row.get("liquidity"),
+                    row.get("ev_pp"),
+                    row.get("decision"),
+                    row.get("reason"),
+                    utcnow(),
+                ),
             )
             conn.commit()

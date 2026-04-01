@@ -50,6 +50,10 @@ class Strategy(ABC):
     mode: str               # "paper" | "live"
     max_position_usdc: float
     min_ev_pp: float
+    alert_only: bool        # if True, log/report only; runner will not open positions
+    trading_enabled: bool   # explicit runner gate; keep False for alert-only strategies
+    promotable: bool        # candidate for later graduation
+    live_ready: bool        # reserved for later real-money path
 
     # portfolio taxonomy
     edge_type: str
@@ -95,6 +99,8 @@ The report aggregates by:
 - edge type
 - active vs legacy
 
+Alert-only graduation criteria and promotion workflow live in [`docs/alert_only_graduation.md`](docs/alert_only_graduation.md).
+
 ---
 
 ## Strategy Roadmap
@@ -106,6 +112,12 @@ The report aggregates by:
 - [x] **`resolution_hunter`** — Looks for markets likely already resolved in the real world but not yet settled by the market.
 - [x] **`stale_market`** — Looks for liquid near/medium-term markets whose prices appear stale versus recent news.
 - [x] **`correlated_pairs`** — MVP for logically inconsistent market pairs (prerequisite vs downstream, broader vs narrower).
+- [x] **`correlated_laggard`** — Alert-only MVP for liquid leader / laggard divergences across obviously related markets.
+- [x] **`esport48`** — Alert-only screener for esport markets expiring within 48 hours, using deterministic liquidity/price filters and subtype tagging.
+
+Current graduation status:
+- `correlated_laggard`: alert-only, `promotable=True`, `trading_enabled=False`
+- `esport48`: alert-only, `promotable=True`, `trading_enabled=False`
 
 ### Paused after early paper results
 
@@ -165,6 +177,8 @@ uv run python scripts/inspect_decisions.py --limit 20
 
 # Inspect strategy-specific checks
 uv run python scripts/strategy_checks.py stale_market --limit 10
+uv run python scripts/strategy_checks.py correlated_laggard --limit 10
+uv run python scripts/strategy_checks.py esport48 --limit 10
 
 # Inspect current open book
 uv run python scripts/open_positions.py --top-oldest 10
@@ -177,6 +191,11 @@ uv run python scripts/run_analytics.py --runs 20
 
 # Show active improvement-harness experiment threads
 uv run python scripts/active_experiments.py
+
+# Review alert-only graduation docs / checklists
+sed -n '1,200p' docs/alert_only_graduation.md
+sed -n '1,200p' improvement/experiments/EX-20260401-006-correlated-laggard-paper-eval.md
+sed -n '1,200p' improvement/experiments/EX-20260401-007-esport48-paper-eval.md
 
 # Create a new review-note stub for an active thread
 uv run python scripts/new_review_note.py "correlated pairs 10-run review"
@@ -198,7 +217,35 @@ Runner executions also log to `data/factory.sqlite3`:
 
 Trade state is now SQLite-backed in `data/factory.sqlite3`. The runner/broker still exports `data/trades.csv` during the migration period for compatibility and easy inspection.
 
-## Daily backups
+## Dashboard
+
+Build the private static dashboard snapshot + bundle:
+
+```bash
+# Export JSON snapshot files
+uv run python scripts/export_dashboard_data.py
+
+# Build self-contained static bundle into dashboard-dist/
+uv run python scripts/build_dashboard.py
+
+# Sync/publish bundle into a dashboard branch checkout or separate repo
+uv run python scripts/publish_dashboard.py ~/path/to/dashboard-publish-repo
+```
+
+Local preview:
+
+```bash
+cd dashboard-dist
+python3 -m http.server 8000
+# then open /index.html?bundled=1
+```
+
+See also:
+- `docs/dashboard_metric_definitions.md`
+- `docs/dashboard_snapshot_schema.md`
+- `docs/dashboard_deployment.md`
+
+# Daily backups
 
 Create local daily snapshots with retention cleanup:
 

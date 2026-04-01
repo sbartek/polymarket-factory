@@ -121,11 +121,25 @@ def get_correlated_pairs_checks(
     return _query_detail_table(db, "correlated_pairs_checks", run_id, limit)
 
 
+def get_correlated_laggard_checks(
+    db: FactoryDB, run_id: str | None = None, limit: int = 50
+) -> list[dict]:
+    return _query_detail_table(db, "correlated_laggard_checks", run_id, limit)
+
+
+def get_esport48_checks(
+    db: FactoryDB, run_id: str | None = None, limit: int = 50
+) -> list[dict]:
+    return _query_detail_table(db, "esport48_checks", run_id, limit)
+
+
 DETAIL_TABLE_GETTERS = {
     "spread_arb": get_spread_arb_baskets,
     "resolution_hunter": get_resolution_hunter_checks,
     "stale_market": get_stale_market_checks,
     "correlated_pairs": get_correlated_pairs_checks,
+    "correlated_laggard": get_correlated_laggard_checks,
+    "esport48": get_esport48_checks,
 }
 
 
@@ -158,8 +172,8 @@ def get_open_positions(
 
 def get_legacy_open_positions(db: FactoryDB, strategy: str | None = None) -> list[dict]:
     """Return open legacy trades, oldest first."""
-    clauses = ["status = 'open'", "(lifecycle_group = 'legacy' OR strategy NOT IN (?, ?, ?, ?, ?))"]
-    params: list = ["ev_news", "spread_arb", "resolution_hunter", "stale_market", "correlated_pairs"]
+    clauses = ["status = 'open'", "(lifecycle_group = 'legacy' OR strategy NOT IN (?, ?, ?, ?, ?, ?, ?))"]
+    params: list = ["ev_news", "spread_arb", "resolution_hunter", "stale_market", "correlated_pairs", "correlated_laggard", "esport48"]
     if strategy:
         clauses.append("strategy = ?")
         params.append(strategy)

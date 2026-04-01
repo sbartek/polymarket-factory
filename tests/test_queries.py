@@ -5,6 +5,8 @@ import pytest
 
 from factory.db import FactoryDB
 from factory.queries import (
+    get_esport48_checks,
+    get_correlated_laggard_checks,
     get_correlated_pairs_checks,
     get_decisions,
     get_decisions_summary,
@@ -303,6 +305,42 @@ class TestStrategyDetailTables:
         rows = get_correlated_pairs_checks(db)
         assert len(rows) == 1
         assert rows[0]["violation_pp"] == pytest.approx(12.5)
+
+    def test_correlated_laggard_inserted_and_retrieved(self, db):
+        run_id = self._setup_run(db)
+        db.log_correlated_laggard_check(run_id, {
+            "leader_slug": "leader-a",
+            "laggard_slug": "laggard-b",
+            "topic_key": "trump tariff",
+            "leader_price": 0.71,
+            "laggard_price": 0.43,
+            "divergence_pp": 28.0,
+            "volume_ratio": 2.4,
+            "decision": "alert",
+            "reason": "leader_move_not_fully_reflected",
+        })
+        rows = get_correlated_laggard_checks(db)
+        assert len(rows) == 1
+        assert rows[0]["laggard_slug"] == "laggard-b"
+        assert rows[0]["divergence_pp"] == pytest.approx(28.0)
+
+    def test_esport48_inserted_and_retrieved(self, db):
+        run_id = self._setup_run(db)
+        db.log_esport48_check(run_id, {
+            "market_slug": "valorant-final",
+            "title": "Valorant Champions Final winner",
+            "signal_type": "market_lag",
+            "current_price": 0.74,
+            "hours_to_close": 18.5,
+            "volume": 18000.0,
+            "liquidity": 6000.0,
+            "ev_pp": 9.0,
+            "decision": "alert",
+            "reason": "market_lag",
+        })
+        rows = get_esport48_checks(db)
+        assert len(rows) == 1
+        assert rows[0]["market_slug"] == "valorant-final"
 
     def test_limit_respected(self, db):
         run_id = self._setup_run(db)

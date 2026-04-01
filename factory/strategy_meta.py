@@ -37,9 +37,11 @@ STRATEGY_EXPOSURE_CAPS = {
     "resolution_hunter": 40.0,
     "stale_market": 35.0,
     "correlated_pairs": 30.0,
+    "correlated_laggard": 0.0,
+    "esport48": 0.0,
 }
 
-ACTIVE_STRATEGIES = {"ev_news", "spread_arb", "resolution_hunter", "stale_market", "correlated_pairs"}
+ACTIVE_STRATEGIES = {"ev_news", "spread_arb", "resolution_hunter", "stale_market", "correlated_pairs", "correlated_laggard", "esport48"}
 
 
 def expected_window_from_days(min_days: float | int, max_days: float | int) -> TimeWindow:
@@ -110,8 +112,13 @@ def strategy_metadata() -> dict[str, dict]:
             "target_hold_max_days": getattr(s, "target_hold_max_days", 30),
             "scan_frequency": getattr(s, "scan_frequency", "manual"),
             "paused": getattr(s, "paused", False),
+            "alert_only": getattr(s, "alert_only", False),
+            "trading_enabled": getattr(s, "trading_enabled", not getattr(s, "alert_only", False)),
+            "promotable": getattr(s, "promotable", False),
+            "live_ready": getattr(s, "live_ready", False),
+            "promotion_candidate": bool(getattr(s, "alert_only", False) and getattr(s, "promotable", False)),
+            "promotion_criteria": getattr(s, "promotion_criteria", ""),
             "window_exposure_cap": TIME_WINDOW_EXPOSURE_CAPS.get(time_window),
             "strategy_exposure_cap": STRATEGY_EXPOSURE_CAPS.get(getattr(s, 'name', ''), 50.0),
         }
     return meta
-

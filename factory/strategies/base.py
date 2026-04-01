@@ -10,6 +10,11 @@ class Strategy(ABC):
     mode: str = "paper"           # "paper" | "live"
     max_position_usdc: float = 10.0
     min_ev_pp: float = 10.0
+    alert_only: bool = False
+    trading_enabled: bool = True
+    promotable: bool = False
+    live_ready: bool = False
+    promotion_criteria: str = ""
 
     # portfolio metadata
     edge_type: EdgeType = "other"
