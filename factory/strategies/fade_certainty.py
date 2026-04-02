@@ -34,6 +34,7 @@ ORACLE_KEYWORDS = [
 
 class FadeCertaintyStrategy(Strategy):
     name = "fade_certainty"
+    paused = True
     max_position_usdc = 10.0
     min_ev_pp = FADE_LOW  # minimum signal to trade
     min_position_usdc = 2.0  # fixed floor — Kelly is tiny at extremes

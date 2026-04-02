@@ -185,6 +185,7 @@ def _prob_from_values(values: list[float], parsed: dict) -> float | None:
 
 class WeatherEdgeStrategy(Strategy):
     name = "weather_edge"
+    paused = True
     max_position_usdc = 12.0
     min_ev_pp = 12.0
     min_position_usdc = 2.0

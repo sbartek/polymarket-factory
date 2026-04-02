@@ -114,12 +114,12 @@ Alert-only graduation criteria and promotion workflow live in [`docs/alert_only_
 - [x] **`correlated_pairs`** — MVP for logically inconsistent market pairs (prerequisite vs downstream, broader vs narrower).
 - [x] **`correlated_laggard`** — Alert-only MVP for liquid leader / laggard divergences across obviously related markets.
 - [x] **`esport48`** — Alert-only screener for esport markets expiring within 48 hours, using deterministic liquidity/price filters and subtype tagging.
-- [x] **`celebrity_tabloid`** — Alert-only celebrity-event screener that fails closed unless gossip/tabloid coverage directionally corroborates the market.
+- [x] **`celebrity_tabloid`** — Paper-trading celebrity-event screener that fails closed unless gossip/tabloid coverage directionally corroborates the market. **Note:** producing 0 checks so far — the top-100 Gamma feed does not typically surface celebrity/tabloid markets (pregnancy, romance, scandal event families). Feed coverage is the active blocker, not the signal logic.
 
 Current graduation status:
 - `correlated_laggard`: alert-only, `promotable=True`, `trading_enabled=False`
 - `esport48`: alert-only, `promotable=True`, `trading_enabled=False`
-- `celebrity_tabloid`: alert-only, `promotable=True`, `trading_enabled=False`
+- `celebrity_tabloid`: paper trading, `trading_enabled=True` — blocked by feed coverage (0 eligible candidates seen in top-100 markets)
 
 ### Paused after early paper results
 
@@ -182,6 +182,10 @@ uv run python scripts/strategy_checks.py stale_market --limit 10
 uv run python scripts/strategy_checks.py correlated_laggard --limit 10
 uv run python scripts/strategy_checks.py esport48 --limit 10
 uv run python scripts/strategy_checks.py celebrity_tabloid --limit 10
+
+# Inspect Phase A execution-reality snapshots for generated signals
+uv run python scripts/signal_execution_checks.py --limit 20
+uv run python scripts/signal_execution_checks.py --strategy spread_arb --limit 20
 
 # Inspect current open book
 uv run python scripts/open_positions.py --top-oldest 10
