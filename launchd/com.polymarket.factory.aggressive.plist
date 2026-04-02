@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.polymarket.factory.aggressive</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/barteks/workai/projects/polymarket-factory/run_aggressive_cycle.sh</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/barteks/workai/projects/polymarket-factory</string>
+
+    <key>StartCalendarInterval</key>
+    <array>
+        <dict>
+            <key>Hour</key><integer>10</integer>
+            <key>Minute</key><integer>30</integer>
+        </dict>
+        <dict>
+            <key>Hour</key><integer>22</integer>
+            <key>Minute</key><integer>30</integer>
+        </dict>
+    </array>
+
+    <key>StandardOutPath</key>
+    <string>/Users/barteks/workai/projects/polymarket-factory/factory-aggressive.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/barteks/workai/projects/polymarket-factory/factory-aggressive.log</string>
+
+    <key>RunAtLoad</key>
+    <false/>
+</dict>
+</plist>

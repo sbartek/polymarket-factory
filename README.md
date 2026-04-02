@@ -146,6 +146,11 @@ Current graduation status:
 ## Operations
 
 ```bash
+# Main runner cadence: 3x/day base schedule, but medium/long strategies skip some cycles.
+# WhatsApp messaging policy:
+# - 09:00 Europe/Madrid → full general summary
+# - other runs → opened/closed delta update (plus a small alert snippet if relevant)
+
 # Show open book (all groups + full position list)
 uv run python scripts/open_positions.py
 

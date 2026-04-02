@@ -1,3 +1,4 @@
+from .base import Strategy
 from .celebrity_tabloid import CelebrityTabloidStrategy
 from .correlated_laggard import CorrelatedLaggardStrategy
 from .correlated_pairs import CorrelatedPairsStrategy
@@ -8,6 +9,36 @@ from .resolution_hunter import ResolutionHunterStrategy
 from .spread_arb import SpreadArbStrategy
 from .stale_market import StaleMarketStrategy
 from .weather_edge import WeatherEdgeStrategy
+
+
+def _load_generated_strategies():
+    from importlib import import_module
+    from pathlib import Path
+
+    generated = []
+    package_dir = Path(__file__).resolve().parent / "generated"
+    if not package_dir.exists():
+        return generated
+
+    for path in sorted(package_dir.glob("auto_*.py")):
+        module_name = f"{__name__}.generated.{path.stem}"
+        try:
+            module = import_module(module_name)
+        except Exception as exc:
+            print(f"[strategies] failed to import generated module {module_name}: {exc}")
+            continue
+        for attr_name in dir(module):
+            attr = getattr(module, attr_name)
+            if isinstance(attr, type) and issubclass(attr, Strategy) and attr is not Strategy:
+                try:
+                    instance = attr()
+                except Exception as exc:
+                    print(f"[strategies] failed to init generated strategy {attr_name}: {exc}")
+                    continue
+                if getattr(instance, "name", ""):
+                    generated.append(instance)
+    return generated
+
 
 # Registry — add new strategies here
 # 2026-03-31: fade_certainty and weather_edge are intentionally paused after
@@ -22,4 +53,4 @@ STRATEGIES = [
     CorrelatedLaggardStrategy(),
     Esport48Strategy(),
     CelebrityTabloidStrategy(),
-]
+] + _load_generated_strategies()

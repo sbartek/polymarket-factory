@@ -83,15 +83,20 @@ STATIC_STRATEGY_METADATA = {
 
 def should_run_in_cycle(time_window: str, hour: int) -> bool:
     """
-    Current launchd cadence is 3x/day (~09:30 / 14:30 / 19:30).
-    Run faster buckets every cycle and slower buckets less often.
+    Base scheduler cadence is ~3x/day around 09 / 14 / 19 local time.
+    Strategy participation should depend on the expected holding window:
+
+    - super_short / intraday: every cycle
+    - short: every cycle
+    - medium: morning + evening only
+    - long: morning only
     """
     if time_window in ("super_short", "intraday", "short"):
         return True
     if time_window == "medium":
-        return hour != 14  # morning + evening, skip midday churn
+        return hour in (9, 19)
     if time_window == "long":
-        return hour == 9   # once per day is enough for glacial ideas
+        return hour == 9
     return True
 
 

@@ -35,7 +35,12 @@
 
       <section class="grid kpi-grid" id="overview-cards"></section>
 
-      <section class="grid two-up">
+      <section class="grid two-up section-gap">
+        <article class="panel">
+          <div class="panel-header"><h2>Evaluation summary</h2><span id="evaluation-meta" class="muted"></span></div>
+          <div id="evaluation-panel" class="stack muted">No evaluation summary yet.</div>
+        </article>
+
         <article class="panel">
           <div class="panel-header"><h2>Strategy snapshot</h2><span id="strategy-summary" class="muted"></span></div>
           <div class="table-wrap">
@@ -69,6 +74,20 @@
           ['Latest run duration', Dashboard.fmtDuration(snapshot.overview.latest_run_duration_seconds), Dashboard.fmtDate(snapshot.overview.latest_run_started_at)],
         ];
         document.getElementById('overview-cards').innerHTML = cards.map(([label, value, sub]) => `<article class="kpi-card"><div class="kpi-label">${label}</div><div class="kpi-value">${value}</div><div class="kpi-sub">${sub}</div></article>`).join('');
+
+        const evaluation = snapshot.evaluation;
+        const evaluationPanel = document.getElementById('evaluation-panel');
+        const evaluationMeta = document.getElementById('evaluation-meta');
+        if (evaluation) {
+          evaluationMeta.textContent = Dashboard.fmtDate(evaluation.generated_at);
+          evaluationPanel.classList.remove('muted');
+          evaluationPanel.innerHTML = [
+            `<div><strong>${evaluation.headline || 'Aggressive evaluation cycle'}</strong></div>`,
+            ...((evaluation.summary_lines || []).map((line) => `<div>• ${line}</div>`)),
+            ((evaluation.new_strategies || []).length ? `<div class="section-gap"><strong>New strategies</strong></div>${(evaluation.new_strategies || []).map((line) => `<div>• ${line}</div>`).join('')}` : ''),
+            (evaluation.risk_note ? `<div class="muted section-gap">${evaluation.risk_note}</div>` : ''),
+          ].join('');
+        }
 
         const strategies = snapshot.strategies;
         document.getElementById('strategies-body').innerHTML = strategies.map((s) => `<tr><td><div class="strategy-name">${s.strategy_name}</div>${s.warnings?.length ? `<div class="muted">${s.warnings.join(' ')}</div>` : ''}</td><td><span class="${Dashboard.pillClass(s.status)}">${s.status}</span></td><td>${Dashboard.fmtNumber(s.open_exposure)} USDC</td><td>${Dashboard.fmtInt(s.open_positions)}</td><td>${Dashboard.fmtInt(s.execution_checks_count_30d)}</td><td>${Dashboard.fmtNumber(s.avg_ev_after_slippage_50_pp_30d)} pp</td></tr>`).join('');

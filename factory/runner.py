@@ -118,6 +118,7 @@ def _log_strategy_details(db: FactoryDB, run_id: str, strategy):
 def resolve_open_positions(broker, dry_run: bool = False, db: FactoryDB | None = None, run_id: str | None = None):
     open_positions = broker.get_open_positions()
     closed_count = 0
+    closed_trades: list[dict] = []
     for t in open_positions:
         market_id = t["market_id"]
         if not market_id or str(t.get("id", "")).startswith("dry-"):
@@ -135,6 +136,13 @@ def resolve_open_positions(broker, dry_run: bool = False, db: FactoryDB | None =
             if winner:
                 broker.close_position(t["id"], winner)
                 closed_count += 1
+                closed_trades.append({
+                    "strategy": t.get("strategy"),
+                    "market_title": t.get("market_title"),
+                    "outcome": t.get("outcome"),
+                    "winner": winner,
+                    "amount_usdc": float(t.get("amount_usdc") or 0.0),
+                })
                 print(f"  {'DRY CLOSE' if dry_run else 'Closed'} [{t['strategy']}] {t['market_title'][:50]} → {winner}")
                 if db and run_id:
                     db.log_decision(run_id, "resolution", "dry_close" if dry_run else "close", strategy=t.get("strategy"), market_id=t.get("market_id"), reason="market_resolved", details={"winner": winner, "trade_id": t.get("id")})
@@ -142,7 +150,7 @@ def resolve_open_positions(broker, dry_run: bool = False, db: FactoryDB | None =
             print(f"  Error resolving {market_id}: {e}")
             if db and run_id:
                 db.log_event(run_id, "error", f"resolve_open_positions error: {e}", strategy=t.get("strategy"), payload={"market_id": market_id})
-    return closed_count
+    return closed_count, closed_trades
 
 
 def _current_exposure_by_strategy_and_window(broker, meta: dict) -> tuple[dict[str, float], dict[str, float]]:
@@ -196,7 +204,7 @@ def _restore_fast_dry_run_overrides(saved: list[tuple[object, dict]]):
                 setattr(strategy, attr, value)
 
 
-def format_wa_summary(new_trades: list[tuple], alert_signals: list[Signal], closed_count: int, stats: dict, now: str, skipped: list[str], dry_run: bool = False, fast_dry_run: bool = False) -> str:
+def format_wa_summary(new_trades: list[tuple], closed_trades: list[dict], alert_signals: list[Signal], closed_count: int, stats: dict, now: str, skipped: list[str], hour: int, dry_run: bool = False, fast_dry_run: bool = False) -> str:
     new_by_strategy: dict[str, int] = {}
     for sig, _ in new_trades:
         new_by_strategy[sig.strategy] = new_by_strategy.get(sig.strategy, 0) + 1
@@ -205,16 +213,48 @@ def format_wa_summary(new_trades: list[tuple], alert_signals: list[Signal], clos
         title += " [DRY RUN]"
     if fast_dry_run:
         title += " [FAST]"
-    lines = [title + "\n", format_wa_table(stats, new_by_strategy)]
-    if closed_count:
-        lines.append(f"\n{closed_count} position(s) {'would resolve' if dry_run else 'resolved'} this run.")
+
+    full_summary_window = hour == 9
+    lines = [title + "\n"]
+
+    if full_summary_window:
+        lines.append(format_wa_table(stats, new_by_strategy))
+        if closed_count:
+            lines.append(f"\n{closed_count} position(s) {'would resolve' if dry_run else 'resolved'} this run.")
+        if alert_signals:
+            lines.append("\nAlerts:")
+            for sig in alert_signals[:5]:
+                lines.append(f"- [{sig.strategy}] {sig.outcome} {sig.market_title[:55]} | gap {sig.ev_pp:.0f}pp")
+        if skipped:
+            lines.append("\nSkipped this cycle: " + ", ".join(skipped))
+        lines.append("\n_/details <strategy> for trade breakdown_")
+        return "\n".join(lines)
+
+    if new_trades:
+        lines.append("*Opened this run:*")
+        for sig, amount in new_trades[:12]:
+            lines.append(
+                f"- [{sig.strategy}] {sig.outcome} {sig.market_title[:60]} | ${amount:.2f} | EV {sig.ev_pp:+.0f}pp"
+            )
+    else:
+        lines.append("*Opened this run:* none")
+
+    lines.append("")
+    if closed_trades:
+        lines.append(f"*Closed this run:* {'would resolve' if dry_run else 'resolved'}")
+        for trade in closed_trades[:12]:
+            lines.append(
+                f"- [{trade['strategy']}] {trade['market_title'][:60]} | held {trade['outcome']} | winner {trade['winner']} | ${trade['amount_usdc']:.2f}"
+            )
+    else:
+        lines.append("*Closed this run:* none")
+
     if alert_signals:
-        lines.append("\nAlerts:")
-        for sig in alert_signals[:5]:
+        lines.append("")
+        lines.append(f"*Alerts this run:* {len(alert_signals)}")
+        for sig in alert_signals[:3]:
             lines.append(f"- [{sig.strategy}] {sig.outcome} {sig.market_title[:55]} | gap {sig.ev_pp:.0f}pp")
-    if skipped:
-        lines.append("\nSkipped this cycle: " + ", ".join(skipped))
-    lines.append("\n_/details <strategy> for trade breakdown_")
+
     return "\n".join(lines)
 
 
@@ -259,7 +299,7 @@ def run(dry_run: bool = False, send: bool = True, fast_dry_run: bool = False):
             db.log_decision(run_id, "run_lock", "bypass", reason="dry_run")
 
         print("Checking open positions for resolution...")
-        closed_count = resolve_open_positions(broker, dry_run=dry_run, db=db, run_id=run_id)
+        closed_count, closed_trades = resolve_open_positions(broker, dry_run=dry_run, db=db, run_id=run_id)
         print(f"  {closed_count} {'would resolve' if dry_run else 'resolved'}.\n")
 
         print("Fetching market snapshot...", end=" ", flush=True)
@@ -352,7 +392,7 @@ def run(dry_run: bool = False, send: bool = True, fast_dry_run: bool = False):
 
         stats = summary(broker)
         print(format_summary(stats))
-        wa_msg = format_wa_summary(new_trades, alert_signals, closed_count, stats, now, skipped_this_cycle, dry_run=dry_run, fast_dry_run=fast_dry_run)
+        wa_msg = format_wa_summary(new_trades, closed_trades, alert_signals, closed_count, stats, now, skipped_this_cycle, now_dt.hour, dry_run=dry_run, fast_dry_run=fast_dry_run)
         if dry_run or not send:
             print("\n--- WHATSAPP PREVIEW ---")
             print(wa_msg)
