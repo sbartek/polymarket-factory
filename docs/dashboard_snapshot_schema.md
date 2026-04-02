@@ -100,6 +100,15 @@ Compact top-level state for the landing page.
   "open_position_count_legacy": 4,
   "active_strategy_count": 5,
   "active_experiment_count": 2,
+  "execution_checks_30d": 96,
+  "strategies_with_execution_checks_30d": 4,
+  "avg_ev_after_slippage_50_pp_30d": 3.2,
+  "avg_max_size_positive_ev_30d": 41.7,
+  "execution_source_confidence_counts_30d": {
+    "medium": 38,
+    "low": 44,
+    "very_low": 14
+  },
   "alerts": [
     {
       "level": "warning",
@@ -171,6 +180,13 @@ Top-level array of strategy summary objects.
 - `recent_decisions_count`
 - `realized_pnl_30d`
 - `realized_pnl_all_time`
+- `execution_checks_count_30d`
+- `avg_ev_after_slippage_10_pp_30d`
+- `avg_ev_after_slippage_50_pp_30d`
+- `avg_ev_after_slippage_100_pp_30d`
+- `avg_max_size_positive_ev_30d`
+- `avg_max_size_above_min_edge_30d`
+- `execution_source_confidence_counts_30d`
 - `by_time_window`
 - `by_edge_type`
 - `warnings`
@@ -179,6 +195,7 @@ Top-level array of strategy summary objects.
 
 - `warnings` should be strategy-specific interpretation notes.
 - If a strategy lacks enough data for a metric, use `null` or `unknown` semantics rather than fake values.
+- Execution fields are Phase A **fill proxies**, not live fills.
 - Use canonical strategy names only.
 
 ---

@@ -297,6 +297,65 @@ These should be explicitly checked when building the exporter:
 - whether recent activity scope should be latest run or 30 days by default per view
 - whether open positions data is clean enough for MVP inclusion
 
+## Phase A execution-reality metrics
+
+These metrics summarize the new signal-time execution checks.
+They must be framed as **fill proxies / execution checks**, not actual fills or a full market-depth simulation.
+
+### `execution_checks_30d`
+
+Definition:
+- count of rows in `signal_execution_checks` over the last 30 days
+
+Purpose:
+- indicates whether the Phase A instrumentation is actually collecting evidence
+
+### `strategies_with_execution_checks_30d`
+
+Definition:
+- count of distinct strategies with at least one execution-check row in the last 30 days
+
+### `avg_ev_after_slippage_50_pp_30d`
+
+Definition:
+- average `ev_after_slippage_50_pp` across Phase A execution checks in the last 30 days
+
+Rule:
+- present as a rough comparative metric only
+- do not present as a realized-return metric
+
+### `avg_max_size_positive_ev_30d`
+
+Definition:
+- average Phase A `max_size_positive_ev` in USD over the last 30 days
+
+Rule:
+- this is a proxy summary, not a live capacity guarantee
+
+### `execution_source_confidence_counts_30d`
+
+Definition:
+- grouped counts of execution-check rows by `source_confidence`
+
+Purpose:
+- reminds the operator how much of the Phase A layer is grounded in direct quote fields versus fallback heuristics
+
+### Per-strategy execution summary fields
+
+For each strategy, the exporter may include:
+- `execution_checks_count_30d`
+- `avg_ev_after_slippage_10_pp_30d`
+- `avg_ev_after_slippage_50_pp_30d`
+- `avg_ev_after_slippage_100_pp_30d`
+- `avg_max_size_positive_ev_30d`
+- `avg_max_size_above_min_edge_30d`
+- `execution_source_confidence_counts_30d`
+
+Rules:
+- use `null` where averages are not available
+- use `0` only for true count fields
+- if no checks exist, attach a warning rather than silently implying a strategy has execution evidence
+
 ## Recommendation
 
 If a metric cannot be made trustworthy quickly, exclude it from MVP rather than presenting a persuasive lie.

@@ -4,8 +4,89 @@ Concrete plan for:
 - `spread_arb_v2`
 - `stale_market`
 - `correlated_pairs`
+- 2026-04-02 revision: Phase A execution-reality instrumentation
 
 Goal: improve strategy quality, shorten feedback loops, and move the portfolio toward edge classes that are mechanical, auditable, and less LLM-fragile.
+
+---
+
+## 2026-04-02 revision — execution reality / capacity plan
+
+After review, the broader execution-capacity proposal was narrowed intentionally.
+
+### Critical review summary
+
+The original plan was directionally correct, but too ambitious for a first slice.
+Main risks:
+- fake precision if fill estimates are not grounded in observable quote/depth data
+- over-investing in dashboards before signal-time execution data exists
+- annualized dollar projections becoming unstable too early
+- forcing one generic framework across very different strategies
+
+### Approved direction
+
+Build this in three stages:
+
+#### Phase A — must-have instrumentation (implement first)
+
+Add a small shared execution-reality layer at **signal time**.
+For every generated signal, persist:
+- observed quote price used by the strategy
+- observed `bestBid` / `bestAsk` / spread when available
+- order-min-size if available
+- a conservative liquidity proxy from available market/event fields
+- fill-price proxies for size buckets: `10 / 25 / 50 / 100 / 250` USD
+- slippage-adjusted EV for those size buckets
+- max size with positive EV
+- max size still above the strategy's configured `min_ev_pp`
+- a source-confidence label describing how much direct quote/liquidity data the proxy used
+
+Important constraints:
+- label these as **execution checks / fill proxies**, not real fills
+- do **not** treat them as a full order-book simulator
+- do **not** block trading on this yet; Phase A is measurement first
+
+Initial deliverables:
+- shared helper layer for execution snapshots
+- SQLite persistence table for signal execution checks
+- runner integration to log one execution check per generated signal
+- one CLI inspection script for operator review
+
+#### Phase B — strategy-level summaries (only after enough logged evidence)
+
+Once Phase A data exists for enough runs/signals, add:
+- summary by strategy of slippage-adjusted EV at meaningful sizes
+- opportunity frequency and max-positive-EV size distributions
+- capital lock-up stats where applicable
+- scenario views for monthly economics
+
+This stage should stay exploratory and avoid pretending to know annual profit too early.
+
+#### Phase C — business viability layer (only after trust is earned)
+
+Only after Phase A/B metrics look trustworthy, add:
+- benchmark vs passive 5%
+- strategy-level worth-doing verdicts
+- dashboard surfacing
+- promotion / keep-kill guidance that references execution evidence
+
+### Strategy-class note
+
+The shared Phase A layer should remain thin.
+Different strategy classes will still need different interpretation later:
+- `spread_arb`: basket-level structural capacity
+- `ev_news` / `stale_market`: latency and crowding sensitive
+- `resolution_hunter`: more resolution-certainty driven than depth-driven
+- alert-only screeners: measure first, avoid over-instrumenting too early
+
+### Explicit non-goals for Phase A
+
+Do **not** attempt yet:
+- full live CLOB simulation
+- exit-side microstructure modeling for all strategies
+- annualized business-value headline metrics
+- automatic keep/kill decisions based on tiny samples
+- dashboard-first work
 
 ---
 

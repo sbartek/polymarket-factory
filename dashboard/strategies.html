@@ -29,7 +29,7 @@
         <div class="small-note" id="strategy-filter-note"></div>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>Strategy</th><th>Status</th><th>Open exposure</th><th>Open positions</th><th>Recent signals</th><th>Recent decisions</th><th>30d PnL</th><th>All-time PnL</th></tr></thead>
+            <thead><tr><th>Strategy</th><th>Status</th><th>Open exposure</th><th>Open positions</th><th>Recent signals</th><th>Exec checks</th><th>Avg EV @ $10</th><th>Avg EV @ $50</th><th>Avg max +EV size</th><th>30d PnL</th><th>All-time PnL</th></tr></thead>
             <tbody id="strategies-body"></tbody>
           </table>
         </div>
@@ -54,8 +54,8 @@
             if (q && !s.strategy_name.toLowerCase().includes(q)) return false;
             return true;
           });
-          note.textContent = `${filtered.length} shown of ${snapshot.strategies.length} strategies`;
-          tbody.innerHTML = filtered.map((s) => `<tr><td><div class="strategy-name">${s.strategy_name}</div>${s.warnings?.length ? `<div class="muted">${s.warnings.join(' ')}</div>` : ''}</td><td><span class="${Dashboard.pillClass(s.status)}">${s.status}</span></td><td>${Dashboard.fmtNumber(s.open_exposure)} USDC</td><td>${Dashboard.fmtInt(s.open_positions)}</td><td>${Dashboard.fmtInt(s.recent_signals_count)}</td><td>${Dashboard.fmtInt(s.recent_decisions_count)}</td><td>${Dashboard.fmtNumber(s.realized_pnl_30d)} USDC</td><td>${Dashboard.fmtNumber(s.realized_pnl_all_time)} USDC</td></tr>`).join('');
+          note.textContent = `${filtered.length} shown of ${snapshot.strategies.length} strategies · Phase A metrics are fill proxies, not live fills`;
+          tbody.innerHTML = filtered.map((s) => `<tr><td><div class="strategy-name">${s.strategy_name}</div>${s.warnings?.length ? `<div class="muted">${s.warnings.join(' ')}</div>` : ''}</td><td><span class="${Dashboard.pillClass(s.status)}">${s.status}</span></td><td>${Dashboard.fmtNumber(s.open_exposure)} USDC</td><td>${Dashboard.fmtInt(s.open_positions)}</td><td>${Dashboard.fmtInt(s.recent_signals_count)}</td><td>${Dashboard.fmtInt(s.execution_checks_count_30d)}</td><td>${Dashboard.fmtNumber(s.avg_ev_after_slippage_10_pp_30d)} pp</td><td>${Dashboard.fmtNumber(s.avg_ev_after_slippage_50_pp_30d)} pp</td><td>${Dashboard.fmtNumber(s.avg_max_size_positive_ev_30d)} USD</td><td>${Dashboard.fmtNumber(s.realized_pnl_30d)} USDC</td><td>${Dashboard.fmtNumber(s.realized_pnl_all_time)} USDC</td></tr>`).join('');
         };
 
         statusSelect.addEventListener('change', renderRows);
