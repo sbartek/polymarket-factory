@@ -55,7 +55,8 @@ async function loadJson(path) {
 
 const dataPath = (name) => {
   const bundled = new URLSearchParams(window.location.search).get('bundled');
-  return bundled === '1' ? `./data/${name}.json` : `../dashboard-data/${name}.json`;
+  const isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+  return (bundled === '1' || !isLocal) ? `./data/${name}.json` : `../dashboard-data/${name}.json`;
 };
 
 async function loadSnapshot() {

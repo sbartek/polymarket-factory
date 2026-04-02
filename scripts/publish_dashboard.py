@@ -28,7 +28,7 @@ def sync_dirs(src: Path, dst: Path) -> bool:
     ensure_clean_dir(dst)
 
     src_files = {p.relative_to(src) for p in src.rglob('*') if p.is_file()}
-    dst_files = {p.relative_to(dst) for p in dst.rglob('*') if p.is_file()}
+    dst_files = {p.relative_to(dst) for p in dst.rglob('*') if p.is_file() and '.git' not in p.parts}
 
     for rel in sorted(dst_files - src_files):
         (dst / rel).unlink()
@@ -69,8 +69,8 @@ def main() -> None:
     target = Path(args.target).expanduser().resolve()
 
     if not args.skip_export:
-        run(["python3", str(EXPORT_SCRIPT)])
-        run(["python3", str(BUILD_SCRIPT)])
+        run(["uv", "run", "python", "-m", "scripts.export_dashboard_data"])
+        run(["uv", "run", "python", "-m", "scripts.build_dashboard"])
 
     if not DIST_DIR.exists():
         raise SystemExit("dashboard-dist/ not found. Build the dashboard first.")
