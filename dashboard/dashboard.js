@@ -107,5 +107,5 @@ function uniqueValues(items, key) {
 
 window.Dashboard = {
   fmtNumber, fmtInt, fmtDate, fmtDuration, pillClass, cleanSummary,
-  loadSnapshot, renderChrome, renderAlerts, renderNav, uniqueValues,
+  loadSnapshot, renderChrome, renderAlerts, renderNav, uniqueValues, dataPath,
 };

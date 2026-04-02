@@ -51,7 +51,7 @@
       Dashboard.renderNav('positions');
       Promise.all([
         Dashboard.loadSnapshot(),
-        fetch(new URLSearchParams(window.location.search).get('bundled') === '1' ? './data/positions-open.json' : '../dashboard-data/positions-open.json').then((r) => r.json()),
+        fetch(Dashboard.dataPath('positions-open')).then((r) => r.json()),
       ]).then(([snapshot, positions]) => {
         Dashboard.renderChrome(snapshot, 'Positions');
         Dashboard.renderAlerts(snapshot);
