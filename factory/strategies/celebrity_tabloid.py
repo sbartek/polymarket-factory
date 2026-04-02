@@ -149,11 +149,11 @@ def _candidate_score(volume: float, price: float, days: int, entertainment_match
 
 class CelebrityTabloidStrategy(Strategy):
     name = "celebrity_tabloid"
-    alert_only = True
-    trading_enabled = False
-    promotable = True
+    alert_only = False
+    trading_enabled = True
+    promotable = False
     live_ready = False
-    promotion_criteria = "docs/alert_only_graduation.md#promotion-criteria"
+    promotion_criteria = ""
     edge_type = "information"
     time_window = "short"
     target_hold_min_days = 1
