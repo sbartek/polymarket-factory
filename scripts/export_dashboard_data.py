@@ -510,6 +510,60 @@ def fetch_strategies(conn: sqlite3.Connection, warnings: list[str]) -> list[dict
     return out
 
 
+def fetch_execution_checks(conn: sqlite3.Connection, limit: int = 250) -> list[dict]:
+    rows = conn.execute(
+        """
+        SELECT
+            created_at,
+            run_id,
+            strategy,
+            market_id,
+            market_title,
+            outcome,
+            quote_price,
+            best_bid,
+            best_ask,
+            fill_price_10,
+            fill_price_50,
+            fill_price_100,
+            ev_after_slippage_10_pp,
+            ev_after_slippage_50_pp,
+            ev_after_slippage_100_pp,
+            max_size_positive_ev,
+            max_size_above_min_edge,
+            source_confidence
+        FROM signal_execution_checks
+        WHERE created_at >= datetime('now', '-30 day')
+        ORDER BY created_at DESC
+        LIMIT ?
+        """,
+        (limit,),
+    ).fetchall()
+    return [
+        {
+            "created_at": row["created_at"],
+            "run_id": row["run_id"],
+            "strategy": row["strategy"],
+            "market_id": row["market_id"],
+            "market_title": row["market_title"],
+            "outcome": row["outcome"],
+            "quote_price": round(float(row["quote_price"]), 4) if row["quote_price"] is not None else None,
+            "best_bid": round(float(row["best_bid"]), 4) if row["best_bid"] is not None else None,
+            "best_ask": round(float(row["best_ask"]), 4) if row["best_ask"] is not None else None,
+            "fill_price_10": round(float(row["fill_price_10"]), 4) if row["fill_price_10"] is not None else None,
+            "fill_price_50": round(float(row["fill_price_50"]), 4) if row["fill_price_50"] is not None else None,
+            "fill_price_100": round(float(row["fill_price_100"]), 4) if row["fill_price_100"] is not None else None,
+            "ev_after_slippage_10_pp": round(float(row["ev_after_slippage_10_pp"]), 2) if row["ev_after_slippage_10_pp"] is not None else None,
+            "ev_after_slippage_50_pp": round(float(row["ev_after_slippage_50_pp"]), 2) if row["ev_after_slippage_50_pp"] is not None else None,
+            "ev_after_slippage_100_pp": round(float(row["ev_after_slippage_100_pp"]), 2) if row["ev_after_slippage_100_pp"] is not None else None,
+            "max_size_positive_ev": round(float(row["max_size_positive_ev"]), 2) if row["max_size_positive_ev"] is not None else None,
+            "max_size_above_min_edge": round(float(row["max_size_above_min_edge"]), 2) if row["max_size_above_min_edge"] is not None else None,
+            "source_confidence": row["source_confidence"] or "unknown",
+        }
+        for row in rows
+    ]
+
+
 def build_manifest(warnings: list[str], sqlite_available: bool, improvement_available: bool) -> dict:
     return {
         "generated_at": utc_now_iso(),
@@ -582,11 +636,13 @@ def main() -> None:
     overview = fetch_overview(conn, experiments, warnings)
     runs = fetch_runs(conn)
     strategies = fetch_strategies(conn, warnings)
+    execution_checks = fetch_execution_checks(conn)
     positions_open = fetch_positions_open(conn)
 
     write_json(OUTPUT_DIR / "overview.json", overview)
     write_json(OUTPUT_DIR / "runs.json", runs)
     write_json(OUTPUT_DIR / "strategies.json", strategies)
+    write_json(OUTPUT_DIR / "execution-checks.json", execution_checks)
     write_json(OUTPUT_DIR / "experiments.json", experiments)
     write_json(OUTPUT_DIR / "positions-open.json", positions_open)
 
@@ -595,6 +651,7 @@ def main() -> None:
     print(f"- overview.json")
     print(f"- runs.json ({len(runs)} rows)")
     print(f"- strategies.json ({len(strategies)} rows)")
+    print(f"- execution-checks.json ({len(execution_checks)} rows)")
     print(f"- experiments.json ({len(experiments)} rows)")
     print(f"- positions-open.json ({len(positions_open)} rows)")
 

@@ -34,6 +34,38 @@
           </table>
         </div>
       </section>
+      <section class="panel section-gap">
+        <div class="panel-header"><h2>Execution checks</h2><span class="muted">Recent Phase A fill-proxy evidence by signal</span></div>
+        <div class="controls">
+          <label>Strategy
+            <select id="execution-strategy">
+              <option value="all">All</option>
+            </select>
+          </label>
+          <label>Outcome
+            <select id="execution-outcome">
+              <option value="all">All</option>
+              <option value="YES">YES</option>
+              <option value="NO">NO</option>
+            </select>
+          </label>
+          <label>Source
+            <select id="execution-confidence">
+              <option value="all">All</option>
+            </select>
+          </label>
+          <label>Search
+            <input id="execution-search" type="text" placeholder="market title" />
+          </label>
+        </div>
+        <div class="small-note" id="execution-filter-note"></div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Time</th><th>Strategy</th><th>Market</th><th>Side</th><th>Src</th><th>Quote</th><th>Bid</th><th>Ask</th><th>Fill @ $10</th><th>Fill @ $50</th><th>EV @ $10</th><th>EV @ $50</th><th>Max +EV</th></tr></thead>
+            <tbody id="execution-body"></tbody>
+          </table>
+        </div>
+      </section>
     </div>
     <script src="./dashboard.js"></script>
     <script>
@@ -45,7 +77,15 @@
         const searchInput = document.getElementById('filter-search');
         const note = document.getElementById('strategy-filter-note');
         const tbody = document.getElementById('strategies-body');
+        const executionStrategy = document.getElementById('execution-strategy');
+        const executionOutcome = document.getElementById('execution-outcome');
+        const executionConfidence = document.getElementById('execution-confidence');
+        const executionSearch = document.getElementById('execution-search');
+        const executionNote = document.getElementById('execution-filter-note');
+        const executionBody = document.getElementById('execution-body');
         Dashboard.uniqueValues(snapshot.strategies, 'status').forEach((value) => statusSelect.insertAdjacentHTML('beforeend', `<option value="${value}">${value}</option>`));
+        Dashboard.uniqueValues(snapshot.executionChecks, 'strategy').forEach((value) => executionStrategy.insertAdjacentHTML('beforeend', `<option value="${value}">${value}</option>`));
+        Dashboard.uniqueValues(snapshot.executionChecks, 'source_confidence').forEach((value) => executionConfidence.insertAdjacentHTML('beforeend', `<option value="${value}">${value}</option>`));
 
         const renderRows = () => {
           const filtered = snapshot.strategies.filter((s) => {
@@ -58,9 +98,27 @@
           tbody.innerHTML = filtered.map((s) => `<tr><td><div class="strategy-name">${s.strategy_name}</div>${s.warnings?.length ? `<div class="muted">${s.warnings.join(' ')}</div>` : ''}</td><td><span class="${Dashboard.pillClass(s.status)}">${s.status}</span></td><td>${Dashboard.fmtNumber(s.open_exposure)} USDC</td><td>${Dashboard.fmtInt(s.open_positions)}</td><td>${Dashboard.fmtInt(s.recent_signals_count)}</td><td>${Dashboard.fmtInt(s.execution_checks_count_30d)}</td><td>${Dashboard.fmtNumber(s.avg_ev_after_slippage_10_pp_30d)} pp</td><td>${Dashboard.fmtNumber(s.avg_ev_after_slippage_50_pp_30d)} pp</td><td>${Dashboard.fmtNumber(s.avg_max_size_positive_ev_30d)} USD</td><td>${Dashboard.fmtNumber(s.realized_pnl_30d)} USDC</td><td>${Dashboard.fmtNumber(s.realized_pnl_all_time)} USDC</td></tr>`).join('');
         };
 
+        const renderExecution = () => {
+          const filtered = snapshot.executionChecks.filter((row) => {
+            if (executionStrategy.value !== 'all' && row.strategy !== executionStrategy.value) return false;
+            if (executionOutcome.value !== 'all' && row.outcome !== executionOutcome.value) return false;
+            if (executionConfidence.value !== 'all' && row.source_confidence !== executionConfidence.value) return false;
+            const q = executionSearch.value.trim().toLowerCase();
+            if (q && !row.market_title.toLowerCase().includes(q)) return false;
+            return true;
+          });
+          executionNote.textContent = `${filtered.length} shown of ${snapshot.executionChecks.length} recent checks · newest first · fill proxies only`;
+          executionBody.innerHTML = filtered.map((row) => `<tr><td>${Dashboard.fmtDate(row.created_at)}</td><td><div class="strategy-name">${row.strategy}</div><div class="muted code">${row.run_id.slice(0, 8)}</div></td><td><div>${row.market_title}</div><div class="muted code">${row.market_id}</div></td><td><span class="${row.outcome === 'YES' ? 'pill pill-ok' : 'pill pill-warning'}">${row.outcome}</span></td><td><span class="pill pill-neutral">${row.source_confidence}</span></td><td>${Dashboard.fmtNumber(row.quote_price, 4)}</td><td>${Dashboard.fmtNumber(row.best_bid, 4)}</td><td>${Dashboard.fmtNumber(row.best_ask, 4)}</td><td>${Dashboard.fmtNumber(row.fill_price_10, 4)}</td><td>${Dashboard.fmtNumber(row.fill_price_50, 4)}</td><td>${Dashboard.fmtNumber(row.ev_after_slippage_10_pp)} pp</td><td>${Dashboard.fmtNumber(row.ev_after_slippage_50_pp)} pp</td><td>${Dashboard.fmtNumber(row.max_size_positive_ev)} USD</td></tr>`).join('') || '<tr><td colspan="13" class="muted">No execution checks match the current filters.</td></tr>';
+        };
+
         statusSelect.addEventListener('change', renderRows);
         searchInput.addEventListener('input', renderRows);
+        executionStrategy.addEventListener('change', renderExecution);
+        executionOutcome.addEventListener('change', renderExecution);
+        executionConfidence.addEventListener('change', renderExecution);
+        executionSearch.addEventListener('input', renderExecution);
         renderRows();
+        renderExecution();
       }).catch((err) => {
         document.body.innerHTML = `<div class="shell"><div class="panel"><h1>Dashboard failed to load</h1><p>${err.message}</p></div></div>`;
       });
