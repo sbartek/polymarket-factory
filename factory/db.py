@@ -230,6 +230,41 @@ CREATE TABLE IF NOT EXISTS celebrity_tabloid_checks (
     FOREIGN KEY(run_id) REFERENCES runs(id)
 );
 
+CREATE TABLE IF NOT EXISTS signal_execution_checks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id TEXT NOT NULL,
+    strategy TEXT NOT NULL,
+    market_id TEXT NOT NULL,
+    market_title TEXT,
+    outcome TEXT,
+    quote_price REAL,
+    best_bid REAL,
+    best_ask REAL,
+    quoted_spread REAL,
+    order_min_size REAL,
+    liquidity_proxy REAL,
+    source_confidence TEXT,
+    fill_price_10 REAL,
+    fill_price_25 REAL,
+    fill_price_50 REAL,
+    fill_price_100 REAL,
+    fill_price_250 REAL,
+    slippage_10_pp REAL,
+    slippage_25_pp REAL,
+    slippage_50_pp REAL,
+    slippage_100_pp REAL,
+    slippage_250_pp REAL,
+    ev_after_slippage_10_pp REAL,
+    ev_after_slippage_25_pp REAL,
+    ev_after_slippage_50_pp REAL,
+    ev_after_slippage_100_pp REAL,
+    ev_after_slippage_250_pp REAL,
+    max_size_positive_ev REAL,
+    max_size_above_min_edge REAL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(run_id) REFERENCES runs(id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_trades_strategy ON trades(strategy);
 CREATE INDEX IF NOT EXISTS idx_trades_status ON trades(status);
 CREATE INDEX IF NOT EXISTS idx_trades_market_id ON trades(market_id);
@@ -244,6 +279,9 @@ CREATE INDEX IF NOT EXISTS idx_decisions_market_id ON decisions(market_id);
 CREATE INDEX IF NOT EXISTS idx_decisions_type ON decisions(decision_type);
 CREATE INDEX IF NOT EXISTS idx_decisions_decision ON decisions(decision);
 CREATE INDEX IF NOT EXISTS idx_run_logs_run_id ON run_logs(run_id);
+CREATE INDEX IF NOT EXISTS idx_signal_execution_checks_run_id ON signal_execution_checks(run_id);
+CREATE INDEX IF NOT EXISTS idx_signal_execution_checks_strategy ON signal_execution_checks(strategy);
+CREATE INDEX IF NOT EXISTS idx_signal_execution_checks_market_id ON signal_execution_checks(market_id);
 """
 
 
@@ -503,6 +541,56 @@ class FactoryDB:
                     row.get("corroboration_score"),
                     row.get("decision"),
                     row.get("reason"),
+                    utcnow(),
+                ),
+            )
+            conn.commit()
+
+    def log_signal_execution_check(self, run_id: str, row: dict):
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO signal_execution_checks (
+                    run_id, strategy, market_id, market_title, outcome,
+                    quote_price, best_bid, best_ask, quoted_spread, order_min_size,
+                    liquidity_proxy, source_confidence,
+                    fill_price_10, fill_price_25, fill_price_50, fill_price_100, fill_price_250,
+                    slippage_10_pp, slippage_25_pp, slippage_50_pp, slippage_100_pp, slippage_250_pp,
+                    ev_after_slippage_10_pp, ev_after_slippage_25_pp, ev_after_slippage_50_pp,
+                    ev_after_slippage_100_pp, ev_after_slippage_250_pp,
+                    max_size_positive_ev, max_size_above_min_edge, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    run_id,
+                    row.get("strategy"),
+                    row.get("market_id"),
+                    row.get("market_title"),
+                    row.get("outcome"),
+                    row.get("quote_price"),
+                    row.get("best_bid"),
+                    row.get("best_ask"),
+                    row.get("quoted_spread"),
+                    row.get("order_min_size"),
+                    row.get("liquidity_proxy"),
+                    row.get("source_confidence"),
+                    row.get("fill_price_10"),
+                    row.get("fill_price_25"),
+                    row.get("fill_price_50"),
+                    row.get("fill_price_100"),
+                    row.get("fill_price_250"),
+                    row.get("slippage_10_pp"),
+                    row.get("slippage_25_pp"),
+                    row.get("slippage_50_pp"),
+                    row.get("slippage_100_pp"),
+                    row.get("slippage_250_pp"),
+                    row.get("ev_after_slippage_10_pp"),
+                    row.get("ev_after_slippage_25_pp"),
+                    row.get("ev_after_slippage_50_pp"),
+                    row.get("ev_after_slippage_100_pp"),
+                    row.get("ev_after_slippage_250_pp"),
+                    row.get("max_size_positive_ev"),
+                    row.get("max_size_above_min_edge"),
                     utcnow(),
                 ),
             )

@@ -14,6 +14,7 @@ from factory.queries import (
     get_latest_runs,
     get_open_positions,
     get_resolution_hunter_checks,
+    get_signal_execution_checks,
     get_spread_arb_baskets,
     get_stale_market_checks,
 )
@@ -250,6 +251,9 @@ class TestStrategyDetailTables:
     def test_spread_arb_empty(self, db):
         assert get_spread_arb_baskets(db) == []
 
+    def test_signal_execution_checks_empty(self, db):
+        assert get_signal_execution_checks(db) == []
+
     def test_spread_arb_inserted_and_retrieved(self, db):
         run_id = self._setup_run(db)
         db.log_spread_arb_basket(run_id, {
@@ -359,6 +363,43 @@ class TestStrategyDetailTables:
         rows = get_celebrity_tabloid_checks(db)
         assert len(rows) == 1
         assert rows[0]["market_slug"] == "swift-kelce-engaged"
+
+    def test_signal_execution_checks_inserted_and_filterable(self, db):
+        run_id = self._setup_run(db)
+        db.log_signal_execution_check(run_id, {
+            "strategy": "spread_arb",
+            "market_id": "event-slug:123",
+            "market_title": "Example market",
+            "outcome": "YES",
+            "quote_price": 0.41,
+            "best_bid": 0.40,
+            "best_ask": 0.42,
+            "quoted_spread": 0.02,
+            "order_min_size": 1.0,
+            "liquidity_proxy": 55.0,
+            "source_confidence": "medium",
+            "fill_price_10": 0.43,
+            "fill_price_25": 0.45,
+            "fill_price_50": 0.47,
+            "fill_price_100": 0.51,
+            "fill_price_250": 0.62,
+            "slippage_10_pp": 2.0,
+            "slippage_25_pp": 4.0,
+            "slippage_50_pp": 6.0,
+            "slippage_100_pp": 10.0,
+            "slippage_250_pp": 21.0,
+            "ev_after_slippage_10_pp": 7.0,
+            "ev_after_slippage_25_pp": 5.0,
+            "ev_after_slippage_50_pp": 3.0,
+            "ev_after_slippage_100_pp": -1.0,
+            "ev_after_slippage_250_pp": -12.0,
+            "max_size_positive_ev": 50.0,
+            "max_size_above_min_edge": 25.0,
+        })
+        rows = get_signal_execution_checks(db, strategy="spread_arb")
+        assert len(rows) == 1
+        assert rows[0]["market_id"] == "event-slug:123"
+        assert rows[0]["max_size_positive_ev"] == pytest.approx(50.0)
 
     def test_limit_respected(self, db):
         run_id = self._setup_run(db)

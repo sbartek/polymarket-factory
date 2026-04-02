@@ -15,6 +15,7 @@ from datetime import datetime
 
 from .broker import PaperBroker
 from .db import FactoryDB
+from .execution import build_market_index, snapshot_for_signal
 from .feed import fetch_top, fetch_closed, get_market_winner, get_submarket_outcome
 from .models import Signal
 from .notify import send_whatsapp
@@ -271,6 +272,7 @@ def run(dry_run: bool = False, send: bool = True, fast_dry_run: bool = False):
         alert_signals: list[Signal] = []
         skipped_this_cycle: list[str] = []
         exposure_by_strategy, exposure_by_window = _current_exposure_by_strategy_and_window(broker, meta)
+        market_index = build_market_index(markets)
 
         for strategy in STRATEGIES:
             strategy_meta = meta.get(strategy.name, {})
@@ -298,6 +300,8 @@ def run(dry_run: bool = False, send: bool = True, fast_dry_run: bool = False):
             for sig in signals:
                 sig_dict = _signal_to_dict(sig)
                 db.log_signal(run_id, strategy.name, sig_dict, time_window=strategy_meta.get("time_window"), edge_type=strategy_meta.get("edge_type"), decision_status="generated")
+                execution_snapshot = snapshot_for_signal(sig, strategy, market_index)
+                db.log_signal_execution_check(run_id, execution_snapshot.as_dict())
 
                 if not strategy_meta.get("trading_enabled", True):
                     alert_signals.append(sig)

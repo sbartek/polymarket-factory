@@ -139,6 +139,27 @@ def get_celebrity_tabloid_checks(
     return _query_detail_table(db, "celebrity_tabloid_checks", run_id, limit)
 
 
+def get_signal_execution_checks(
+    db: FactoryDB, run_id: str | None = None, strategy: str | None = None, limit: int = 50
+) -> list[dict]:
+    clauses: list[str] = []
+    params: list = []
+    if run_id:
+        clauses.append("run_id = ?")
+        params.append(run_id)
+    if strategy:
+        clauses.append("strategy = ?")
+        params.append(strategy)
+    where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+    params.append(limit)
+    with db._connect() as conn:
+        rows = conn.execute(
+            f"SELECT * FROM signal_execution_checks {where} ORDER BY created_at DESC LIMIT ?",
+            params,
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
 DETAIL_TABLE_GETTERS = {
     "spread_arb": get_spread_arb_baskets,
     "resolution_hunter": get_resolution_hunter_checks,

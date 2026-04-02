@@ -9,7 +9,11 @@ from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 import re
+import sys
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from factory.db import FactoryDB
 from factory.strategy_meta import strategy_metadata
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -244,9 +248,7 @@ def attach_linked_reviews(experiments: list[dict], reviews: dict[str, dict]) -> 
 
 
 def connect_db() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+    return FactoryDB(path=DB_PATH)._connect()
 
 
 def fetch_runs(conn: sqlite3.Connection, limit: int = 25) -> list[dict]:
@@ -294,6 +296,23 @@ def count_distinct(conn: sqlite3.Connection, sql: str, params: tuple = ()) -> in
     return int(value or 0)
 
 
+def fetch_execution_summary(conn: sqlite3.Connection) -> dict:
+    checks_30d = scalar(conn, "SELECT COUNT(*) FROM signal_execution_checks WHERE created_at >= datetime('now', '-30 day')", (), 0)
+    strategies_with_checks = scalar(conn, "SELECT COUNT(DISTINCT strategy) FROM signal_execution_checks WHERE created_at >= datetime('now', '-30 day')", (), 0)
+    avg_ev_50 = scalar(conn, "SELECT AVG(ev_after_slippage_50_pp) FROM signal_execution_checks WHERE created_at >= datetime('now', '-30 day')", (), None)
+    avg_max_positive = scalar(conn, "SELECT AVG(max_size_positive_ev) FROM signal_execution_checks WHERE created_at >= datetime('now', '-30 day')", (), None)
+    confidence_rows = conn.execute(
+        "SELECT COALESCE(source_confidence, 'unknown') AS source_confidence, COUNT(*) AS cnt FROM signal_execution_checks WHERE created_at >= datetime('now', '-30 day') GROUP BY COALESCE(source_confidence, 'unknown')"
+    ).fetchall()
+    return {
+        "checks_30d": int(checks_30d or 0),
+        "strategies_with_checks_30d": int(strategies_with_checks or 0),
+        "avg_ev_after_slippage_50_pp_30d": round(float(avg_ev_50), 2) if avg_ev_50 is not None else None,
+        "avg_max_size_positive_ev_30d": round(float(avg_max_positive), 2) if avg_max_positive is not None else None,
+        "source_confidence_counts_30d": {row["source_confidence"]: int(row["cnt"] or 0) for row in confidence_rows},
+    }
+
+
 def fetch_overview(conn: sqlite3.Connection, experiments: list[dict], warnings: list[str]) -> dict:
     latest = conn.execute("SELECT * FROM runs ORDER BY started_at DESC LIMIT 1").fetchone()
     open_active_exposure = scalar(conn, "SELECT COALESCE(SUM(amount_usdc), 0) FROM trades WHERE status='open' AND strategy IN ({})".format(
@@ -309,9 +328,13 @@ def fetch_overview(conn: sqlite3.Connection, experiments: list[dict], warnings: 
         ",".join("?" for _ in ACTIVE_STRATEGIES)
     ), tuple(sorted(ACTIVE_STRATEGIES)), 0)
 
+    execution = fetch_execution_summary(conn)
+
     alerts = []
     if latest and normalize_status(latest["status"]) != "ok":
         alerts.append({"level": "warning", "message": f"Latest run status is {normalize_status(latest['status'])}."})
+    if execution["checks_30d"] == 0:
+        alerts.append({"level": "warning", "message": "No Phase A execution checks recorded in the last 30 days."})
     for warning in warnings[:5]:
         alerts.append({"level": "warning", "message": warning})
 
@@ -326,6 +349,11 @@ def fetch_overview(conn: sqlite3.Connection, experiments: list[dict], warnings: 
         "open_position_count_legacy": int(open_legacy_count or 0),
         "active_strategy_count": len(ACTIVE_STRATEGIES),
         "active_experiment_count": sum(1 for e in experiments if e["status"] in {"active", "review_due"}),
+        "execution_checks_30d": execution["checks_30d"],
+        "strategies_with_execution_checks_30d": execution["strategies_with_checks_30d"],
+        "avg_ev_after_slippage_50_pp_30d": execution["avg_ev_after_slippage_50_pp_30d"],
+        "avg_max_size_positive_ev_30d": execution["avg_max_size_positive_ev_30d"],
+        "execution_source_confidence_counts_30d": execution["source_confidence_counts_30d"],
         "alerts": alerts,
     }
 
@@ -395,6 +423,28 @@ def fetch_strategies(conn: sqlite3.Connection, warnings: list[str]) -> list[dict
     decision_counts = dict(conn.execute(
         "SELECT strategy, COUNT(*) FROM decisions WHERE created_at >= datetime('now', '-30 day') GROUP BY strategy"
     ).fetchall())
+    execution_rows = conn.execute(
+        """
+        SELECT
+            strategy,
+            COUNT(*) AS execution_checks_count,
+            AVG(ev_after_slippage_10_pp) AS avg_ev_after_slippage_10_pp,
+            AVG(ev_after_slippage_50_pp) AS avg_ev_after_slippage_50_pp,
+            AVG(ev_after_slippage_100_pp) AS avg_ev_after_slippage_100_pp,
+            AVG(max_size_positive_ev) AS avg_max_size_positive_ev,
+            AVG(max_size_above_min_edge) AS avg_max_size_above_min_edge
+        FROM signal_execution_checks
+        WHERE created_at >= datetime('now', '-30 day')
+        GROUP BY strategy
+        """
+    ).fetchall()
+    execution_by_strategy = {row["strategy"]: dict(row) for row in execution_rows}
+    confidence_rows = conn.execute(
+        "SELECT strategy, COALESCE(source_confidence, 'unknown') AS source_confidence, COUNT(*) AS cnt FROM signal_execution_checks WHERE created_at >= datetime('now', '-30 day') GROUP BY strategy, COALESCE(source_confidence, 'unknown')"
+    ).fetchall()
+    confidence_by_strategy = defaultdict(dict)
+    for row in confidence_rows:
+        confidence_by_strategy[row["strategy"]][row["source_confidence"]] = int(row["cnt"] or 0)
 
     tw_rows = conn.execute(
         "SELECT strategy, COALESCE(time_window, 'unknown') AS time_window, COUNT(*) AS cnt, COALESCE(SUM(amount_usdc),0) AS exposure FROM trades WHERE status='open' GROUP BY strategy, COALESCE(time_window, 'unknown')"
@@ -423,11 +473,14 @@ def fetch_strategies(conn: sqlite3.Connection, warnings: list[str]) -> list[dict
         meta = meta_lookup.get(name, {})
         open_positions = int(row.get("open_positions") or 0)
         status = strategy_status(name, open_count=open_positions)
+        execution = execution_by_strategy.get(name, {})
         strategy_warnings = []
         if name not in base:
             strategy_warnings.append("No trades recorded yet.")
         if status != "active" and name in ACTIVE_STRATEGIES and open_positions == 0 and not signal_counts.get(name) and not decision_counts.get(name):
             strategy_warnings.append("Active strategy currently has no recent recorded activity.")
+        if signal_counts.get(name, 0) and not execution.get("execution_checks_count"):
+            strategy_warnings.append("Signals exist, but no Phase A execution checks were exported for the last 30 days.")
         out.append({
             "strategy_name": name,
             "status": status,
@@ -443,6 +496,13 @@ def fetch_strategies(conn: sqlite3.Connection, warnings: list[str]) -> list[dict
             "recent_decisions_count": int(decision_counts.get(name, 0) or 0),
             "realized_pnl_30d": round(float(row.get("realized_pnl_30d") or 0.0), 2),
             "realized_pnl_all_time": round(float(row.get("realized_pnl_all_time") or 0.0), 2),
+            "execution_checks_count_30d": int(execution.get("execution_checks_count") or 0),
+            "avg_ev_after_slippage_10_pp_30d": round(float(execution["avg_ev_after_slippage_10_pp"]), 2) if execution.get("avg_ev_after_slippage_10_pp") is not None else None,
+            "avg_ev_after_slippage_50_pp_30d": round(float(execution["avg_ev_after_slippage_50_pp"]), 2) if execution.get("avg_ev_after_slippage_50_pp") is not None else None,
+            "avg_ev_after_slippage_100_pp_30d": round(float(execution["avg_ev_after_slippage_100_pp"]), 2) if execution.get("avg_ev_after_slippage_100_pp") is not None else None,
+            "avg_max_size_positive_ev_30d": round(float(execution["avg_max_size_positive_ev"]), 2) if execution.get("avg_max_size_positive_ev") is not None else None,
+            "avg_max_size_above_min_edge_30d": round(float(execution["avg_max_size_above_min_edge"]), 2) if execution.get("avg_max_size_above_min_edge") is not None else None,
+            "execution_source_confidence_counts_30d": confidence_by_strategy.get(name, {}),
             "by_time_window": by_tw.get(name, {}),
             "by_edge_type": by_et.get(name, {}),
             "warnings": strategy_warnings,
