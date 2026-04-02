@@ -1,0 +1,128 @@
+[
+  {
+    "experiment_id": "EX-20260331-001",
+    "title": "SQLite runtime state",
+    "scope_type": "system",
+    "scope_label": "runtime/storage",
+    "strategy": null,
+    "status": "completed",
+    "hypothesis": "Moving runtime state from CSV-centric handling to SQLite would preserve behavior while improving durability and auditability.",
+    "linked_changes": [
+      "CR-20260331-001"
+    ],
+    "linked_reviews": [
+      "RV-20260331-001"
+    ],
+    "review_due": null,
+    "last_updated": "2026-03-31",
+    "summary": "- before: CSV was the main source of truth; race-condition risk was higher; audit trail was weaker - after: 268 trades imported; broker and reports functioned via SQLite-backed trades; run/decision/check queries worked - observations: migra",
+    "path": "improvement/experiments/EX-20260331-001-sqlite-runtime-observability.md"
+  },
+  {
+    "experiment_id": "EX-20260331-002",
+    "title": "time-window taxonomy and policy",
+    "scope_type": "portfolio",
+    "scope_label": "strategy taxonomy / runner policy / portfolio reporting",
+    "strategy": null,
+    "status": "completed",
+    "hypothesis": "Time-window-aware scheduling and exposure caps would make portfolio behavior easier to interpret and operate.",
+    "linked_changes": [
+      "CR-20260331-002"
+    ],
+    "linked_reviews": [
+      "RV-20260331-001"
+    ],
+    "review_due": null,
+    "last_updated": "2026-03-31",
+    "summary": "- before: strategies were mostly a flat list - after: reports, summaries, and operator tooling reflect `super_short` / `short` / `medium` and active vs legacy context - observations: taxonomy is operationally useful; long-term declared-vs-r",
+    "path": "improvement/experiments/EX-20260331-002-time-window-policy.md"
+  },
+  {
+    "experiment_id": "EX-20260331-003",
+    "title": "strategy portfolio focus",
+    "scope_type": "portfolio",
+    "scope_label": "strategy set / portfolio hygiene",
+    "strategy": null,
+    "status": "completed",
+    "hypothesis": "Pausing obvious losers and focusing on more coherent edge classes would improve the research portfolio and reduce noise.",
+    "linked_changes": [
+      "CR-20260331-003"
+    ],
+    "linked_reviews": [
+      "RV-20260331-001"
+    ],
+    "review_due": null,
+    "last_updated": "2026-03-31",
+    "summary": "- before: active/legacy lines were muddled, and poor strategies were still part of the main stack - after: paused strategies are clearly legacy; active strategy set is smaller and cleaner; tooling reflects the split - observations: `stale_m",
+    "path": "improvement/experiments/EX-20260331-003-strategy-focus.md"
+  },
+  {
+    "experiment_id": "EX-20260331-004",
+    "title": "correlated_pairs MVP",
+    "scope_type": "strategy",
+    "scope_label": "correlated_pairs",
+    "strategy": "correlated_pairs",
+    "status": "review_due",
+    "hypothesis": "`correlated_pairs` can surface useful logical inconsistencies if the relationship mapping is constrained and the output is reviewed through persisted pair-check data instead of intuition alone.",
+    "linked_changes": [
+      "CR-20260331-004"
+    ],
+    "linked_reviews": [
+      "RV-20260331-002",
+      "RV-20260331-003"
+    ],
+    "review_due": null,
+    "last_updated": "2026-03-31",
+    "summary": "- before: no structured evaluation thread existed for `correlated_pairs` - after: use persisted `correlated_pairs_checks` rows plus decision logs for evaluation - observations: current evidence is too thin; this record exists to prevent pre",
+    "path": "improvement/experiments/EX-20260331-004-correlated-pairs-mvp.md"
+  },
+  {
+    "experiment_id": "EX-20260331-005",
+    "title": "stale_market MVP",
+    "scope_type": "strategy",
+    "scope_label": "stale_market",
+    "strategy": "stale_market",
+    "status": "review_due",
+    "hypothesis": "`stale_market` can become a more practical delayed-information strategy than `ev_news` if recent candidates show coherent topic mapping, sensible opens, and acceptable skip/open ratios over a short run window.",
+    "linked_changes": [
+      "CR-20260331-005"
+    ],
+    "linked_reviews": [
+      "RV-20260331-003"
+    ],
+    "review_due": null,
+    "last_updated": "2026-03-31",
+    "summary": "- before: `stale_market` looked promising operationally but did not yet have an explicit experiment thread - after: evaluation will use persisted `stale_market_checks`, open-book inspection, and recent decision patterns - observations: rece",
+    "path": "improvement/experiments/EX-20260331-005-stale-market-followup.md"
+  },
+  {
+    "experiment_id": "EX-20260401-006",
+    "title": "correlated_laggard paper-eval checklist",
+    "scope_type": "strategy",
+    "scope_label": "correlated_laggard",
+    "strategy": "correlated_laggard",
+    "status": "planned",
+    "hypothesis": "`correlated_laggard` can eventually graduate from alert-only if repeated leader/laggard gaps are real, non-duplicative, and paper-executable rather than just interesting.",
+    "linked_changes": [],
+    "linked_reviews": [],
+    "review_due": null,
+    "last_updated": "2026-04-01",
+    "summary": "Do not promote on one or two pretty divergences. This strategy only graduates if the logged sample looks repeatable across multiple topics and runs.",
+    "path": "improvement/experiments/EX-20260401-006-correlated-laggard-paper-eval.md"
+  },
+  {
+    "experiment_id": "EX-20260401-007",
+    "title": "esport48 paper-eval checklist",
+    "scope_type": "strategy",
+    "scope_label": "esport48",
+    "strategy": "esport48",
+    "status": "planned",
+    "hypothesis": "`esport48` can eventually graduate from alert-only if its near-expiry esport alerts are liquid enough, not just noisy favorites/underdogs, and the subtype tags help separate signal from churn.",
+    "linked_changes": [],
+    "linked_reviews": [],
+    "review_due": null,
+    "last_updated": "2026-04-01",
+    "summary": "Do not promote just because the alerts look intuitively sharp. This strategy needs evidence that the screener is surfacing executable mispricings, not last-minute esport chaos.",
+    "path": "improvement/experiments/EX-20260401-007-esport48-paper-eval.md"
+  }
+]

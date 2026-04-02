@@ -1,0 +1,11 @@
+{
+  "generated_at": "2026-04-02T18:03:11Z",
+  "export_version": "v1",
+  "git_commit": "04ad03e",
+  "warning_count": 0,
+  "warnings": [],
+  "source_summary": {
+    "sqlite_available": true,
+    "improvement_records_available": true
+  }
+}
