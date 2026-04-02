@@ -1,7 +1,7 @@
 #!/bin/bash
 # Entry point for launchd — sources .env and runs the factory runner.
 
-set -euo pipefail
+set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ENV_FILE="$SCRIPT_DIR/.env"
@@ -15,4 +15,9 @@ fi
 export PATH="/Users/barteks/.local/bin:/Users/barteks/.local/share/fnm/node-versions/v24.14.0/installation/bin:$PATH"
 
 cd "$SCRIPT_DIR"
-exec uv run python -m factory.runner
+uv run python -m factory.runner
+
+echo "[dashboard] publishing snapshot..."
+uv run python -m scripts.publish_dashboard ~/workai/projects/pplayouts-dashboard --commit --push \
+  --message "dashboard: auto-update after factory run" \
+  || echo "[dashboard] publish failed (non-fatal)"
