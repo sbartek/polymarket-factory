@@ -57,6 +57,10 @@ class CarryRewardsStrategy(Strategy):
     trading_enabled = True
     live_ready = True
 
+    def size(self, signal) -> float:
+        # Carry is not a directional bet — Kelly gives 0. Always use max_position_usdc.
+        return self.max_position_usdc
+
     def scan(self, markets: list[dict]) -> list[Signal]:
         candidates = []
         for ev in markets:

@@ -326,8 +326,9 @@ class FactoryDB:
                 try:
                     conn.execute(sql)
                     conn.commit()
-                except sqlite3.OperationalError:
-                    pass  # column already exists
+                except sqlite3.OperationalError as e:
+                    if "duplicate column" not in str(e) and "already exists" not in str(e):
+                        raise
 
     def acquire_run_lock(self, name: str, owner_run_id: str, ttl_seconds: int = 7200) -> bool:
         now = utcnow()

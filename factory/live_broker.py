@@ -54,9 +54,14 @@ class LiveBroker:
 
         try:
             yes_resp = clob_api.place_market_order(yes_id, yes_size)
+        except Exception as e:
+            print(f"  [live_broker] ORDER FAILED (YES leg) {signal.market_id}: {e}")
+            return None
+        try:
             no_resp = clob_api.place_market_order(no_id, no_size)
         except Exception as e:
-            print(f"  [live_broker] ORDER FAILED {signal.market_id}: {e}")
+            print(f"  [live_broker] CRITICAL: YES leg filled but NO leg FAILED for {signal.market_id}: {e}")
+            print(f"  [live_broker] CRITICAL: YES order ID {yes_resp.get('orderID','?')} — hedge manually!")
             return None
 
         clob_ids = f"{yes_resp.get('orderID', '?')},{no_resp.get('orderID', '?')}"

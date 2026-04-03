@@ -406,7 +406,7 @@ def run(dry_run: bool = False, send: bool = True, fast_dry_run: bool = False):
                 is_live = strategy.live_ready and getattr(strategy, "mode", "paper") == "live"
                 active_broker = live_broker if is_live and live_broker else broker
 
-                if active_broker.has_position(sig.market_id, strategy.name):
+                if active_broker.has_position(sig.market_id, strategy.name) or (live_broker and not is_live and live_broker.has_position(sig.market_id, strategy.name)):
                     print(f"  [{strategy.name}] skip duplicate: {sig.market_title[:45]}")
                     db.log_decision(run_id, "duplicate_check", "skip", strategy=strategy.name, market_id=sig.market_id, reason="already_open")
                     continue
