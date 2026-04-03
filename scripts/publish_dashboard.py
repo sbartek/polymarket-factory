@@ -11,6 +11,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 EXPORT_SCRIPT = PROJECT_ROOT / "scripts" / "export_dashboard_data.py"
 BUILD_SCRIPT = PROJECT_ROOT / "scripts" / "build_dashboard.py"
+WIKI_SCRIPT = PROJECT_ROOT / "scripts" / "update_wiki.py"
 DIST_DIR = PROJECT_ROOT / "dashboard-dist"
 
 
@@ -69,6 +70,7 @@ def main() -> None:
     target = Path(args.target).expanduser().resolve()
 
     if not args.skip_export:
+        run(["uv", "run", "python", "-m", "scripts.update_wiki"])
         run(["uv", "run", "python", "-m", "scripts.export_dashboard_data"])
         run(["uv", "run", "python", "-m", "scripts.build_dashboard"])
 
