@@ -30,6 +30,9 @@ RELATIONSHIP_GAP_PP = 10.0
 PAIR_KEYWORDS = [
     "trump", "newsom", "vance", "rubio", "fed", "iran", "china", "tariff",
     "trade war", "war", "ceasefire", "election", "primary", "nominee", "president",
+    "nba", "nhl", "mlb", "nfl", "mls",
+    "hormuz", "bitcoin", "crypto", "hungary", "ukraine", "russia", "musk",
+    "hamas", "israel", "netanyahu", "gaza", "hezbollah",
 ]
 
 
@@ -42,13 +45,14 @@ def _days_to_close(end_date: str | None) -> int | None:
         return None
 
 
-def _topic_key(title: str) -> str:
+def _topic_keys(title: str) -> set[str]:
+    """Return all PAIR_KEYWORDS that appear in the title."""
     tl = title.lower()
-    for k in PAIR_KEYWORDS:
-        if k in tl:
-            return k
-    words = re.findall(r"[a-zA-Z]{5,}", tl)
-    return words[0] if words else tl[:24]
+    keys = {k for k in PAIR_KEYWORDS if k in tl}
+    if not keys:
+        words = re.findall(r"[a-zA-Z]{5,}", tl)
+        keys = {words[0]} if words else {tl[:24]}
+    return keys
 
 
 class CorrelatedPairsStrategy(Strategy):
@@ -80,11 +84,12 @@ class CorrelatedPairsStrategy(Strategy):
         eligible = [m for m in markets if self._eligible(m)]
         by_topic: dict[str, list[dict]] = {}
         for ev in eligible:
-            key = _topic_key(ev.get("title") or "")
-            by_topic.setdefault(key, []).append(ev)
+            for key in _topic_keys(ev.get("title") or ""):
+                by_topic.setdefault(key, []).append(ev)
 
-        pairs = []
-        for topic, group in by_topic.items():
+        seen_pairs: set[tuple[str, str]] = set()
+        pairs: list[tuple[dict, dict]] = []
+        for topic, group in sorted(by_topic.items(), key=lambda x: -len(x[1])):
             if len(group) < 2:
                 continue
             group = sorted(group, key=lambda e: float(e.get("volume24hr") or e.get("volume") or 0), reverse=True)
@@ -94,6 +99,10 @@ class CorrelatedPairsStrategy(Strategy):
                     b = group[j]
                     if a.get("slug") == b.get("slug"):
                         continue
+                    pair_key = tuple(sorted([a.get("slug", ""), b.get("slug", "")]))
+                    if pair_key in seen_pairs:
+                        continue
+                    seen_pairs.add(pair_key)
                     pairs.append((a, b))
                     if len(pairs) >= MAX_PAIR_CANDIDATES:
                         return pairs
