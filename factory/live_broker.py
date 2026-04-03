@@ -36,6 +36,20 @@ class LiveBroker:
             return self._open_full_set(signal, amount_usdc, market)
         return self._open_directional(signal, amount_usdc, market)
 
+    def _place_with_retry(self, token_id: str, size: float, leg: str, context: str, delay: float = 2.0) -> dict | None:
+        """Place a market order, retrying once after `delay` seconds on failure."""
+        import time
+        try:
+            return clob_api.place_market_order(token_id, size)
+        except Exception as e_first:
+            print(f"  [live_broker] {leg} leg failed (attempt 1) for {context}: {e_first} — retrying in {delay}s")
+            time.sleep(delay)
+            try:
+                return clob_api.place_market_order(token_id, size)
+            except Exception as e_second:
+                print(f"  [live_broker] {leg} leg failed (attempt 2) for {context}: {e_second}")
+                return None
+
     def _open_full_set(self, signal: Signal, amount_usdc: float, market: dict | None) -> Trade | None:
         if not market:
             print(f"  [live_broker] SKIP {signal.market_id}: no market data for full-set")
@@ -57,12 +71,21 @@ class LiveBroker:
         except Exception as e:
             print(f"  [live_broker] ORDER FAILED (YES leg) {signal.market_id}: {e}")
             return None
-        try:
-            no_resp = clob_api.place_market_order(no_id, no_size)
-        except Exception as e:
-            print(f"  [live_broker] CRITICAL: YES leg filled but NO leg FAILED for {signal.market_id}: {e}")
-            print(f"  [live_broker] CRITICAL: YES order ID {yes_resp.get('orderID','?')} — hedge manually!")
-            return None
+
+        no_resp = self._place_with_retry(no_id, no_size, leg="NO", context=signal.market_id)
+        if no_resp is None:
+            yes_order_id = yes_resp.get("orderID", "?")
+            print(f"  [live_broker] CRITICAL: YES leg filled (order {yes_order_id}) but NO leg failed — recording unhedged position")
+            if self.db and self.run_id:
+                self.db.log_event(
+                    self.run_id, "error", "partial_fill_unhedged_yes",
+                    strategy=signal.strategy, market_id=signal.market_id,
+                    payload={"yes_order_id": yes_order_id, "yes_size": yes_size},
+                )
+            return self._record_trade(
+                signal, amount_usdc, p_yes, outcome="PARTIAL_YES_UNHEDGED",
+                notes=f"UNHEDGED:yes_only,clob_id={yes_order_id},no_failed",
+            )
 
         clob_ids = f"{yes_resp.get('orderID', '?')},{no_resp.get('orderID', '?')}"
         fill_price = round(p_yes + p_no, 4)  # cost per full set
