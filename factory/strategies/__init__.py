@@ -1,4 +1,5 @@
 from .base import Strategy
+from .carry_rewards import CarryRewardsStrategy
 from .celebrity_tabloid import CelebrityTabloidStrategy
 from .correlated_laggard import CorrelatedLaggardStrategy
 from .correlated_pairs import CorrelatedPairsStrategy
@@ -53,4 +54,5 @@ STRATEGIES = [
     CorrelatedLaggardStrategy(),
     Esport48Strategy(),
     CelebrityTabloidStrategy(),
+    CarryRewardsStrategy(),
 ] + _load_generated_strategies()
