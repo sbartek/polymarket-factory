@@ -243,8 +243,12 @@ def format_wa_summary(new_trades: list[tuple], closed_trades: list[dict], alert_
     if closed_trades:
         lines.append(f"*Closed this run:* {'would resolve' if dry_run else 'resolved'}")
         for trade in closed_trades[:12]:
+            side_label = trade['outcome']
+            resolved_label = trade['winner']
+            if resolved_label and resolved_label not in ('YES', 'NO') and side_label in ('YES', 'NO'):
+                side_label = f"normalized {side_label}"
             lines.append(
-                f"- [{trade['strategy']}] {trade['market_title'][:60]} | held {trade['outcome']} | winner {trade['winner']} | ${trade['amount_usdc']:.2f}"
+                f"- [{trade['strategy']}] {trade['market_title'][:60]} | side {side_label} | resolved {resolved_label} | stake ${trade['amount_usdc']:.2f}"
             )
     else:
         lines.append("*Closed this run:* none")
