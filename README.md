@@ -105,26 +105,30 @@ Alert-only graduation criteria and promotion workflow live in [`docs/alert_only_
 
 ## Strategy Roadmap
 
+### Live trading
+
+- [x] **`carry_rewards`** — Full-set purchases for ~4% APY Holding Rewards. `live_ready=True`, `mode=live`. Runs at 19:30 cycle (long time window). First live orders 2026-04-03.
+
 ### Active (paper trading)
 
 - [x] **`ev_news`** — Claude scans top markets + news headlines, picks topics, estimates p̂ per market from news.
 - [x] **`spread_arb`** — Multi-outcome markets where sum of YES prices is materially below 1.0, with stricter practical filtering.
-- [x] **`resolution_hunter`** — Looks for markets likely already resolved in the real world but not yet settled by the market.
 - [x] **`stale_market`** — Looks for liquid near/medium-term markets whose prices appear stale versus recent news.
 - [x] **`correlated_pairs`** — MVP for logically inconsistent market pairs (prerequisite vs downstream, broader vs narrower).
 - [x] **`correlated_laggard`** — Alert-only MVP for liquid leader / laggard divergences across obviously related markets.
 - [x] **`esport48`** — Alert-only screener for esport markets expiring within 48 hours, using deterministic liquidity/price filters and subtype tagging.
-- [x] **`celebrity_tabloid`** — Paper-trading celebrity-event screener that fails closed unless gossip/tabloid coverage directionally corroborates the market. **Note:** producing 0 checks so far — the top-100 Gamma feed does not typically surface celebrity/tabloid markets (pregnancy, romance, scandal event families). Feed coverage is the active blocker, not the signal logic.
+- [x] **`celebrity_tabloid`** — Paper-trading celebrity-event screener. **Note:** 0 signals so far — top-100 Gamma feed doesn't surface celebrity markets. Feed coverage is the active blocker.
 
 Current graduation status:
 - `correlated_laggard`: alert-only, `promotable=True`, `trading_enabled=False`
 - `esport48`: alert-only, `promotable=True`, `trading_enabled=False`
-- `celebrity_tabloid`: paper trading, `trading_enabled=True` — blocked by feed coverage (0 eligible candidates seen in top-100 markets)
+- `celebrity_tabloid`: paper trading, `trading_enabled=True` — blocked by feed coverage
 
-### Paused after early paper results
+### Killed
 
-- [ ] **`fade_certainty`** — Paused after ugly early paper results.
-- [ ] **`weather_edge`** — Paused after negative early paper results; maybe worth revisiting later as a much narrower v2.
+- ❌ **`resolution_hunter`** — Killed 2026-04-03. -92.3% ROI / 8.3% WR on 12 trades. Root cause: CLOB prices resolve within hours; LLM news inference too slow to find real edge. See CR-20260403-006.
+- ❌ **`fade_certainty`** — Killed. 0% WR, -100% ROI (10 trades).
+- ❌ **`weather_edge`** — Killed. 43% WR, -12.7% ROI (136 trades).
 
 ### Planned — next builds
 
@@ -135,11 +139,10 @@ Current graduation status:
 
 ### Future (post-validation)
 
-- [ ] Live trading via Polymarket CLOB API
+- [ ] Graduate `spread_arb` / `ev_news` to live after ≥15 closed trades + graduation checklist
 - [ ] Strategy parameter tuning
-- [ ] Multi-outcome market support improvements
-- [ ] Portfolio-level risk limits refinement
-- [ ] Full trade-state migration from CSV to SQLite
+- [ ] Monthly live vs paper calibration report
+- [ ] Claude calibration retrospective (Brier score gate for LLM strategies)
 
 ---
 
@@ -288,6 +291,40 @@ Logs:
 ```env
 WHATSAPP_GROUP_ID=120363425524943226@g.us
 ```
+
+---
+
+## Wiki (Living Knowledge Base)
+
+```bash
+# Regenerate all wiki pages from DB data
+uv run python scripts/update_wiki.py
+
+# Update a single strategy page
+uv run python scripts/update_wiki.py --page strategies --strategy ev_news
+
+# Ask a question — answer filed back into wiki
+uv run python scripts/ask_wiki.py "what should I focus on this week?" --file-back
+```
+
+Wiki pages live in `wiki/` (gitignored, auto-generated). Rendered at `/wiki.html` on the dashboard.
+
+---
+
+## Live Trading
+
+```bash
+# Kill switch — cancel all open CLOB orders
+uv run python scripts/kill_live.py
+
+# Dry-run kill switch (shows what would be cancelled)
+uv run python scripts/kill_live.py --dry-run
+
+# Generate CLOB credentials from wallet private key (run once)
+uv run python scripts/setup_clob_credentials.py
+```
+
+Live positions are stored in `trades` table with `mode=live`. Paper positions use `mode=paper`.
 
 ---
 
