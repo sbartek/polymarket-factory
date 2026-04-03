@@ -1,10 +1,12 @@
-# Polymarket Factory — Claude Context
+# Polymarket Factory Memory
 
 ## What this project is
 
 A framework for spinning up, paper-trading, and evaluating Polymarket prediction market strategies. The goal is to find strategies with real edge, paper-trade them, then promote winners to live trading.
 
 Runs automatically via launchd on the `pplayouts` machine (Intel Mac, Tailscale IP 100.75.233.52). Dashboard at https://pplayouts-dashboard.bartekskorulski.workers.dev.
+
+This file is the canonical durable project memory for both Claude and Codex. Keep high-signal operational facts here and keep external memory files as thin pointers to this file.
 
 ---
 
@@ -19,7 +21,7 @@ runner.py (every 2h, 12x/day via launchd)
   └── publish dashboard snapshot
 ```
 
-**Runtime environments:** `research` (signals only) · `paper` (default) · `live` (carry_rewards only)
+**Runtime environments:** `research` (signals only) · `paper` (default) · `live` (explicit `mode="live"` plus `live_ready=True` only; currently `carry_rewards`)
 
 **Key files:**
 - `factory/runner.py` — main loop
@@ -28,7 +30,7 @@ runner.py (every 2h, 12x/day via launchd)
 - `factory/broker.py` — paper broker (SQLite-backed)
 - `factory/live_broker.py` — real CLOB execution, $100 hard cap
 - `factory/feed.py` — Gamma API wrappers
-- `factory/claude.py` — LLM wrapper (Anthropic API → Claude CLI → codex fallback)
+- `factory/claude.py` — LLM wrapper (Anthropic API -> Claude CLI -> codex fallback)
 - `factory/db.py` — SQLite schema, 15+ tables
 - `eval/report.py` — weekly kill/keep evaluation
 - `scripts/` — 20+ operational scripts
@@ -85,6 +87,8 @@ Run: `uv run eval/report.py`
 - CLOB credentials in `.env` (generated via `scripts/setup_clob_credentials.py`)
 - Kill switch: `uv run python scripts/kill_live.py`
 - `trades` table has `mode` column (`paper` | `live`)
+- `PaperBroker` loads only `mode=paper` trades; `LiveBroker` loads only `mode=live` trades
+- Generated strategies are blocked from `live` by environment policy and should stay in research/paper unless a human deliberately changes that
 
 ---
 
@@ -128,6 +132,13 @@ uv run python scripts/build_dashboard.py
 uv run python scripts/publish_dashboard.py ~/workai/projects/pplayouts-dashboard --commit --push
 ```
 
+Dashboard publishing notes:
+
+- Publish target repo: `~/workai/projects/pplayouts-dashboard`
+- Canonical publish command: `.venv/bin/python scripts/publish_dashboard.py ~/workai/projects/pplayouts-dashboard`
+- `scripts/publish_dashboard.py` is not a pure sync step; by default it runs `scripts.update_wiki.py`, `scripts.export_dashboard_data.py`, and `scripts.build_dashboard.py` before mirroring `dashboard-dist/`
+- Verified on 2026-04-03: publishing completed successfully and the resulting dashboard repo commit was `28d6030`
+
 ---
 
 ## WhatsApp group
@@ -139,20 +150,56 @@ Full summary at 09:00 Madrid time; delta updates at other runs.
 
 ## Known issues / active work (2026-04-03)
 
-- `celebrity_tabloid` gets 0 signals — needs tag-filtered feed, not top-100
 - `wiki/overview.md` is a duplicate of `wiki/meta/overview.md` — one should be removed
 - Wiki pages missing for: `correlated_pairs`, `celebrity_tabloid`, `carry_rewards`
-- Live broker has no partial-fill rollback (YES fills, NO fails → unhedged)
-- No DB retention policy — `market_snapshot_archives` grows unbounded
-- No Brier score tracking for LLM strategies (ev_news, stale_market)
+- No DB retention cleanup job — 730-day retention policy exists in config but no enforcement script runs it
+- `mutually_exclusive_oversum` proposal (PR-20260403-002) overlaps with `spread_arb` — decision pending: unify or keep separate
+
+## Fixed 2026-04-03 (session 2)
+
+- **`celebrity_tabloid`**: 3 root causes fixed — strategy now fetches from `celebrities`/`pop-culture`/`reality-tv`/`music` tags (30 each) and merges with top-100 feed; `_market_text()` bug fixed (tags were silently dropped due to key not in allowed set); filters relaxed (MIN_VOLUME 10k→100, MAX_DAYS 45→365, MIN_CANDIDATE_SCORE 4.0→3.0, MIN_PRICE 0.12→0.08). Result: 6 candidates per run, 2 signals in test.
+- **live broker partial-fill rollback**: `_open_full_set()` now retries NO leg once (2s delay); on second failure records `PARTIAL_YES_UNHEDGED` trade with CLOB order ID in notes + DB error event. Position now visible in open_positions for manual review. Also fixed `log_event()` call signature bug (market_id moved into payload).
+- **`correlated_pairs`**: `_topic_key()` → `_topic_keys()` (returns set of ALL matching keywords, not just first). `_discover_pairs()` uses inverted index with deduplication across groups. Expanded `PAIR_KEYWORDS` with nba/nhl/mlb/nfl/mls/hormuz/bitcoin/crypto/hungary/ukraine/russia/musk/hamas/israel/netanyahu/gaza/hezbollah. Result: 3 pairs → 4 pairs including Trump+Iran logical pair.
+- **Brier score tracking**: `FactoryDB.get_brier_score_data()` joins signals to closed trades at `run_id_opened`; filters to `resolved_outcome IN ('YES','NO')` (named-outcome sports markets excluded — their `exit_price` is unreliable). `eval/report.py` prints LLM calibration section. Empty now (both closed LLM trades have team-name outcomes); will populate as binary YES/NO markets resolve.
+- **Tests**: 113 → 144 tests. Added `test_celebrity_tabloid_tags.py` (8), `test_correlated_pairs_discovery.py` (9), `test_live_broker_partial_fill.py` (7), `test_brier_scores.py` (7).
+
+## Verified operational notes (2026-04-03)
+
+- The live Workers wiki bug was caused by `dashboard/wiki.html` calling `Dashboard.loadJson(...)` while `dashboard/dashboard.js` did not export `loadJson` on `window.Dashboard`; the fix was to export `loadJson`, rebuild, and republish
+- There is now a small JS dashboard test harness: `npm run test:dashboard` runs `vitest` + `jsdom` tests for the `window.Dashboard` export contract, `dataPath()` behavior, and wiki render/empty-state behavior
+- The dashboard wiki renderer in `scripts/build_dashboard.py` now preserves identifiers with underscores such as `ev_news` and `stale_market` instead of turning them into accidental italics
+- `scripts/export_dashboard_data.py` now includes generated-strategy lifecycle metadata in `dashboard-data/strategies.json`, including active vs archived state, proposal/module paths, benchmark score, label count, and archive reason when available
+- `dashboard/strategies.html` now has a generated/core origin filter plus generated lifecycle and benchmark columns, and `dashboard/index.html` now marks generated strategies directly in the strategy snapshot
+- The replay benchmark is surfaced in the dashboard overview via `dashboard-data/benchmarks.json`; source artifacts live in `benchmark-data/replay-benchmark-*.json`
+- `scripts/build_replay_benchmark.py` now emits `strategy_slices` grouped by `strategy`, `edge_type`, and `time_window`; the Strategies page reads those rows from `dashboard-data/benchmarks.json`
+- The replay benchmark now derives `price_window` directional labels from later observed prices already stored in `signals` and `signal_execution_checks`, using each strategy's hold window from `factory/strategy_meta.py`
+- There is now a `market_observations` table populated from `factory/runner.py` market snapshots; `scripts/build_replay_benchmark.py` prefers this table for forward price labels and only falls back to `signals` / `signal_execution_checks` when observation history is absent
+- `factory/runner.py` now also stores the raw fetched Gamma snapshot per run in `market_snapshot_archives`, so future runs are reconstructible from original payloads instead of only derived observations
+- Historical backfill is not feasible from current local artifacts; the repo has SQLite state and `trades.csv`, but no stored raw market snapshot history before `market_snapshot_archives`, and `run_logs` do not contain enough payload detail to reconstruct old market states
+- The dashboard now exports `storage.json` and shows a Storage panel on Overview with current project size, DB size, raw snapshot archive size, observation row count, and recent raw snapshot payload sizes
+- Current storage policy is raw snapshot retention for 730 days, with a soft alert near 90 GB and a hard reference limit of 100 GB for project storage
+- `dashboard/reference.html` was refreshed to document the replay benchmark, the explicit `research / paper / live` split, the current launchd schedules, and the live-only `carry_rewards` path
+- There is now a dedicated research entrypoint in `run_factory_research.sh` plus `launchd/com.polymarket.factory.research.plist`, installed into `~/Library/LaunchAgents` and loaded in `launchd` under `gui/501` for 07:30 daily, logging to `factory-research.log`
+- There is now a dedicated live launchd path: `run_factory_live.sh` plus `launchd/com.polymarket.factory.live.plist`, scheduled for 19:30 and writing to `factory-live.log` (gitignored)
+- `com.polymarket.factory`, `com.polymarket.factory.aggressive`, and `com.polymarket.factory.live` all exist in `launchd` under `gui/501`; `launchctl print gui/501/<label>` is the reliable check because `launchctl list` may show nothing while idle for calendar agents
+- `factory-aggressive.log` is not an input file; it is the stdout/stderr sink for `launchd/com.polymarket.factory.aggressive.plist`, can be deleted safely, and will be recreated by the next aggressive cycle run
+- Keep `factory-aggressive.log` ignored in the repo; `.gitignore` includes it alongside `factory.log`
+- The wiki update path uses `factory/claude.py`, which calls Anthropic if `ANTHROPIC_API_KEY` is set and otherwise shells out to `claude --permission-mode bypassPermissions --print ...`; this can block unless external access is allowed
+
+## Current plan state (2026-04-03)
+
+Session 1: benchmark/control-loop stack — environment split, replay benchmark, generated retention gate, dashboard visibility, price-window labels, market observation history, raw snapshot archives, storage monitoring.
+
+Session 2: strategy fixes — celebrity_tabloid tag feed + filter fixes, live broker partial-fill safety, correlated_pairs multi-keyword pairing, Brier score infrastructure. 144 tests passing. Remaining: wiki cleanup, DB retention job, mutually_exclusive_oversum decision.
 
 ---
 
 ## Context files
 
-- `MEMORY.md` (this file) — full project context for Claude and codex
+- `MEMORY.md` (this file) — canonical full project context for Claude and Codex
 - `CLAUDE.md` — one-liner pointing here; auto-loaded by Claude Code
-- No `AGENTS.md` yet — add one if codex needs auto-loading too
+- `~/.codex/memories/polymarket-factory.md` — keep this as a tiny pointer to this file
+- No `AGENTS.md` yet — add one if Codex needs auto-loading from inside the repo
 
 ---
 
