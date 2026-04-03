@@ -12,3 +12,4 @@ factory.log
 factory-aggressive.log
 dashboard-dist/
 dashboard-data/
+node_modules/

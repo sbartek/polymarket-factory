@@ -266,6 +266,15 @@ python3 -m http.server 8000
 # then open /index.html?bundled=1
 ```
 
+Dashboard JS tests:
+
+```bash
+npm install
+npm run test:dashboard
+```
+
+These browser-side tests cover the `window.Dashboard` contract, `dataPath()` behavior, and the wiki page render/empty-state flow under `jsdom`. Run them before pushing dashboard UI changes.
+
 See also:
 - `docs/dashboard_metric_definitions.md`
 - `docs/dashboard_snapshot_schema.md`

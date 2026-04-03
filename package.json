@@ -1,0 +1,11 @@
+{
+  "name": "polymarket-factory-dashboard-tests",
+  "private": true,
+  "scripts": {
+    "test:dashboard": "vitest run"
+  },
+  "devDependencies": {
+    "jsdom": "^26.1.0",
+    "vitest": "^3.2.4"
+  }
+}
