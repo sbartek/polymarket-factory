@@ -15,6 +15,7 @@ from datetime import datetime, timedelta
 
 from .broker import PaperBroker
 from .db import FactoryDB
+from .live_broker import LiveBroker
 from .execution import build_market_index, snapshot_for_signal
 from .feed import fetch_top, fetch_closed, get_market_winner, get_submarket_outcome
 from .models import Signal
@@ -317,6 +318,7 @@ def run(dry_run: bool = False, send: bool = True, fast_dry_run: bool = False):
 
     base_broker = PaperBroker(run_id=run_id)
     broker = DryRunBroker(base_broker) if dry_run else base_broker
+    live_broker = LiveBroker(db=db, run_id=run_id) if not dry_run else None
     meta = strategy_metadata()
     saved_overrides = _apply_fast_dry_run_overrides(STRATEGIES, enabled=fast_dry_run)
     markets_fetched = 0
@@ -401,7 +403,10 @@ def run(dry_run: bool = False, send: bool = True, fast_dry_run: bool = False):
                     )
                     continue
 
-                if broker.has_position(sig.market_id, strategy.name):
+                is_live = strategy.live_ready and getattr(strategy, "mode", "paper") == "live"
+                active_broker = live_broker if is_live and live_broker else broker
+
+                if active_broker.has_position(sig.market_id, strategy.name):
                     print(f"  [{strategy.name}] skip duplicate: {sig.market_title[:45]}")
                     db.log_decision(run_id, "duplicate_check", "skip", strategy=strategy.name, market_id=sig.market_id, reason="already_open")
                     continue
@@ -416,13 +421,23 @@ def run(dry_run: bool = False, send: bool = True, fast_dry_run: bool = False):
                     db.log_decision(run_id, "cap_check", "skip", strategy=strategy.name, market_id=sig.market_id, reason=reason, details={"amount": amount, "strategy_exposure": exposure_by_strategy.get(strategy.name, 0.0), "window_exposure": exposure_by_window.get(strategy_meta.get("time_window", "unknown"), 0.0)})
                     continue
 
-                broker.open_position(sig, amount)
-                exposure_by_strategy[strategy.name] = exposure_by_strategy.get(strategy.name, 0.0) + amount
-                exposure_by_window[strategy_meta.get("time_window", "unknown")] = exposure_by_window.get(strategy_meta.get("time_window", "unknown"), 0.0) + amount
-                new_trades.append((sig, amount))
-                new_positions_count += 1
-                print(f"  [{strategy.name}] {'WOULD OPEN' if dry_run else 'OPEN'} {sig.outcome} {sig.market_title[:45]} | EV +{sig.ev_pp:.0f}pp | ${amount} | {sig.confidence}")
-                db.log_decision(run_id, "execution", "dry_open" if dry_run else "open", strategy=strategy.name, market_id=sig.market_id, reason="signal_passed_filters", details={"amount": amount, "ev_pp": sig.ev_pp, "confidence": sig.confidence})
+                if is_live and live_broker:
+                    market_entry = market_index.get(sig.market_id, {})
+                    market_dict = market_entry.get("market") or (market_entry.get("event", {}).get("markets") or [None])[0]
+                    trade = live_broker.open_position(sig, amount, market=market_dict)
+                    track = trade is not None
+                else:
+                    broker.open_position(sig, amount)
+                    track = True
+
+                if track:
+                    exposure_by_strategy[strategy.name] = exposure_by_strategy.get(strategy.name, 0.0) + amount
+                    exposure_by_window[strategy_meta.get("time_window", "unknown")] = exposure_by_window.get(strategy_meta.get("time_window", "unknown"), 0.0) + amount
+                    new_trades.append((sig, amount))
+                    new_positions_count += 1
+                    mode_label = "LIVE" if is_live else ("WOULD OPEN" if dry_run else "OPEN")
+                    print(f"  [{strategy.name}] {mode_label} {sig.outcome} {sig.market_title[:45]} | EV +{sig.ev_pp:.0f}pp | ${amount} | {sig.confidence}")
+                    db.log_decision(run_id, "execution", "live_open" if is_live else ("dry_open" if dry_run else "open"), strategy=strategy.name, market_id=sig.market_id, reason="signal_passed_filters", details={"amount": amount, "ev_pp": sig.ev_pp, "confidence": sig.confidence, "mode": "live" if is_live else "paper"})
 
             print()
             _log_strategy_details(db, run_id, strategy)

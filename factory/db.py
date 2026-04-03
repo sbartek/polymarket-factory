@@ -15,7 +15,7 @@ TRADES_CSV = Path(__file__).parents[1] / "data" / "trades.csv"
 TRADE_FIELDS = [
     "id", "strategy", "market_id", "market_title", "outcome",
     "amount_usdc", "entry_price", "shares", "opened_at", "closes", "url",
-    "status", "exit_price", "closed_at", "pnl_usdc", "resolved_outcome", "notes",
+    "status", "exit_price", "closed_at", "pnl_usdc", "resolved_outcome", "notes", "mode",
 ]
 
 
@@ -315,6 +315,19 @@ class FactoryDB:
         with self._connect() as conn:
             conn.executescript(SCHEMA_SQL)
             conn.commit()
+        self._migrate_db()
+
+    def _migrate_db(self):
+        migrations = [
+            "ALTER TABLE trades ADD COLUMN mode TEXT DEFAULT 'paper'",
+        ]
+        with self._connect() as conn:
+            for sql in migrations:
+                try:
+                    conn.execute(sql)
+                    conn.commit()
+                except sqlite3.OperationalError:
+                    pass  # column already exists
 
     def acquire_run_lock(self, name: str, owner_run_id: str, ttl_seconds: int = 7200) -> bool:
         now = utcnow()
@@ -367,8 +380,10 @@ class FactoryDB:
         with self._connect() as conn:
             return [dict(r) for r in conn.execute("SELECT * FROM trades ORDER BY opened_at, id").fetchall()]
 
-    def has_open_position(self, market_id: str, strategy: str) -> bool:
+    def has_open_position(self, market_id: str, strategy: str, mode: str | None = None) -> bool:
         with self._connect() as conn:
+            if mode:
+                return conn.execute("SELECT 1 FROM trades WHERE market_id = ? AND strategy = ? AND status = 'open' AND mode = ? LIMIT 1", (market_id, strategy, mode)).fetchone() is not None
             return conn.execute("SELECT 1 FROM trades WHERE market_id = ? AND strategy = ? AND status = 'open' LIMIT 1", (market_id, strategy)).fetchone() is not None
 
     def insert_trade(self, trade: dict):
@@ -379,8 +394,8 @@ class FactoryDB:
                     id, strategy, market_id, market_title, outcome, amount_usdc, entry_price,
                     shares, opened_at, closes, url, status, exit_price, closed_at,
                     pnl_usdc, resolved_outcome, notes, run_id_opened, run_id_closed,
-                    lifecycle_group, time_window, edge_type
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    lifecycle_group, time_window, edge_type, mode
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     trade.get("id", ""), trade.get("strategy", ""), trade.get("market_id", ""), trade.get("market_title", ""),
@@ -389,7 +404,7 @@ class FactoryDB:
                     trade.get("status", "open"), float(trade.get("exit_price") or 0), trade.get("closed_at", ""),
                     float(trade.get("pnl_usdc") or 0), trade.get("resolved_outcome", ""), trade.get("notes", ""),
                     trade.get("run_id_opened"), trade.get("run_id_closed"), trade.get("lifecycle_group"),
-                    trade.get("time_window"), trade.get("edge_type"),
+                    trade.get("time_window"), trade.get("edge_type"), trade.get("mode", "paper"),
                 ),
             )
             conn.commit()
@@ -403,7 +418,11 @@ class FactoryDB:
             outcome = resolved_outcome.upper()
             shares = float(t["shares"])
             amount = float(t["amount_usdc"])
-            pnl = shares * 1.0 - amount if outcome == t["outcome"] else -amount
+            # FULL_SET positions always resolve to the full set value; rewards tracked off-chain
+            if t.get("outcome") == "FULL_SET":
+                pnl = 0.0
+            else:
+                pnl = shares * 1.0 - amount if outcome == t["outcome"] else -amount
             conn.execute(
                 "UPDATE trades SET status='closed', exit_price=?, closed_at=?, pnl_usdc=?, resolved_outcome=?, run_id_closed=? WHERE id=?",
                 (1.0 if outcome == t["outcome"] else 0.0, datetime.now().isoformat(timespec="seconds"), round(pnl, 4), resolved_outcome, run_id_closed, trade_id),

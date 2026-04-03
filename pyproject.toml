@@ -6,6 +6,7 @@ dependencies = [
     "requests",
     "ddgs",
     "anthropic",
+    "py-clob-client",
 ]
 
 [project.optional-dependencies]

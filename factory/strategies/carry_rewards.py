@@ -45,6 +45,7 @@ def _is_binary(ev: dict) -> bool:
 
 class CarryRewardsStrategy(Strategy):
     name = "carry_rewards"
+    mode = "live"
     edge_type = "structural"
     time_window = "long"
     target_hold_min_days = MIN_DAYS
@@ -52,8 +53,9 @@ class CarryRewardsStrategy(Strategy):
     scan_frequency = "daily"
     max_position_usdc = 10.0
     min_ev_pp = MIN_CARRY_PP
-    alert_only = True
-    trading_enabled = False
+    alert_only = False
+    trading_enabled = True
+    live_ready = True
 
     def scan(self, markets: list[dict]) -> list[Signal]:
         candidates = []
