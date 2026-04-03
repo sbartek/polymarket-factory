@@ -247,6 +247,17 @@ uv run python scripts/build_dashboard.py
 uv run python scripts/publish_dashboard.py ~/path/to/dashboard-publish-repo
 ```
 
+Current publish target in this workspace:
+
+```bash
+uv run python scripts/publish_dashboard.py ~/workai/projects/pplayouts-dashboard
+```
+
+Operational notes:
+- `scripts/publish_dashboard.py` runs `scripts.update_wiki.py` before export/build unless `--skip-export` is passed.
+- `scripts.update_wiki.py` calls Claude/Codex tooling, so the publish flow may require external access and can take longer than a plain file sync.
+- `run_aggressive_cycle.sh` writes its scheduled launchd output to `factory-aggressive.log`; that file is a disposable local log and is gitignored.
+
 Local preview:
 
 ```bash

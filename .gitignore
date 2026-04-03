@@ -9,5 +9,6 @@ data/*.sqlite3-shm
 backups/*.sqlite3
 backups/*.csv
 factory.log
+factory-aggressive.log
 dashboard-dist/
 dashboard-data/
