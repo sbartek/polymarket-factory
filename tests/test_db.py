@@ -164,3 +164,38 @@ class TestCsvImport:
 
         assert count2 == 0
         assert len(db.load_trades()) == 1
+
+
+class TestMarketObservations:
+    def test_logs_market_observations(self, db):
+        run_id = db.start_run("paper")
+
+        db.log_market_observations(run_id, [
+            {
+                "event_slug": "event-a",
+                "market_id": "event-a:123",
+                "market_slug": "market-a",
+                "market_title": "Example market",
+                "yes_price": 0.42,
+                "best_bid": 0.4,
+                "best_ask": 0.44,
+                "spread": 0.04,
+                "liquidity": 120.0,
+                "volume": 2500.0,
+                "volume_24hr": 400.0,
+                "close_time": "2026-04-10T00:00:00Z",
+            }
+        ])
+
+        with db._connect() as conn:
+            row = conn.execute(
+                "SELECT market_id, market_title, yes_price, best_bid, best_ask, volume_24hr FROM market_observations"
+            ).fetchone()
+
+        assert row is not None
+        assert row["market_id"] == "event-a:123"
+        assert row["market_title"] == "Example market"
+        assert row["yes_price"] == pytest.approx(0.42)
+        assert row["best_bid"] == pytest.approx(0.4)
+        assert row["best_ask"] == pytest.approx(0.44)
+        assert row["volume_24hr"] == pytest.approx(400.0)

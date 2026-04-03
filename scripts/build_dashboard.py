@@ -43,7 +43,8 @@ def _md_to_html(md: str) -> str:
 
     def inline(text: str) -> str:
         text = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', text)
-        text = re.sub(r'_(.+?)_', r'<em>\1</em>', text)
+        # Avoid treating intra-word underscores like `ev_news` as emphasis.
+        text = re.sub(r'(?<!\w)_(.+?)_(?!\w)', r'<em>\1</em>', text)
         text = re.sub(r'`(.+?)`', r'<code>\1</code>', text)
         text = re.sub(r'\[([^\]]+)\]\(([^)]+)\)', r'<a href="\2">\1</a>', text)
         return text

@@ -136,6 +136,25 @@ CREATE TABLE IF NOT EXISTS portfolio_snapshots (
     FOREIGN KEY(run_id) REFERENCES runs(id)
 );
 
+CREATE TABLE IF NOT EXISTS market_observations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id TEXT NOT NULL,
+    event_slug TEXT,
+    market_id TEXT NOT NULL,
+    market_slug TEXT,
+    market_title TEXT,
+    yes_price REAL,
+    best_bid REAL,
+    best_ask REAL,
+    spread REAL,
+    liquidity REAL,
+    volume REAL,
+    volume_24hr REAL,
+    close_time TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(run_id) REFERENCES runs(id)
+);
+
 CREATE TABLE IF NOT EXISTS spread_arb_baskets (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     run_id TEXT NOT NULL,
@@ -297,6 +316,9 @@ CREATE INDEX IF NOT EXISTS idx_run_logs_run_id ON run_logs(run_id);
 CREATE INDEX IF NOT EXISTS idx_signal_execution_checks_run_id ON signal_execution_checks(run_id);
 CREATE INDEX IF NOT EXISTS idx_signal_execution_checks_strategy ON signal_execution_checks(strategy);
 CREATE INDEX IF NOT EXISTS idx_signal_execution_checks_market_id ON signal_execution_checks(market_id);
+CREATE INDEX IF NOT EXISTS idx_market_observations_run_id ON market_observations(run_id);
+CREATE INDEX IF NOT EXISTS idx_market_observations_market_id ON market_observations(market_id);
+CREATE INDEX IF NOT EXISTS idx_market_observations_created_at ON market_observations(created_at);
 """
 
 
@@ -377,12 +399,28 @@ class FactoryDB:
             conn.commit()
             return len(rows)
 
-    def load_trades(self) -> list[dict]:
+    def load_trades(self, mode: str | None = None) -> list[dict]:
         with self._connect() as conn:
-            return [dict(r) for r in conn.execute("SELECT * FROM trades ORDER BY opened_at, id").fetchall()]
+            if mode == "paper":
+                rows = conn.execute(
+                    "SELECT * FROM trades WHERE COALESCE(mode, 'paper') = 'paper' ORDER BY opened_at, id"
+                ).fetchall()
+            elif mode:
+                rows = conn.execute(
+                    "SELECT * FROM trades WHERE mode = ? ORDER BY opened_at, id",
+                    (mode,),
+                ).fetchall()
+            else:
+                rows = conn.execute("SELECT * FROM trades ORDER BY opened_at, id").fetchall()
+            return [dict(r) for r in rows]
 
     def has_open_position(self, market_id: str, strategy: str, mode: str | None = None) -> bool:
         with self._connect() as conn:
+            if mode == "paper":
+                return conn.execute(
+                    "SELECT 1 FROM trades WHERE market_id = ? AND strategy = ? AND status = 'open' AND COALESCE(mode, 'paper') = 'paper' LIMIT 1",
+                    (market_id, strategy),
+                ).fetchone() is not None
             if mode:
                 return conn.execute("SELECT 1 FROM trades WHERE market_id = ? AND strategy = ? AND status = 'open' AND mode = ? LIMIT 1", (market_id, strategy, mode)).fetchone() is not None
             return conn.execute("SELECT 1 FROM trades WHERE market_id = ? AND strategy = ? AND status = 'open' LIMIT 1", (market_id, strategy)).fetchone() is not None
@@ -504,6 +542,45 @@ class FactoryDB:
                     int(snapshot.get("stale_positions") or 0),
                     utcnow(),
                 ),
+            )
+            conn.commit()
+
+    def log_market_observations(self, run_id: str, rows: list[dict]):
+        if not rows:
+            return
+        created_at = utcnow()
+        payload = [
+            (
+                run_id,
+                row.get("event_slug"),
+                row.get("market_id"),
+                row.get("market_slug"),
+                row.get("market_title"),
+                row.get("yes_price"),
+                row.get("best_bid"),
+                row.get("best_ask"),
+                row.get("spread"),
+                row.get("liquidity"),
+                row.get("volume"),
+                row.get("volume_24hr"),
+                row.get("close_time"),
+                created_at,
+            )
+            for row in rows
+            if row.get("market_id")
+        ]
+        if not payload:
+            return
+        with self._connect() as conn:
+            conn.executemany(
+                """
+                INSERT INTO market_observations (
+                    run_id, event_slug, market_id, market_slug, market_title,
+                    yes_price, best_bid, best_ask, spread, liquidity, volume, volume_24hr,
+                    close_time, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                payload,
             )
             conn.commit()
 

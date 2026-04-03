@@ -47,7 +47,7 @@ You (idea) → new file in factory/strategies/ → add to STRATEGIES registry �
 ```python
 class Strategy(ABC):
     name: str
-    mode: str               # "paper" | "live"
+    mode: str               # preferred execution env: "paper" | "live"
     max_position_usdc: float
     min_ev_pp: float
     alert_only: bool        # if True, log/report only; runner will not open positions
@@ -100,6 +100,21 @@ The report aggregates by:
 - active vs legacy
 
 Alert-only graduation criteria and promotion workflow live in [`docs/alert_only_graduation.md`](docs/alert_only_graduation.md).
+
+## Runtime Environments
+
+The runner now supports three explicit environments:
+
+- `research` — scan and log signals, but never open or resolve positions
+- `paper` — paper-only trading and paper-only resolution
+- `live` — real-money trading for explicit live-only strategies
+
+Strategy attributes and environment policy interact like this:
+- `mode="paper"` means the strategy may open positions only in the `paper` environment
+- `mode="live"` means the strategy is kept out of paper trading and may open only in the `live` environment
+- `live_ready=True` is required but not sufficient for `live`; the environment still decides whether execution is allowed
+
+Generated strategies are blocked from `live` by environment policy.
 
 ---
 
@@ -166,15 +181,30 @@ uv run python scripts/open_positions.py --strategy ev_news
 # Filter by time window
 uv run python scripts/open_positions.py --time-window medium
 
-# Manual run
+# Manual run (paper env by default)
 uv run python -m factory.runner
 
+# Manual research-only run
+FACTORY_ENV=research uv run python -m factory.runner
+
+# Dedicated research entrypoint used by launchd
+./run_factory_research.sh
+
+# Manual live run
+FACTORY_ENV=live uv run python -m factory.runner
+
+# Dedicated live entrypoint used by launchd
+./run_factory_live.sh
+
 # Safe manual dry run (no writes, no closes, no sends)
-uv run python -c "from factory.runner import run; run(dry_run=True)"
+uv run python -c "from factory.runner import run; run(environment='paper', dry_run=True)"
+
+# Safe dry run of live environment policy
+uv run python -c "from factory.runner import run; run(environment='live', dry_run=True)"
 
 # Faster safe dry run for debugging the whole cycle
 # (currently skips `ev_news` and trims other expensive strategy workloads)
-uv run python -c "from factory.runner import run; run(dry_run=True, fast_dry_run=True)"
+uv run python -c "from factory.runner import run; run(environment='paper', dry_run=True, fast_dry_run=True)"
 
 # Weekly evaluation
 uv run eval/report.py

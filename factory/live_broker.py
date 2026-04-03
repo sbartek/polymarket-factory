@@ -20,7 +20,7 @@ class LiveBroker:
     def _live_exposure(self) -> float:
         return sum(
             float(t.get("amount_usdc") or 0)
-            for t in self.db.load_trades()
+            for t in self.db.load_trades(mode="live")
             if t.get("status") == "open" and t.get("mode") == "live"
         )
 
@@ -122,7 +122,7 @@ class LiveBroker:
         self.db.close_trade(trade_id, resolved_outcome, run_id_closed=self.run_id)
 
     def get_open_positions(self) -> list[dict]:
-        return [t for t in self.db.load_trades() if t.get("status") == "open" and t.get("mode") == "live"]
+        return [t for t in self.db.load_trades(mode="live") if t.get("status") == "open" and t.get("mode") == "live"]
 
     def get_all_trades(self) -> list[dict]:
-        return [t for t in self.db.load_trades() if t.get("mode") == "live"]
+        return [t for t in self.db.load_trades(mode="live") if t.get("mode") == "live"]

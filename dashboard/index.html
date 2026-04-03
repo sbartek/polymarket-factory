@@ -44,6 +44,11 @@
         </article>
 
         <article class="panel">
+          <div class="panel-header"><h2>Replay benchmark</h2><span id="benchmark-meta" class="muted"></span></div>
+          <div id="benchmark-panel" class="stack muted">No benchmark snapshot yet.</div>
+        </article>
+
+        <article class="panel">
           <div class="panel-header"><h2>Strategy snapshot</h2><span id="strategy-summary" class="muted"></span></div>
           <div class="table-wrap">
             <table>
@@ -91,9 +96,26 @@
           ].join('');
         }
 
+        const benchmarkPanel = document.getElementById('benchmark-panel');
+        const benchmarkMeta = document.getElementById('benchmark-meta');
+        const alertOnlyBenchmark = snapshot.benchmarks && snapshot.benchmarks.scopes ? snapshot.benchmarks.scopes['alert-only'] : null;
+        if (alertOnlyBenchmark && (alertOnlyBenchmark.strategies || []).length) {
+          const rows = alertOnlyBenchmark.strategies.slice(0, 5);
+          benchmarkMeta.textContent = `${Dashboard.fmtDate(alertOnlyBenchmark.generated_at)} · ${rows.length}/${alertOnlyBenchmark.strategy_count} shown`;
+          benchmarkPanel.classList.remove('muted');
+          benchmarkPanel.innerHTML = [
+            `<div><strong>Alert-only replay benchmark</strong></div>`,
+            `<div class="muted">${Dashboard.fmtInt(alertOnlyBenchmark.signal_count)} signals across ${Dashboard.fmtInt(alertOnlyBenchmark.strategy_count)} strategies</div>`,
+            '<div class="table-wrap section-gap"><table><thead><tr><th>Strategy</th><th>Score</th><th>Signals</th><th>Labels</th><th>EV @ $10</th><th>Uniq</th></tr></thead><tbody>' +
+              rows.map((row) => `<tr><td>${row.strategy}</td><td>${Dashboard.fmtNumber(row.benchmark_score, 3)}</td><td>${Dashboard.fmtInt(row.signals)}</td><td>${Dashboard.fmtInt(row.labeled_signals)}</td><td>${Dashboard.fmtNumber(row.avg_ev_after_slippage_10_pp)} pp</td><td>${Dashboard.fmtNumber(row.uniqueness_score, 3)}</td></tr>`).join('') +
+            '</tbody></table></div>',
+            `<div class="muted">Top strategy: ${rows[0].strategy} · score ${Dashboard.fmtNumber(rows[0].benchmark_score, 3)}</div>`,
+          ].join('');
+        }
+
         const strategies = snapshot.strategies;
-        document.getElementById('strategies-body').innerHTML = strategies.map((s) => `<tr><td><div class="strategy-name">${s.strategy_name}</div>${s.warnings?.length ? `<div class="muted">${s.warnings.join(' ')}</div>` : ''}</td><td><span class="${Dashboard.pillClass(s.status)}">${s.status}</span></td><td>${Dashboard.fmtNumber(s.open_exposure)} USDC</td><td>${Dashboard.fmtInt(s.open_positions)}</td><td>${Dashboard.fmtInt(s.execution_checks_count_30d)}</td><td>${Dashboard.fmtNumber(s.avg_ev_after_slippage_50_pp_30d)} pp</td></tr>`).join('');
-        document.getElementById('strategy-summary').textContent = `${strategies.filter((s) => s.status === 'active').length} active · ${strategies.filter((s) => s.status === 'paused').length} paused · Phase A visible`;
+        document.getElementById('strategies-body').innerHTML = strategies.map((s) => `<tr><td><div class="strategy-name">${s.strategy_name}</div>${s.is_generated ? `<div class="muted">generated · ${s.generated_lifecycle || 'generated'}${s.generated_benchmark_score !== null && s.generated_benchmark_score !== undefined ? ` · score ${Dashboard.fmtNumber(s.generated_benchmark_score, 3)}` : ''}</div>` : ''}${s.warnings?.length ? `<div class="muted">${s.warnings.join(' ')}</div>` : ''}</td><td><span class="${Dashboard.pillClass(s.status)}">${s.status}</span></td><td>${Dashboard.fmtNumber(s.open_exposure)} USDC</td><td>${Dashboard.fmtInt(s.open_positions)}</td><td>${Dashboard.fmtInt(s.execution_checks_count_30d)}</td><td>${Dashboard.fmtNumber(s.avg_ev_after_slippage_50_pp_30d)} pp</td></tr>`).join('');
+        document.getElementById('strategy-summary').textContent = `${strategies.filter((s) => s.status === 'active').length} active · ${strategies.filter((s) => s.status === 'paused').length} paused · ${strategies.filter((s) => s.is_generated).length} generated tracked`;
 
         const current = snapshot.experiments.filter((e) => ['active', 'review_due'].includes(e.status));
         document.getElementById('experiments-list').innerHTML = current.map((e) => `<article class="experiment-card"><div class="panel-header"><div><h3>${e.title}</h3><div class="muted code">${e.experiment_id}</div></div><span class="${Dashboard.pillClass(e.status)}">${e.status}</span></div><p>${Dashboard.cleanSummary(e.summary || e.hypothesis)}</p><div class="card-meta"><span class="pill pill-info">${e.scope_type}</span><span class="pill pill-neutral">${e.scope_label}</span></div></article>`).join('') || '<div class="muted">No current experiments.</div>';

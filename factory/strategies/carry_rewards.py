@@ -103,5 +103,5 @@ class CarryRewardsStrategy(Strategy):
                 rationale=f"carry:full-set,days={days},apy={HOLDING_REWARDS_APY*100:.0f}%,yield={carry_pp:.1f}pp",
             ))
 
-        print(f"  [{self.name}] {len(signals)} carry signals ({len(candidates)} candidates, alert-only)")
+        print(f"  [{self.name}] {len(signals)} carry signals ({len(candidates)} candidates, live-only)")
         return signals

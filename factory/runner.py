@@ -10,11 +10,14 @@ Supports `dry_run=True` for a safe manual pass with no writes and no sends.
 Supports `fast_dry_run=True` to aggressively trim slow strategy work for debugging.
 Includes live-run locking + strategy detail logging.
 """
+import os
+import json
 from dataclasses import asdict, is_dataclass
 from datetime import datetime, timedelta
 
 from .broker import PaperBroker
 from .db import FactoryDB
+from .environment import classify_strategy_execution, get_environment_policy
 from .live_broker import LiveBroker
 from .execution import build_market_index, snapshot_for_signal
 from .feed import fetch_top, fetch_closed, get_market_winner, get_submarket_outcome
@@ -26,9 +29,9 @@ from .strategy_meta import strategy_metadata, should_run_in_cycle
 
 
 class DryRunBroker:
-    """Read-only wrapper around PaperBroker for safe manual passes."""
+    """Read-only wrapper around a broker-like object for safe manual passes."""
 
-    def __init__(self, base: PaperBroker):
+    def __init__(self, base):
         self.base = base
         self.simulated_new_positions: list[dict] = []
         self.simulated_closures: list[tuple[dict, str]] = []
@@ -86,6 +89,25 @@ class DryRunBroker:
             if t["id"] == trade_id:
                 self.simulated_closures.append((t, resolved_outcome))
                 return
+
+
+class ResearchBroker:
+    """No-position broker used by the research environment."""
+
+    def has_position(self, market_id: str, strategy: str) -> bool:
+        return False
+
+    def get_open_positions(self) -> list[dict]:
+        return []
+
+    def get_all_trades(self) -> list[dict]:
+        return []
+
+    def open_position(self, signal: Signal, amount_usdc: float):
+        return None
+
+    def close_position(self, trade_id: str, resolved_outcome: str):
+        return None
 
 
 def _signal_to_dict(signal: Signal) -> dict:
@@ -219,6 +241,103 @@ def _format_hourly_delta(snapshot: dict | None, previous_snapshot: dict | None) 
     return f"*1h delta:* {sign}${abs(net_delta):.2f} net · unrealized {unrealized_delta:+.2f} · {coverage}"
 
 
+def _safe_float(value):
+    try:
+        if value in (None, ""):
+            return None
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _extract_market_observations(events: list[dict]) -> list[dict]:
+    rows: list[dict] = []
+    for event in events:
+        event_slug = event.get("slug") or ""
+        event_volume = _safe_float(event.get("volume"))
+        event_volume_24hr = _safe_float(event.get("volume24hr"))
+        event_liquidity = _safe_float(event.get("liquidity") or event.get("liquidityClob"))
+        close_time = event.get("endDate") or ""
+        active_markets = [market for market in (event.get("markets", []) or []) if not market.get("closed")]
+        primary_market = active_markets[0] if active_markets else ((event.get("markets", []) or [None])[0])
+        primary_yes_price = None
+        primary_best_bid = None
+        primary_best_ask = None
+        primary_spread = None
+        if primary_market:
+            prices = primary_market.get("outcomePrices")
+            if isinstance(prices, str):
+                try:
+                    parsed = json.loads(prices)
+                    primary_yes_price = _safe_float(parsed[0] if parsed else None)
+                except Exception:
+                    primary_yes_price = None
+            elif isinstance(prices, list):
+                primary_yes_price = _safe_float(prices[0] if prices else None)
+            primary_best_bid = _safe_float(primary_market.get("bestBid"))
+            primary_best_ask = _safe_float(primary_market.get("bestAsk"))
+            primary_spread = _safe_float(primary_market.get("spread"))
+        if event_slug:
+            rows.append({
+                "event_slug": event_slug,
+                "market_id": event_slug,
+                "market_slug": (primary_market or {}).get("slug") or "",
+                "market_title": event.get("title") or "",
+                "yes_price": primary_yes_price,
+                "best_bid": primary_best_bid,
+                "best_ask": primary_best_ask,
+                "spread": primary_spread,
+                "liquidity": event_liquidity,
+                "volume": event_volume,
+                "volume_24hr": event_volume_24hr,
+                "close_time": close_time,
+            })
+        for market in event.get("markets", []) or []:
+            market_id = str(market.get("id") or "")
+            if not market_id:
+                continue
+            prices = market.get("outcomePrices")
+            yes_price = None
+            if isinstance(prices, str):
+                try:
+                    parsed = json.loads(prices)
+                    yes_price = _safe_float(parsed[0] if parsed else None)
+                except Exception:
+                    yes_price = None
+            elif isinstance(prices, list):
+                yes_price = _safe_float(prices[0] if prices else None)
+            rows.append({
+                "event_slug": event_slug,
+                "market_id": market_id if event_slug else market_id,
+                "market_slug": market.get("slug") or "",
+                "market_title": market.get("question") or event.get("title") or "",
+                "yes_price": yes_price,
+                "best_bid": _safe_float(market.get("bestBid")),
+                "best_ask": _safe_float(market.get("bestAsk")),
+                "spread": _safe_float(market.get("spread")),
+                "liquidity": _safe_float(market.get("liquidity")) or event_liquidity,
+                "volume": _safe_float(market.get("volume")) or event_volume,
+                "volume_24hr": _safe_float(market.get("volume24hr")) or event_volume_24hr,
+                "close_time": market.get("endDate") or close_time,
+            })
+            if event_slug:
+                rows.append({
+                    "event_slug": event_slug,
+                    "market_id": f"{event_slug}:{market_id}",
+                    "market_slug": market.get("slug") or "",
+                    "market_title": market.get("question") or event.get("title") or "",
+                    "yes_price": yes_price,
+                    "best_bid": _safe_float(market.get("bestBid")),
+                    "best_ask": _safe_float(market.get("bestAsk")),
+                    "spread": _safe_float(market.get("spread")),
+                    "liquidity": _safe_float(market.get("liquidity")) or event_liquidity,
+                    "volume": _safe_float(market.get("volume")) or event_volume,
+                    "volume_24hr": _safe_float(market.get("volume24hr")) or event_volume_24hr,
+                    "close_time": market.get("endDate") or close_time,
+                })
+    return rows
+
+
 def format_wa_summary(new_trades: list[tuple], closed_trades: list[dict], alert_signals: list[Signal], closed_count: int, stats: dict, now: str, skipped: list[str] | None = None, hour: int = 9, dry_run: bool = False, fast_dry_run: bool = False, hourly_delta: str | None = None) -> str:
     if not isinstance(stats, dict) and isinstance(closed_count, dict):
         old_alert_signals = closed_trades
@@ -297,28 +416,40 @@ def format_wa_summary(new_trades: list[tuple], closed_trades: list[dict], alert_
     return "\n".join(lines)
 
 
-def run(dry_run: bool = False, send: bool = True, fast_dry_run: bool = False):
+def run(environment: str = "paper", dry_run: bool = False, send: bool = True, fast_dry_run: bool = False):
+    policy = get_environment_policy(environment)
     now_dt = datetime.now()
     now = now_dt.strftime("%Y-%m-%d %H:%M")
     flags = []
+    if policy.name != "paper":
+        flags.append(policy.name.upper())
     if dry_run:
         flags.append("DRY RUN")
     if fast_dry_run:
         flags.append("FAST")
     flag_str = f" [{' / '.join(flags)}]" if flags else ""
-    mode = "fast_dry_run" if fast_dry_run else ("dry_run" if dry_run else "live")
+    mode_parts = [policy.name]
+    if fast_dry_run:
+        mode_parts.append("fast_dry_run")
+    elif dry_run:
+        mode_parts.append("dry_run")
+    mode = "_".join(mode_parts)
     print(f"\n{'='*60}")
     print(f"POLYMARKET FACTORY — {now}{flag_str}")
     print(f"{'='*60}\n")
 
     db = FactoryDB()
     run_id = db.start_run(mode=mode)
-    db.log_event(run_id, "info", "run_started", payload={"mode": mode})
+    db.log_event(run_id, "info", "run_started", payload={"mode": mode, "environment": policy.name})
     lock_acquired = False
 
-    base_broker = PaperBroker(run_id=run_id)
+    if policy.name == "research":
+        base_broker = ResearchBroker()
+    elif policy.name == "live":
+        base_broker = LiveBroker(db=db, run_id=run_id)
+    else:
+        base_broker = PaperBroker(run_id=run_id)
     broker = DryRunBroker(base_broker) if dry_run else base_broker
-    live_broker = LiveBroker(db=db, run_id=run_id) if not dry_run else None
     meta = strategy_metadata()
     saved_overrides = _apply_fast_dry_run_overrides(STRATEGIES, enabled=fast_dry_run)
     markets_fetched = 0
@@ -327,26 +458,31 @@ def run(dry_run: bool = False, send: bool = True, fast_dry_run: bool = False):
 
     try:
         if not dry_run:
-            lock_acquired = db.acquire_run_lock("live_runner", run_id)
+            lock_acquired = db.acquire_run_lock(policy.lock_name, run_id)
             if not lock_acquired:
-                msg = "another live run already holds the lock"
+                msg = f"another {policy.name} run already holds the lock"
                 print(f"Abort: {msg}")
                 db.log_decision(run_id, "run_lock", "skip", reason=msg)
                 db.finish_run(run_id, status="aborted", notes=msg)
                 return
-            db.log_decision(run_id, "run_lock", "acquired", reason="live_runner")
+            db.log_decision(run_id, "run_lock", "acquired", reason=policy.lock_name)
         else:
             db.log_decision(run_id, "run_lock", "bypass", reason="dry_run")
 
-        print("Checking open positions for resolution...")
-        closed_count, closed_trades = resolve_open_positions(broker, dry_run=dry_run, db=db, run_id=run_id)
-        print(f"  {closed_count} {'would resolve' if dry_run else 'resolved'}.\n")
+        if policy.resolves_positions:
+            print("Checking open positions for resolution...")
+            closed_count, closed_trades = resolve_open_positions(broker, dry_run=dry_run, db=db, run_id=run_id)
+            print(f"  {closed_count} {'would resolve' if dry_run else 'resolved'}.\n")
+        else:
+            closed_trades = []
+            print("Skipping open-position resolution in research environment.\n")
 
         print("Fetching market snapshot...", end=" ", flush=True)
         markets = fetch_top(limit=100)
         markets_fetched = len(markets)
         print(f"{markets_fetched} markets.\n")
         db.log_event(run_id, "info", "markets_fetched", payload={"count": markets_fetched})
+        db.log_market_observations(run_id, _extract_market_observations(markets))
 
         new_trades: list[tuple[Signal, float]] = []
         alert_signals: list[Signal] = []
@@ -388,7 +524,13 @@ def run(dry_run: bool = False, send: bool = True, fast_dry_run: bool = False):
                 execution_snapshot = snapshot_for_signal(sig, strategy, market_index)
                 db.log_signal_execution_check(run_id, execution_snapshot.as_dict())
 
-                if not strategy_meta.get("trading_enabled", True):
+                execution_decision = classify_strategy_execution(policy, strategy, strategy_meta)
+
+                if execution_decision.action == "skip":
+                    db.log_decision(run_id, "environment", "skip", strategy=strategy.name, market_id=sig.market_id, reason=execution_decision.reason)
+                    continue
+
+                if execution_decision.action == "alert":
                     alert_signals.append(sig)
                     print(f"  [{strategy.name}] ALERT {sig.outcome} {sig.market_title[:45]} | gap {sig.ev_pp:.0f}pp | {sig.confidence}")
                     db.log_decision(
@@ -397,7 +539,7 @@ def run(dry_run: bool = False, send: bool = True, fast_dry_run: bool = False):
                         "alert_only",
                         strategy=strategy.name,
                         market_id=sig.market_id,
-                        reason="trading_disabled",
+                        reason=execution_decision.reason,
                         details={
                             "ev_pp": sig.ev_pp,
                             "confidence": sig.confidence,
@@ -408,10 +550,10 @@ def run(dry_run: bool = False, send: bool = True, fast_dry_run: bool = False):
                     )
                     continue
 
-                is_live = strategy.live_ready and getattr(strategy, "mode", "paper") == "live"
-                active_broker = live_broker if is_live and live_broker else broker
+                is_live = execution_decision.action == "live"
+                active_broker = broker
 
-                if active_broker.has_position(sig.market_id, strategy.name) or (live_broker and not is_live and live_broker.has_position(sig.market_id, strategy.name)):
+                if active_broker.has_position(sig.market_id, strategy.name):
                     print(f"  [{strategy.name}] skip duplicate: {sig.market_title[:45]}")
                     db.log_decision(run_id, "duplicate_check", "skip", strategy=strategy.name, market_id=sig.market_id, reason="already_open")
                     continue
@@ -426,13 +568,13 @@ def run(dry_run: bool = False, send: bool = True, fast_dry_run: bool = False):
                     db.log_decision(run_id, "cap_check", "skip", strategy=strategy.name, market_id=sig.market_id, reason=reason, details={"amount": amount, "strategy_exposure": exposure_by_strategy.get(strategy.name, 0.0), "window_exposure": exposure_by_window.get(strategy_meta.get("time_window", "unknown"), 0.0)})
                     continue
 
-                if is_live and live_broker:
+                if is_live:
                     market_entry = market_index.get(sig.market_id, {})
                     market_dict = market_entry.get("market") or (market_entry.get("event", {}).get("markets") or [None])[0]
-                    trade = live_broker.open_position(sig, amount, market=market_dict)
+                    trade = active_broker.open_position(sig, amount, market=market_dict)
                     track = trade is not None
                 else:
-                    broker.open_position(sig, amount)
+                    active_broker.open_position(sig, amount)
                     track = True
 
                 if track:
@@ -442,7 +584,7 @@ def run(dry_run: bool = False, send: bool = True, fast_dry_run: bool = False):
                     new_positions_count += 1
                     mode_label = "LIVE" if is_live else ("WOULD OPEN" if dry_run else "OPEN")
                     print(f"  [{strategy.name}] {mode_label} {sig.outcome} {sig.market_title[:45]} | EV +{sig.ev_pp:.0f}pp | ${amount} | {sig.confidence}")
-                    db.log_decision(run_id, "execution", "live_open" if is_live else ("dry_open" if dry_run else "open"), strategy=strategy.name, market_id=sig.market_id, reason="signal_passed_filters", details={"amount": amount, "ev_pp": sig.ev_pp, "confidence": sig.confidence, "mode": "live" if is_live else "paper"})
+                    db.log_decision(run_id, "execution", "live_open" if is_live else ("dry_open" if dry_run else "open"), strategy=strategy.name, market_id=sig.market_id, reason=execution_decision.reason, details={"amount": amount, "ev_pp": sig.ev_pp, "confidence": sig.confidence, "mode": "live" if is_live else "paper", "environment": policy.name})
 
             print()
             _log_strategy_details(db, run_id, strategy)
@@ -452,7 +594,7 @@ def run(dry_run: bool = False, send: bool = True, fast_dry_run: bool = False):
         portfolio_snapshot = snapshot_open_positions(broker, market_index)
         previous_snapshot = db.get_latest_portfolio_snapshot_before((now_dt - timedelta(hours=1)).isoformat(timespec="seconds"))
         hourly_delta = _format_hourly_delta(portfolio_snapshot, previous_snapshot)
-        if not dry_run:
+        if not dry_run and policy.records_portfolio_snapshots:
             db.log_portfolio_snapshot(run_id, portfolio_snapshot)
             db.log_event(run_id, "info", "portfolio_snapshot", payload=portfolio_snapshot)
         print(format_summary(stats))
@@ -476,9 +618,9 @@ def run(dry_run: bool = False, send: bool = True, fast_dry_run: bool = False):
         raise
     finally:
         if lock_acquired:
-            db.release_run_lock("live_runner", run_id)
+            db.release_run_lock(policy.lock_name, run_id)
         _restore_fast_dry_run_overrides(saved_overrides)
 
 
 if __name__ == "__main__":
-    run()
+    run(environment=os.environ.get("FACTORY_ENV", "paper"))

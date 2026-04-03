@@ -74,6 +74,7 @@
           <a href="#strategies">Strategies</a>
           <a href="#time-windows">Time Windows</a>
           <a href="#evaluation">Evaluation</a>
+          <a href="#benchmark">Replay Benchmark</a>
           <a href="#graduation">Alert-Only Graduation</a>
           <a href="#phase-a">Phase A Execution</a>
           <a href="#metrics">Metric Definitions</a>
@@ -86,13 +87,14 @@
       <section class="panel section-gap" id="architecture">
         <div class="wiki-section">
           <h2>Architecture</h2>
-          <p>The factory is a framework for rapidly spinning up, paper-trading, and evaluating Polymarket strategies. The core loop runs 3&times;/day via launchd.</p>
+          <p>The factory is a framework for rapidly spinning up, paper-trading, and evaluating Polymarket strategies. It now has explicit runtime environments for research, paper, and live execution.</p>
           <div class="code-block">You (idea) → factory/strategies/my_strategy.py → STRATEGIES registry
                                                                   ↓
-                                                    runner.py (3×/day via launchd)
+                                                    runner.py (paper / live / research env)
                                                     ├── fetch 100 top markets (Gamma API)
-                                                    ├── each strategy: scan → signal → size → open position
-                                                    ├── check open positions → close resolved ones
+                                                    ├── each strategy: scan → signal → env policy decides action
+                                                    ├── paper/live env: open + resolve positions in scoped broker
+                                                    ├── research env: log signals only, never open positions
                                                     └── WhatsApp summary → Polymarket Signals group</div>
 
           <h3>Stack</h3>
@@ -110,8 +112,10 @@
             <thead><tr><th>Path</th><th>Purpose</th></tr></thead>
             <tbody>
               <tr><td>factory/runner.py</td><td>Main run loop — orchestrates all strategies per cycle</td></tr>
+              <tr><td>factory/environment.py</td><td>Runtime environment policy: research / paper / live gating</td></tr>
               <tr><td>factory/strategies/*.py</td><td>Individual strategy implementations</td></tr>
               <tr><td>factory/broker.py</td><td>Trade opening/closing, portfolio state</td></tr>
+              <tr><td>factory/live_broker.py</td><td>Real-money execution path scoped to live trades only</td></tr>
               <tr><td>factory/db.py</td><td>SQLite schema, queries, migrations</td></tr>
               <tr><td>factory/feed.py</td><td>Gamma API market fetching + formatting</td></tr>
               <tr><td>factory/claude.py</td><td>Claude API wrapper for strategy reasoning</td></tr>
@@ -119,15 +123,26 @@
               <tr><td>factory/models.py</td><td>Signal, Trade, Run dataclasses</td></tr>
               <tr><td>eval/report.py</td><td>Weekly evaluation report generator</td></tr>
               <tr><td>scripts/export_dashboard_data.py</td><td>Exports JSON snapshot for this dashboard</td></tr>
+              <tr><td>scripts/build_replay_benchmark.py</td><td>Builds strategy-level replay benchmark summaries from logged signals, execution checks, and resolved outcomes</td></tr>
               <tr><td>scripts/update_wiki.py</td><td>Generates wiki/*.md from DB via Claude (Karpathy pattern)</td></tr>
               <tr><td>data/factory.sqlite3</td><td>Live database (gitignored)</td></tr>
+            </tbody>
+          </table>
+
+          <h3>Runtime environments</h3>
+          <table class="metric-table">
+            <thead><tr><th>Environment</th><th>Behavior</th></tr></thead>
+            <tbody>
+              <tr><td>research</td><td>Scans and logs signals only. Never opens or resolves positions.</td></tr>
+              <tr><td>paper</td><td>Paper-only trading path. Opens and resolves only paper trades.</td></tr>
+              <tr><td>live</td><td>Real-money path. Only explicit <code>mode="live"</code> plus <code>live_ready=True</code> strategies can execute.</td></tr>
             </tbody>
           </table>
 
           <h3>WhatsApp messaging policy</h3>
           <ul>
             <li><strong>09:00 Europe/Madrid</strong> — full general summary</li>
-            <li><strong>14:30 / 19:30</strong> — opened/closed delta update + alert snippet if relevant</li>
+            <li><strong>other scheduled runs</strong> — opened/closed delta update + alert snippet if relevant</li>
           </ul>
 
           <h3>Dashboard pipeline</h3>
@@ -147,13 +162,13 @@ uv run python scripts/publish_dashboard.py ~/path/to/repo --commit --push</div>
           <h3>Strategy interface</h3>
           <div class="code-block">class Strategy(ABC):
     name: str
-    mode: str               # "paper" | "live"
+    mode: str               # preferred execution env: "paper" | "live"
     max_position_usdc: float
     min_ev_pp: float
     alert_only: bool        # if True, log/report only; runner will not open positions
     trading_enabled: bool   # explicit runner gate; keep False for alert-only
     promotable: bool        # candidate for later graduation
-    live_ready: bool        # reserved for real-money path
+    live_ready: bool        # prerequisite for the live environment, not the whole policy
 
     # portfolio taxonomy
     edge_type: str
@@ -269,6 +284,22 @@ uv run python scripts/publish_dashboard.py ~/path/to/repo --commit --push</div>
               <div class="inset warn" style="margin-top:10px;font-size:0.82rem;">Active blocker: top-100 Gamma feed does not typically surface celebrity/tabloid markets. 0 eligible candidates seen to date.</div>
             </div>
 
+          </div>
+
+          <h3 style="margin-top:24px;">Live-only strategies</h3>
+          <div class="strategy-grid">
+            <div class="strategy-card">
+              <h3><span class="tag-active">●</span> carry_rewards</h3>
+              <div class="sc-meta">
+                <span class="pill pill-ok">live-only</span>
+                <span class="pill pill-neutral">structural</span>
+                <span class="pill pill-neutral">long</span>
+                <span class="pill pill-neutral">daily</span>
+              </div>
+              <p><strong>Thesis:</strong> Binary Polymarket markets can offer holding-yield carry by buying a market-neutral full set (YES + NO) and collecting rewards.</p>
+              <p><strong>Method:</strong> Scan binary markets with enough duration and liquidity, rank by carry yield, and only execute in the <code>live</code> environment.</p>
+              <p style="font-size:0.82rem;color:var(--muted);">mode="live" · live_ready=True · blocked from paper by environment policy</p>
+            </div>
           </div>
 
           <h3 style="margin-top:24px;">Alert-only strategies</h3>
@@ -415,6 +446,46 @@ uv run python scripts/publish_dashboard.py ~/path/to/repo --commit --push</div>
         </div>
       </section>
 
+      <!-- BENCHMARK -->
+      <section class="panel section-gap" id="benchmark">
+        <div class="wiki-section">
+          <h2>Replay Benchmark</h2>
+          <p>The replay benchmark is a strategy-level score built from persisted <code>signals</code>, <code>signal_execution_checks</code>, and resolved-trade labels where available. It is intended as a keep/discard gate for alert-only and generated strategies, not as a replacement for realized P&amp;L review.</p>
+
+          <h3>Current dashboard scope</h3>
+          <ul>
+            <li>The Overview page renders the <strong>alert-only</strong> replay benchmark.</li>
+            <li>Generated-strategy benchmark rows only appear once generated strategies have actual signal evidence.</li>
+            <li>Benchmark rows are currently aggregated <strong>per strategy</strong>, not per market or per signal family.</li>
+          </ul>
+
+          <h3>Inputs</h3>
+          <ul>
+            <li><strong>Directional evidence</strong> — resolved outcomes where the signal can be labeled as correct/incorrect</li>
+            <li><strong>Execution realism</strong> — EV after slippage at $10 / $25 from Phase A fill proxies</li>
+            <li><strong>Capacity</strong> — max size with positive EV and source-confidence quality</li>
+            <li><strong>Uniqueness</strong> — overlap penalty for duplicate same-market / same-side signals</li>
+            <li><strong>Coverage</strong> — sample-size floor so tiny lucky runs do not dominate</li>
+          </ul>
+
+          <h3>Score shape</h3>
+          <div class="code-block">benchmark_score =
+  0.45 × directional_score +
+  0.25 × slippage_score +
+  0.15 × capacity_score +
+  0.10 × uniqueness_score +
+  0.05 × coverage_score</div>
+
+          <h3>How to build it</h3>
+          <div class="code-block">uv run python scripts/build_replay_benchmark.py --scope alert-only
+uv run python scripts/build_replay_benchmark.py --scope generated
+uv run python scripts/export_dashboard_data.py
+uv run python scripts/build_dashboard.py</div>
+
+          <div class="inset info">The replay benchmark is a research/control metric. It should not automatically change strategy code, scheduling, or live eligibility without a separate review gate.</div>
+        </div>
+      </section>
+
       <!-- GRADUATION -->
       <section class="panel section-gap" id="graduation">
         <div class="wiki-section">
@@ -549,6 +620,9 @@ uv run python scripts/signal_execution_checks.py --strategy spread_arb --limit 2
               <tr><td>strategies_with_execution_checks_30d</td><td>Distinct strategies with at least 1 check in the last 30 days</td></tr>
               <tr><td>avg_ev_after_slippage_50_pp_30d</td><td>Average EV after $50 slippage across checks (30d)</td></tr>
               <tr><td>avg_max_size_positive_ev_30d</td><td>Average max +EV size (USD) across checks (30d)</td></tr>
+              <tr><td>benchmark_top_strategy_alert_only</td><td>Best current alert-only strategy by replay benchmark score</td></tr>
+              <tr><td>benchmark_top_score_alert_only</td><td>Replay benchmark score of the top alert-only strategy</td></tr>
+              <tr><td>benchmark_signal_count_alert_only</td><td>Total signals included in the current alert-only replay benchmark snapshot</td></tr>
             </tbody>
           </table>
 
@@ -571,11 +645,20 @@ uv run python scripts/signal_execution_checks.py --strategy spread_arb --limit 2
           <div class="code-block"># Manual full run
 uv run python -m factory.runner
 
+# Research-only run
+FACTORY_ENV=research uv run python -m factory.runner
+
+# Live run
+FACTORY_ENV=live uv run python -m factory.runner
+
 # Safe dry run (no writes, no closes, no sends)
-uv run python -c "from factory.runner import run; run(dry_run=True)"
+uv run python -c "from factory.runner import run; run(environment='paper', dry_run=True)"
 
 # Fast safe dry run (skips ev_news, trims workloads)
-uv run python -c "from factory.runner import run; run(dry_run=True, fast_dry_run=True)"
+uv run python -c "from factory.runner import run; run(environment='paper', dry_run=True, fast_dry_run=True)"
+
+# Safe dry run of live policy
+uv run python -c "from factory.runner import run; run(environment='live', dry_run=True, send=False, fast_dry_run=True)"
 
 # Open book
 uv run python scripts/open_positions.py
@@ -603,6 +686,10 @@ uv run python scripts/active_experiments.py
 # Weekly evaluation
 uv run eval/report.py
 
+# Replay benchmark
+uv run python scripts/build_replay_benchmark.py --scope alert-only
+uv run python scripts/build_replay_benchmark.py --scope generated
+
 # Regenerate wiki from DB
 uv run python scripts/update_wiki.py
 
@@ -613,7 +700,9 @@ uv run python scripts/backup_db.py --keep 14</div>
           <table class="metric-table">
             <thead><tr><th>Job</th><th>Schedule</th></tr></thead>
             <tbody>
-              <tr><td>com.polymarket.factory</td><td>09:30 / 14:30 / 19:30 CEST</td></tr>
+              <tr><td>com.polymarket.factory</td><td>Every 2 hours at :00 (paper environment)</td></tr>
+              <tr><td>com.polymarket.factory.live</td><td>19:30 daily (live environment)</td></tr>
+              <tr><td>com.polymarket.factory.aggressive</td><td>10:30 / 22:30 daily</td></tr>
               <tr><td>com.polymarket.factory.backup</td><td>03:45 daily</td></tr>
             </tbody>
           </table>
@@ -624,7 +713,9 @@ uv run python scripts/backup_db.py --keep 14</div>
             <li><code>runs</code> — one row per runner execution</li>
             <li><code>signals</code> — strategy signals generated each run</li>
             <li><code>decisions</code> — open/close/skip decisions per signal</li>
+            <li><code>signal_execution_checks</code> — Phase A fill proxies at signal time</li>
             <li><code>run_logs</code> — log entries per run</li>
+            <li><code>trades</code> includes a <code>mode</code> column so paper and live positions are tracked separately</li>
             <li>Trade state is SQLite-backed; <code>data/trades.csv</code> is exported during migration period</li>
           </ul>
 
@@ -657,14 +748,16 @@ uv run python scripts/publish_dashboard.py ~/path/to/dashboard-repo --commit --p
               <tr><td>basket EV</td><td>In spread_arb: the guaranteed return from buying all legs in a multi-outcome market when sum &lt; 1.0</td></tr>
               <tr><td>alert-only</td><td>Strategy mode where signals are logged and reported but no positions are opened</td></tr>
               <tr><td>paper trading</td><td>Strategy mode where positions are opened in the simulator but no real money is deployed</td></tr>
-              <tr><td>live_ready</td><td>Flag reserved for the future real-money promotion path; always False until a live-broker checklist exists</td></tr>
+              <tr><td>research</td><td>Runner environment that scans and logs signals only, with no position opening or resolution</td></tr>
+              <tr><td>live_ready</td><td>Strategy prerequisite for the live environment; not sufficient on its own without environment-policy approval</td></tr>
               <tr><td>promotable</td><td>Flag indicating a strategy is a valid candidate for promotion once evidence is sufficient</td></tr>
               <tr><td>source_confidence</td><td>Label indicating whether Phase A data came from a direct CLOB quote or a heuristic fallback</td></tr>
+              <tr><td>replay benchmark</td><td>Strategy-level composite score built from directional labels, execution realism, capacity, uniqueness, and coverage</td></tr>
               <tr><td>Gamma API</td><td>Polymarket's market data API — provides the top-100 active markets feed used by all strategies</td></tr>
               <tr><td>CLOB</td><td>Central Limit Order Book — Polymarket's on-chain order book, used for execution checks</td></tr>
               <tr><td>DDGS</td><td>DuckDuckGo Search — used by news-based strategies to fetch recent headlines</td></tr>
               <tr><td>OpenClaw</td><td>Internal tool for WhatsApp messaging via the runner summary dispatch</td></tr>
-              <tr><td>launchd</td><td>macOS daemon scheduler — runs the factory runner at 09:30 / 14:30 / 19:30 CEST</td></tr>
+              <tr><td>launchd</td><td>macOS daemon scheduler — runs the paper, live, aggressive, and backup jobs on their configured calendars</td></tr>
               <tr><td>Karpathy pattern</td><td>Auto-generating living documentation from DB data via LLM — used by update_wiki.py</td></tr>
             </tbody>
           </table>

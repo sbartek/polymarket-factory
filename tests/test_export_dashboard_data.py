@@ -71,3 +71,54 @@ def test_fetch_execution_checks_returns_recent_rows(tmp_path):
     assert rows[0]["market_title"] == "Example market"
     assert rows[0]["fill_price_50"] == 0.23
     assert rows[0]["ev_after_slippage_50_pp"] == 11.0
+
+
+def test_load_benchmarks_reads_available_scopes(tmp_path, monkeypatch):
+    benchmark_dir = tmp_path / "benchmark-data"
+    benchmark_dir.mkdir()
+    (benchmark_dir / "replay-benchmark-alert-only.json").write_text(
+        '{"generated_at":"2026-04-03T17:51:11","scope":"alert-only","strategy_count":1,"signal_count":2,"strategies":[{"strategy":"esport48","benchmark_score":0.73}]}',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(export_dashboard_data, "BENCHMARK_DIR", benchmark_dir)
+
+    payload = export_dashboard_data.load_benchmarks()
+
+    assert payload["available_scopes"] == ["alert-only"]
+    assert payload["scopes"]["alert-only"]["strategies"][0]["strategy"] == "esport48"
+
+
+def test_load_generated_registry_includes_archived_reason_and_benchmark(tmp_path, monkeypatch):
+    generated_dir = tmp_path / "factory" / "strategies" / "generated"
+    archive_dir = generated_dir / "archive"
+    proposals_dir = tmp_path / "improvement" / "proposals"
+    generated_dir.mkdir(parents=True)
+    archive_dir.mkdir(parents=True)
+    proposals_dir.mkdir(parents=True)
+
+    (archive_dir / "auto_20260403_001_bad_edge__archived_20260403_190000.py").write_text(
+        'class X:\n    name = "bad_edge"\n',
+        encoding="utf-8",
+    )
+    (proposals_dir / "PR-20260403-001-bad_edge.md").write_text(
+        "- **status:** archived\n\n## Benchmark gate note\n\nArchived by benchmark gate: benchmark_score 0.410 below 0.60\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(export_dashboard_data, "GENERATED_DIR", generated_dir)
+    monkeypatch.setattr(export_dashboard_data, "GENERATED_ARCHIVE_DIR", archive_dir)
+    monkeypatch.setattr(export_dashboard_data, "PROPOSALS_DIR", proposals_dir)
+    monkeypatch.setattr(export_dashboard_data, "PROJECT_ROOT", tmp_path)
+
+    rows = export_dashboard_data.load_generated_registry({
+        "scopes": {
+            "generated": {
+                "strategies": [
+                    {"strategy": "bad_edge", "benchmark_score": 0.41, "signals": 8, "labeled_signals": 4}
+                ]
+            }
+        }
+    })
+
+    assert rows["bad_edge"]["generated_lifecycle"] == "archived"
+    assert "benchmark_score 0.410 below 0.60" in rows["bad_edge"]["archive_reason"]
+    assert rows["bad_edge"]["generated_benchmark_score"] == 0.41

@@ -1,0 +1,12 @@
+{
+  "generated_at": "2026-04-03T19:23:30",
+  "scope": "generated",
+  "min_signals": 5,
+  "min_labeled": 3,
+  "strategy_count": 0,
+  "signal_count": 0,
+  "strategies": [],
+  "slice_count": 0,
+  "strategy_slices": [],
+  "strategy_metadata": {}
+}

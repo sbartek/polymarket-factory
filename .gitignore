@@ -10,6 +10,8 @@ backups/*.sqlite3
 backups/*.csv
 factory.log
 factory-aggressive.log
+factory-live.log
+factory-research.log
 dashboard-dist/
 dashboard-data/
 node_modules/

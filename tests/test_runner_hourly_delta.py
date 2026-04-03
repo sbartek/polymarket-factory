@@ -1,4 +1,4 @@
-from factory.runner import _format_hourly_delta, format_wa_summary
+from factory.runner import _extract_market_observations, _format_hourly_delta, format_wa_summary
 
 
 def test_format_hourly_delta_shows_sign_and_coverage():
@@ -41,3 +41,34 @@ def test_format_wa_summary_includes_hourly_delta_in_intraday_updates():
     )
 
     assert "*1h delta:* -$3.21 net · unrealized -1.10 · marked 2" in text
+
+
+def test_extract_market_observations_emits_direct_and_prefixed_market_ids():
+    rows = _extract_market_observations([
+        {
+            "slug": "event-a",
+            "title": "Event A",
+            "volume": 2500,
+            "volume24hr": 400,
+            "liquidity": 150,
+            "endDate": "2026-04-10T00:00:00Z",
+            "markets": [
+                {
+                    "id": 123,
+                    "slug": "market-a",
+                    "question": "Example market",
+                    "outcomePrices": "[0.42,0.58]",
+                    "bestBid": "0.40",
+                    "bestAsk": "0.44",
+                    "spread": "0.04",
+                }
+            ],
+        }
+    ])
+
+    assert len(rows) == 3
+    assert rows[0]["market_id"] == "event-a"
+    assert rows[1]["market_id"] == "123"
+    assert rows[2]["market_id"] == "event-a:123"
+    assert rows[0]["yes_price"] == 0.42
+    assert rows[0]["volume_24hr"] == 400.0

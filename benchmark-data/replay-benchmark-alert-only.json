@@ -1,0 +1,117 @@
+{
+  "generated_at": "2026-04-03T19:23:30",
+  "scope": "alert-only",
+  "min_signals": 5,
+  "min_labeled": 3,
+  "strategy_count": 2,
+  "signal_count": 52,
+  "strategies": [
+    {
+      "strategy": "correlated_laggard",
+      "signals": 25,
+      "labeled_signals": 0,
+      "correct_signals": 0,
+      "correctness_rate": 0.5,
+      "directional_score": 0.5,
+      "avg_ev_after_slippage_10_pp": 37.007,
+      "avg_ev_after_slippage_25_pp": 37.004,
+      "slippage_score": 1.0,
+      "avg_max_size_positive_ev": 250.0,
+      "avg_max_size_above_min_edge": 250.0,
+      "avg_source_confidence_score": 0.292,
+      "capacity_score": 0.646,
+      "duplicate_rate": 0.04,
+      "uniqueness_score": 0.96,
+      "coverage_score": 1.0,
+      "benchmark_score": 0.7179,
+      "label_sources": []
+    },
+    {
+      "strategy": "esport48",
+      "signals": 27,
+      "labeled_signals": 9,
+      "correct_signals": 4,
+      "correctness_rate": 0.4444,
+      "directional_score": 0.4444,
+      "avg_ev_after_slippage_10_pp": 15.68,
+      "avg_ev_after_slippage_25_pp": 15.661,
+      "slippage_score": 1.0,
+      "avg_max_size_positive_ev": 250.0,
+      "avg_max_size_above_min_edge": 250.0,
+      "avg_source_confidence_score": 0.5963,
+      "capacity_score": 0.7981,
+      "duplicate_rate": 0.037,
+      "uniqueness_score": 0.963,
+      "coverage_score": 1.0,
+      "benchmark_score": 0.716,
+      "label_sources": [
+        "price_window"
+      ]
+    }
+  ],
+  "slice_count": 2,
+  "strategy_slices": [
+    {
+      "strategy": "correlated_laggard",
+      "signals": 25,
+      "labeled_signals": 0,
+      "correct_signals": 0,
+      "correctness_rate": 0.5,
+      "directional_score": 0.5,
+      "avg_ev_after_slippage_10_pp": 37.007,
+      "avg_ev_after_slippage_25_pp": 37.004,
+      "slippage_score": 1.0,
+      "avg_max_size_positive_ev": 250.0,
+      "avg_max_size_above_min_edge": 250.0,
+      "avg_source_confidence_score": 0.292,
+      "capacity_score": 0.646,
+      "duplicate_rate": 0.04,
+      "uniqueness_score": 0.96,
+      "coverage_score": 1.0,
+      "benchmark_score": 0.7179,
+      "label_sources": [],
+      "time_window": "short",
+      "edge_type": "stale_repricing",
+      "slice_key": "stale_repricing::short"
+    },
+    {
+      "strategy": "esport48",
+      "signals": 27,
+      "labeled_signals": 9,
+      "correct_signals": 4,
+      "correctness_rate": 0.4444,
+      "directional_score": 0.4444,
+      "avg_ev_after_slippage_10_pp": 15.68,
+      "avg_ev_after_slippage_25_pp": 15.661,
+      "slippage_score": 1.0,
+      "avg_max_size_positive_ev": 250.0,
+      "avg_max_size_above_min_edge": 250.0,
+      "avg_source_confidence_score": 0.5963,
+      "capacity_score": 0.7981,
+      "duplicate_rate": 0.037,
+      "uniqueness_score": 0.963,
+      "coverage_score": 1.0,
+      "benchmark_score": 0.716,
+      "label_sources": [
+        "price_window"
+      ],
+      "time_window": "intraday",
+      "edge_type": "stale_repricing",
+      "slice_key": "stale_repricing::intraday"
+    }
+  ],
+  "strategy_metadata": {
+    "correlated_laggard": {
+      "edge_type": "stale_repricing",
+      "time_window": "short",
+      "alert_only": true,
+      "promotable": true
+    },
+    "esport48": {
+      "edge_type": "stale_repricing",
+      "time_window": "intraday",
+      "alert_only": true,
+      "promotable": true
+    }
+  }
+}

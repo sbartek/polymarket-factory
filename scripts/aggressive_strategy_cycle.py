@@ -17,6 +17,7 @@ import os
 import re
 import subprocess
 import sys
+import shutil
 from datetime import datetime
 from pathlib import Path
 from textwrap import dedent
@@ -27,9 +28,16 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from factory.claude import call_claude
 
 GENERATED_DIR = PROJECT_ROOT / "factory" / "strategies" / "generated"
+GENERATED_ARCHIVE_DIR = GENERATED_DIR / "archive"
 PROPOSALS_DIR = PROJECT_ROOT / "improvement" / "proposals"
 DASHBOARD_DATA = PROJECT_ROOT / "dashboard-data"
 EVAL_JSON = DASHBOARD_DATA / "evaluation.json"
+BENCHMARK_DIR = PROJECT_ROOT / "benchmark-data"
+
+GENERATED_RETENTION_GRACE_DAYS = 3
+GENERATED_MIN_SIGNALS_FOR_GATE = 5
+GENERATED_MIN_LABELED_FOR_GATE = 3
+GENERATED_MIN_BENCHMARK_SCORE = 0.60
 
 
 def now_local() -> datetime:
@@ -69,6 +77,114 @@ def class_name(name: str) -> str:
 def load_existing_strategy_names() -> list[str]:
     from factory.strategies import STRATEGIES
     return sorted({s.name for s in STRATEGIES})
+
+
+def archived_module_name(module_name: str) -> str:
+    stamp = now_local().strftime("%Y%m%d_%H%M%S")
+    return f"{module_name}__archived_{stamp}.py"
+
+
+def display_path(path: Path) -> str:
+    try:
+        return str(path.relative_to(PROJECT_ROOT))
+    except ValueError:
+        return str(path)
+
+
+def generated_module_rows() -> list[dict]:
+    rows = []
+    GENERATED_DIR.mkdir(parents=True, exist_ok=True)
+    for path in sorted(GENERATED_DIR.glob("auto_*.py")):
+        try:
+            text = path.read_text(encoding="utf-8")
+        except Exception:
+            continue
+        name_match = re.search(r'^\s*name\s*=\s*"([^"]+)"', text, re.M)
+        strategy_name = name_match.group(1) if name_match else path.stem
+        rows.append({
+            "module_name": path.stem,
+            "strategy_name": strategy_name,
+            "path": path,
+            "mtime": datetime.fromtimestamp(path.stat().st_mtime),
+        })
+    return rows
+
+
+def load_benchmark_scope(scope: str) -> dict:
+    path = BENCHMARK_DIR / f"replay-benchmark-{scope}.json"
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def benchmark_lookup(scope: str) -> dict[str, dict]:
+    payload = load_benchmark_scope(scope)
+    return {
+        row.get("strategy"): row
+        for row in payload.get("strategies", [])
+        if row.get("strategy")
+    }
+
+
+def proposal_paths_for_strategy(strategy_name: str) -> list[Path]:
+    slug = slugify(strategy_name)
+    return sorted(PROPOSALS_DIR.glob(f"PR-*-{slug}.md"))
+
+
+def rewrite_proposal_status(paths: list[Path], *, status: str, note: str | None = None) -> None:
+    for path in paths:
+        try:
+            text = path.read_text(encoding="utf-8")
+        except Exception:
+            continue
+        text = re.sub(r"(\- \*\*status:\*\*\s*)(.+)", rf"\1{status}", text, count=1)
+        if note and note not in text:
+            text = text.rstrip() + f"\n\n## Benchmark gate note\n\n{note}\n"
+        path.write_text(text + ("\n" if not text.endswith("\n") else ""), encoding="utf-8")
+
+
+def archive_generated_module(row: dict, reason: str) -> dict:
+    GENERATED_ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
+    source = row["path"]
+    target = GENERATED_ARCHIVE_DIR / archived_module_name(row["module_name"])
+    shutil.move(str(source), str(target))
+    proposal_paths = proposal_paths_for_strategy(row["strategy_name"])
+    rewrite_proposal_status(proposal_paths, status="archived", note=f"Archived by benchmark gate: {reason}")
+    return {
+        "strategy_name": row["strategy_name"],
+        "module": row["module_name"],
+        "reason": reason,
+        "archived_path": display_path(target),
+        "proposal_paths": [display_path(p) for p in proposal_paths],
+    }
+
+
+def apply_generated_retention_gate() -> list[dict]:
+    benchmark_rows = benchmark_lookup("generated")
+    archived: list[dict] = []
+    now = now_local()
+    for row in generated_module_rows():
+        age_days = (now - row["mtime"]).total_seconds() / 86400
+        bench = benchmark_rows.get(row["strategy_name"])
+        if bench:
+            score = float(bench.get("benchmark_score") or 0.0)
+            signals = int(bench.get("signals") or 0)
+            labeled = int(bench.get("labeled_signals") or 0)
+            if signals >= GENERATED_MIN_SIGNALS_FOR_GATE and labeled >= GENERATED_MIN_LABELED_FOR_GATE and score < GENERATED_MIN_BENCHMARK_SCORE:
+                archived.append(archive_generated_module(
+                    row,
+                    f"benchmark_score {score:.3f} below {GENERATED_MIN_BENCHMARK_SCORE:.2f} with {signals} signals / {labeled} labeled",
+                ))
+                continue
+        if age_days >= GENERATED_RETENTION_GRACE_DAYS and not bench:
+            archived.append(archive_generated_module(
+                row,
+                f"no generated benchmark evidence after {GENERATED_RETENTION_GRACE_DAYS} days",
+            ))
+    return archived
 
 
 def _extract_json_block(raw: str, starts_with: str) -> str:
@@ -170,7 +286,7 @@ def build_proposal_markdown(spec: dict, proposal_id: str, date_human: str) -> st
     - **proposal_id:** {proposal_id}
     - **date:** {date_human}
     - **proposed_by:** aggressive_strategy_cycle
-    - **status:** approved
+    - **status:** pending_benchmark_review
 
     ## Plain-language idea
 
@@ -212,7 +328,8 @@ def build_proposal_markdown(spec: dict, proposal_id: str, date_human: str) -> st
 
     ## Approval note
 
-    Auto-approved under the one-month aggressive strategy experiment.
+    Generated automatically under the aggressive strategy experiment.
+    Retention now depends on replay-benchmark evidence or explicit review.
     """).strip() + "\n"
 
 
@@ -389,7 +506,7 @@ def write_generated_strategy(spec: dict, prefix: str, seq: int) -> dict:
     }
 
 
-def summarize_eval(eval_text: str, generated: list[dict]) -> dict:
+def summarize_eval(eval_text: str, generated: list[dict], archived: list[dict]) -> dict:
     prompt = dedent(f"""
     Summarize this strategy evaluation report for a static dashboard.
     Keep it compact and operational.
@@ -400,11 +517,15 @@ def summarize_eval(eval_text: str, generated: list[dict]) -> dict:
     Newly generated strategies:
     {json.dumps(generated, ensure_ascii=False, indent=2)}
 
+    Archived generated strategies:
+    {json.dumps(archived, ensure_ascii=False, indent=2)}
+
     Return JSON object with:
     - generated_at
     - headline
     - summary_lines (array of 3-6 short strings)
     - new_strategies (array of short strings)
+    - archived_strategies (array of short strings)
     - risk_note
     JSON only.
     """)
@@ -418,10 +539,12 @@ def summarize_eval(eval_text: str, generated: list[dict]) -> dict:
             "summary_lines": [
                 "Weekly evaluation report was captured and reviewed.",
                 "Two new alert-only strategy variants were generated automatically.",
+                "Older generated strategies may be archived when benchmark evidence is missing or weak.",
                 "Dashboard was refreshed for the current cycle.",
             ],
             "new_strategies": [f"{row['strategy_name']} ({row['edge_type']}/{row['time_window']})" for row in generated],
-            "risk_note": "Auto-generation fallback was used; review quality manually during the one-month experiment.",
+            "archived_strategies": [f"{row['strategy_name']} — {row['reason']}" for row in archived],
+            "risk_note": "Generated strategy retention is now benchmark-gated rather than auto-approved.",
         }
     data["generated_at"] = now_local().isoformat(timespec="seconds")
     return data
@@ -430,6 +553,8 @@ def summarize_eval(eval_text: str, generated: list[dict]) -> dict:
 def refresh_dashboard() -> None:
     env = dict(os.environ)
     env["PYTHONPATH"] = "."
+    run_cmd([str(PROJECT_ROOT / ".venv" / "bin" / "python"), "scripts/build_replay_benchmark.py", "--scope", "alert-only"], env=env)
+    run_cmd([str(PROJECT_ROOT / ".venv" / "bin" / "python"), "scripts/build_replay_benchmark.py", "--scope", "generated"], env=env)
     run_cmd([str(PROJECT_ROOT / ".venv" / "bin" / "python"), "scripts/export_dashboard_data.py"], env=env)
     run_cmd([str(PROJECT_ROOT / ".venv" / "bin" / "python"), "scripts/build_dashboard.py"], env=env)
 
@@ -437,17 +562,18 @@ def refresh_dashboard() -> None:
 def main() -> None:
     prefix = now_local().strftime("%Y%m%d")
     seq = next_daily_sequence(prefix)
+    archived = apply_generated_retention_gate()
     eval_text = capture_eval_report()
     specs = generate_strategy_specs(eval_text)
     generated = []
     for idx, spec in enumerate(specs, start=seq):
         generated.append(write_generated_strategy(spec, prefix, idx))
-    summary = summarize_eval(eval_text, generated)
+    summary = summarize_eval(eval_text, generated, archived)
     DASHBOARD_DATA.mkdir(parents=True, exist_ok=True)
     EVAL_JSON.write_text(json.dumps(summary, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     importlib.invalidate_caches()
     refresh_dashboard()
-    print(json.dumps({"generated": generated, "evaluation": summary}, indent=2, ensure_ascii=False))
+    print(json.dumps({"generated": generated, "archived": archived, "evaluation": summary}, indent=2, ensure_ascii=False))
 
 
 if __name__ == "__main__":

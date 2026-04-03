@@ -90,6 +90,114 @@ Do **not** attempt yet:
 
 ---
 
+## 2026-04-03 revision — benchmark-first autonomous improvement loop
+
+After reviewing the `autoagent` pattern, the useful idea is **not** the single-file harness layout.
+The useful idea is the stricter loop:
+- define an explicit directive
+- constrain the edit surface
+- run an evaluation
+- keep or discard changes based on score
+
+For `polymarket-factory`, this should be adapted carefully.
+This repo is a trading/research system with slower and noisier feedback than a coding benchmark, so autonomous editing is only acceptable when tied to stable evidence.
+
+### Critical review summary
+
+Main conclusions from the review:
+- do **not** collapse the factory into a single editable harness file
+- do **not** let autonomous generation edit runner / broker / live-trading code paths by default
+- do **not** use weekly realized P&L alone as the optimization loop for autonomous edits
+- do use a benchmark-first keep/discard loop once replay data and execution checks are strong enough
+
+### Approved direction
+
+Build autonomous improvement in four stages:
+
+#### Stage 1 — directive and edit-boundary discipline
+
+Before any new autonomous cycle, define a short experiment brief similar in spirit to `program.md`.
+That brief should specify:
+- target strategy family or problem class
+- files the agent may edit
+- files the agent may not edit
+- evaluation metric
+- stop conditions
+- promotion gate
+
+Initial allowed edit surface:
+- `factory/strategies/generated/`
+- `improvement/proposals/`
+- `improvement/experiments/`
+- `improvement/reviews/` stubs
+
+Initial forbidden edit surface unless a human explicitly approves:
+- `factory/runner.py`
+- broker / live execution paths
+- DB schema used by production runs
+- notification and operator-facing safety paths
+
+#### Stage 2 — offline replay benchmark
+
+Before trusting autonomous keep/discard decisions, build an offline replay benchmark using existing factory evidence:
+- persisted run logs
+- decision logs
+- signal execution checks
+- closed-trade outcomes where attribution is clean
+
+The benchmark should optimize for:
+- candidate quality
+- calibration / replay precision
+- execution realism
+- duplicate / overlap control
+
+It should **not** optimize directly for idea count or raw alert volume.
+
+#### Stage 3 — score-gated generated strategies
+
+Generated strategies should remain:
+- alert-only on creation
+- isolated in `factory/strategies/generated/`
+- easy to archive or unregister
+
+A generated strategy should only remain active if it clears one of these gates:
+- replay benchmark score beats a baseline
+- fixed paper-review window shows acceptable alert quality with supporting evidence
+
+Auto-generation without a keep/discard gate is churn, not research.
+
+#### Stage 4 — promotion after evidence, not before
+
+Only after replay and alert-only evidence look credible should a human consider:
+- enabling paper trading
+- adding promotion criteria
+- allowing edits outside the generated-strategy sandbox
+
+Live-path changes remain human-reviewed work.
+
+### 2026-04-03 delivered runtime boundary
+
+The factory now has an explicit runtime environment split:
+- `research` — signal logging only
+- `paper` — paper-only positions and resolution
+- `live` — real-money execution for explicit live-only strategies
+
+Operational follow-through:
+- keep paper and live as separate launchd entrypoints
+- keep generated strategies blocked from `live`
+- treat `live_ready=True` as a prerequisite, not the whole safety model
+
+### Explicit non-goals for this loop
+
+Do **not** attempt yet:
+- autonomous edits to live trading or execution infrastructure
+- autonomous refactors across the whole repo
+- optimization directly on tiny realized P&L samples
+- “auto-approved” generated strategies without a benchmark or review gate
+- replacing the current modular architecture with a single-file harness
+
+---
+
 ## Phase 0 — Immediate operational changes
 
 Before building new strategies:
@@ -471,6 +579,24 @@ Recommended updates:
 2. Compare strategy-level cadence, concentration, and hold times
 3. Decide whether to expand `correlated_pairs` or revive `weather_edge_v2`
 
+## Week 5
+1. Define the first autonomous-improvement experiment brief template
+2. Restrict generated-strategy edits to the sandboxed paths above
+3. Design the first offline replay benchmark from run/decision/execution data
+4. Replace auto-approval with score-gated keep/discard rules
+
+## Week 6
+1. Make generated-strategy lifecycle visible in the dashboard
+2. Add replay benchmark slice breakdowns by `edge_type` and `time_window`
+3. Add directional benchmark labels from price-window moves
+4. Persist market snapshot observations for future benchmark labeling
+
+## Week 7
+1. Let fresh runs accumulate `market_observations`
+2. Track benchmark label coverage by strategy
+3. Add dashboard/reference visibility for observation coverage
+4. Decide whether a backfill or retention policy is needed for `market_observations`
+
 ---
 
 # 6) Concrete coding checklist
@@ -514,6 +640,22 @@ Recommended updates:
 - [ ] mechanical gap rule
 - [ ] optional Claude relationship classifier
 
+## Autonomous improvement loop
+- [x] create a short experiment-brief template for autonomous runs
+- [x] define allowed vs forbidden edit paths
+- [x] build first replay benchmark from logged run / decision / execution evidence
+- [x] add a baseline comparison for generated strategies
+- [x] remove unconditional auto-approval from the aggressive generation workflow
+- [x] require review-gated or score-gated retention for generated modules
+- [x] show generated lifecycle state in the dashboard
+- [x] add strategy-slice replay benchmark breakdowns
+- [x] derive directional labels from price-window moves
+- [x] persist market snapshot observations for future labeling
+- [ ] expose market-observation coverage in dashboard/reference
+- [ ] add a benchmark coverage metric to generated-strategy retention decisions
+- [ ] decide whether to backfill old runs or wait for organic coverage growth
+- [ ] add retention/cleanup policy for `market_observations` if table growth becomes material
+
 ---
 
 # Bottom line
@@ -523,6 +665,8 @@ Recommended path:
 - make `spread_arb` shorter-duration and higher-quality
 - build `stale_market` next
 - then add `correlated_pairs`
+- keep the benchmark-first autonomous strategy loop as the control layer around generated strategies
+- next focus: grow label coverage and observation coverage rather than adding more autonomous generation
 
 That gives PPLayouts a portfolio built around:
 - structural mispricing

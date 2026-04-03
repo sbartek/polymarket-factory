@@ -23,7 +23,7 @@ class PaperBroker:
             self.export_trades_csv()
 
     def _load(self) -> list[dict]:
-        return self.db.load_trades()
+        return self.db.load_trades(mode="paper")
 
     def export_trades_csv(self):
         trades = self._load()
@@ -33,7 +33,7 @@ class PaperBroker:
             writer.writerows(trades)
 
     def has_position(self, market_id: str, strategy: str) -> bool:
-        return self.db.has_open_position(market_id, strategy)
+        return self.db.has_open_position(market_id, strategy, mode="paper")
 
     def open_position(self, signal: Signal, amount_usdc: float) -> Trade:
         fill_price = min(signal.market_price + self.slippage, 0.99)

@@ -19,10 +19,14 @@ from factory.strategy_meta import strategy_metadata
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DB_PATH = PROJECT_ROOT / "data" / "factory.sqlite3"
 OUTPUT_DIR = PROJECT_ROOT / "dashboard-data"
+BENCHMARK_DIR = PROJECT_ROOT / "benchmark-data"
 IMPROVEMENT_DIR = PROJECT_ROOT / "improvement"
 CHANGES_DIR = IMPROVEMENT_DIR / "changes"
 EXPERIMENTS_DIR = IMPROVEMENT_DIR / "experiments"
 REVIEWS_DIR = IMPROVEMENT_DIR / "reviews"
+PROPOSALS_DIR = IMPROVEMENT_DIR / "proposals"
+GENERATED_DIR = PROJECT_ROOT / "factory" / "strategies" / "generated"
+GENERATED_ARCHIVE_DIR = GENERATED_DIR / "archive"
 
 ACTIVE_STRATEGIES = {
     "ev_news",
@@ -115,6 +119,10 @@ def extract_field(text: str, field: str) -> str:
 def extract_section(text: str, heading: str) -> str:
     m = re.search(rf"## {re.escape(heading)}\n\n(.+?)(\n## |\Z)", text, re.S)
     return m.group(1).strip() if m else ""
+
+
+def slugify(text: str) -> str:
+    return "_".join("".join(ch.lower() if ch.isalnum() else " " for ch in text).split())[:48] or "generated_strategy"
 
 
 def load_changes() -> dict[str, dict]:
@@ -313,7 +321,89 @@ def fetch_execution_summary(conn: sqlite3.Connection) -> dict:
     }
 
 
-def fetch_overview(conn: sqlite3.Connection, experiments: list[dict], warnings: list[str]) -> dict:
+def load_benchmarks() -> dict:
+    scopes = ("alert-only", "generated")
+    data = {
+        "generated_at": utc_now_iso(),
+        "available_scopes": [],
+        "scopes": {},
+    }
+    for scope in scopes:
+        path = BENCHMARK_DIR / f"replay-benchmark-{scope}.json"
+        if not path.exists():
+            continue
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        data["available_scopes"].append(scope)
+        data["scopes"][scope] = payload
+    return data
+
+
+def _parse_generated_strategy_name(path: Path) -> str:
+    try:
+        text = path.read_text(encoding="utf-8")
+    except Exception:
+        return path.stem
+    m = re.search(r'^\s*name\s*=\s*"([^"]+)"', text, re.M)
+    return m.group(1) if m else path.stem
+
+
+def _proposal_payload_for_strategy(strategy_name: str) -> dict:
+    if not PROPOSALS_DIR.exists():
+        return {}
+    slug = slugify(strategy_name)
+    matches = sorted(PROPOSALS_DIR.glob(f"PR-*-{slug}.md"))
+    if not matches:
+        return {}
+    path = matches[-1]
+    text = read_text(path)
+    return {
+        "path": str(path.relative_to(PROJECT_ROOT)),
+        "status": extract_field(text, "status") or None,
+        "benchmark_gate_note": extract_section(text, "Benchmark gate note") or None,
+    }
+
+
+def load_generated_registry(benchmarks: dict | None = None) -> dict[str, dict]:
+    generated_scores = {
+        row.get("strategy"): row
+        for row in ((benchmarks or {}).get("scopes", {}).get("generated", {}) or {}).get("strategies", [])
+        if row.get("strategy")
+    }
+    rows: dict[str, dict] = {}
+
+    def ingest_dir(base: Path, lifecycle: str) -> None:
+        if not base.exists():
+            return
+        for path in sorted(base.glob("auto_*.py")):
+            strategy_name = _parse_generated_strategy_name(path)
+            proposal = _proposal_payload_for_strategy(strategy_name)
+            benchmark_row = generated_scores.get(strategy_name, {})
+            row = {
+                "strategy_name": strategy_name,
+                "module_path": str(path.relative_to(PROJECT_ROOT)),
+                "generated_lifecycle": lifecycle if lifecycle == "archived" else (proposal.get("status") or "generated"),
+                "proposal_path": proposal.get("path"),
+                "archive_reason": proposal.get("benchmark_gate_note"),
+                "generated_benchmark_score": benchmark_row.get("benchmark_score"),
+                "generated_benchmark_signals": benchmark_row.get("signals"),
+                "generated_benchmark_labeled": benchmark_row.get("labeled_signals"),
+            }
+            existing = rows.get(strategy_name)
+            if lifecycle == "archived":
+                if not existing:
+                    rows[strategy_name] = row
+            else:
+                rows[strategy_name] = row
+
+    ingest_dir(GENERATED_ARCHIVE_DIR, "archived")
+    ingest_dir(GENERATED_DIR, "active")
+    return rows
+
+
+def fetch_overview(conn: sqlite3.Connection, experiments: list[dict], warnings: list[str], benchmarks: dict | None = None) -> dict:
     latest = conn.execute("SELECT * FROM runs ORDER BY started_at DESC LIMIT 1").fetchone()
     open_active_exposure = scalar(conn, "SELECT COALESCE(SUM(amount_usdc), 0) FROM trades WHERE status='open' AND strategy IN ({})".format(
         ",".join("?" for _ in ACTIVE_STRATEGIES)
@@ -329,6 +419,10 @@ def fetch_overview(conn: sqlite3.Connection, experiments: list[dict], warnings: 
     ), tuple(sorted(ACTIVE_STRATEGIES)), 0)
 
     execution = fetch_execution_summary(conn)
+    benchmark_scopes = (benchmarks or {}).get("scopes", {})
+    alert_only_benchmark = benchmark_scopes.get("alert-only") or {}
+    alert_only_rows = alert_only_benchmark.get("strategies") or []
+    top_alert_only = alert_only_rows[0] if alert_only_rows else None
 
     alerts = []
     if latest and normalize_status(latest["status"]) != "ok":
@@ -354,6 +448,11 @@ def fetch_overview(conn: sqlite3.Connection, experiments: list[dict], warnings: 
         "avg_ev_after_slippage_50_pp_30d": execution["avg_ev_after_slippage_50_pp_30d"],
         "avg_max_size_positive_ev_30d": execution["avg_max_size_positive_ev_30d"],
         "execution_source_confidence_counts_30d": execution["source_confidence_counts_30d"],
+        "benchmark_scope_count": len((benchmarks or {}).get("available_scopes", [])),
+        "benchmark_strategy_count_alert_only": int(alert_only_benchmark.get("strategy_count") or 0),
+        "benchmark_signal_count_alert_only": int(alert_only_benchmark.get("signal_count") or 0),
+        "benchmark_top_strategy_alert_only": top_alert_only.get("strategy") if top_alert_only else None,
+        "benchmark_top_score_alert_only": top_alert_only.get("benchmark_score") if top_alert_only else None,
         "alerts": alerts,
     }
 
@@ -414,9 +513,10 @@ def fetch_positions_open(conn: sqlite3.Connection) -> list[dict]:
     return out
 
 
-def fetch_strategies(conn: sqlite3.Connection, warnings: list[str]) -> list[dict]:
+def fetch_strategies(conn: sqlite3.Connection, warnings: list[str], benchmarks: dict | None = None) -> list[dict]:
     meta_lookup = strategy_metadata()
     base = {row["strategy"]: row for row in fetch_strategy_rows(conn)}
+    generated_registry = load_generated_registry(benchmarks)
     signal_counts = dict(conn.execute(
         "SELECT strategy, COUNT(*) FROM signals WHERE created_at >= datetime('now', '-30 day') GROUP BY strategy"
     ).fetchall())
@@ -466,13 +566,14 @@ def fetch_strategies(conn: sqlite3.Connection, warnings: list[str]) -> list[dict
             "open_exposure": round(float(row["exposure"] or 0.0), 2),
         }
 
-    all_names = sorted(set(base) | ACTIVE_STRATEGIES)
+    all_names = sorted(set(base) | ACTIVE_STRATEGIES | set(generated_registry))
     out = []
     for name in all_names:
         row = base.get(name, {})
         meta = meta_lookup.get(name, {})
         open_positions = int(row.get("open_positions") or 0)
-        status = strategy_status(name, open_count=open_positions)
+        generated_meta = generated_registry.get(name)
+        status = generated_meta.get("generated_lifecycle") if generated_meta else strategy_status(name, open_count=open_positions)
         execution = execution_by_strategy.get(name, {})
         strategy_warnings = []
         if name not in base:
@@ -481,9 +582,19 @@ def fetch_strategies(conn: sqlite3.Connection, warnings: list[str]) -> list[dict
             strategy_warnings.append("Active strategy currently has no recent recorded activity.")
         if signal_counts.get(name, 0) and not execution.get("execution_checks_count"):
             strategy_warnings.append("Signals exist, but no Phase A execution checks were exported for the last 30 days.")
+        if generated_meta and generated_meta.get("archive_reason"):
+            strategy_warnings.append(generated_meta["archive_reason"])
         out.append({
             "strategy_name": name,
             "status": status,
+            "is_generated": bool(generated_meta),
+            "generated_lifecycle": generated_meta.get("generated_lifecycle") if generated_meta else None,
+            "generated_module_path": generated_meta.get("module_path") if generated_meta else None,
+            "generated_proposal_path": generated_meta.get("proposal_path") if generated_meta else None,
+            "generated_archive_reason": generated_meta.get("archive_reason") if generated_meta else None,
+            "generated_benchmark_score": generated_meta.get("generated_benchmark_score") if generated_meta else None,
+            "generated_benchmark_signals": generated_meta.get("generated_benchmark_signals") if generated_meta else None,
+            "generated_benchmark_labeled": generated_meta.get("generated_benchmark_labeled") if generated_meta else None,
             "alert_only": bool(meta.get("alert_only", False)),
             "trading_enabled": bool(meta.get("trading_enabled", True)),
             "promotable": bool(meta.get("promotable", False)),
@@ -634,10 +745,13 @@ def main() -> None:
         raise SystemExit("SQLite DB not found; wrote manifest with warning context only.")
 
     overview = fetch_overview(conn, experiments, warnings)
+    benchmarks = load_benchmarks()
     runs = fetch_runs(conn)
-    strategies = fetch_strategies(conn, warnings)
+    strategies = fetch_strategies(conn, warnings, benchmarks)
     execution_checks = fetch_execution_checks(conn)
     positions_open = fetch_positions_open(conn)
+
+    overview = fetch_overview(conn, experiments, warnings, benchmarks)
 
     write_json(OUTPUT_DIR / "overview.json", overview)
     write_json(OUTPUT_DIR / "runs.json", runs)
@@ -645,6 +759,7 @@ def main() -> None:
     write_json(OUTPUT_DIR / "execution-checks.json", execution_checks)
     write_json(OUTPUT_DIR / "experiments.json", experiments)
     write_json(OUTPUT_DIR / "positions-open.json", positions_open)
+    write_json(OUTPUT_DIR / "benchmarks.json", benchmarks)
 
     print("Exported dashboard snapshot:")
     print(f"- manifest.json ({manifest['warning_count']} warning(s))")
@@ -654,6 +769,7 @@ def main() -> None:
     print(f"- execution-checks.json ({len(execution_checks)} rows)")
     print(f"- experiments.json ({len(experiments)} rows)")
     print(f"- positions-open.json ({len(positions_open)} rows)")
+    print(f"- benchmarks.json ({len(benchmarks.get('available_scopes', []))} scope(s))")
 
     if warnings:
         print("Warnings:")

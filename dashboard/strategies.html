@@ -22,6 +22,13 @@
               <option value="all">All</option>
             </select>
           </label>
+          <label>Origin
+            <select id="filter-origin">
+              <option value="all">All</option>
+              <option value="core">Core</option>
+              <option value="generated">Generated</option>
+            </select>
+          </label>
           <label>Search
             <input id="filter-search" type="text" placeholder="strategy name" />
           </label>
@@ -29,7 +36,7 @@
         <div class="small-note" id="strategy-filter-note"></div>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>Strategy</th><th>Status</th><th>Open exposure</th><th>Open positions</th><th>Recent signals</th><th>Exec checks</th><th>Avg EV @ $10</th><th>Avg EV @ $50</th><th>Avg max +EV size</th><th>30d PnL</th><th>All-time PnL</th></tr></thead>
+            <thead><tr><th>Strategy</th><th>Status</th><th>Origin</th><th>Open exposure</th><th>Open positions</th><th>Recent signals</th><th>Exec checks</th><th>Gen score</th><th>Avg EV @ $10</th><th>Avg EV @ $50</th><th>Avg max +EV size</th><th>30d PnL</th><th>All-time PnL</th></tr></thead>
             <tbody id="strategies-body"></tbody>
           </table>
         </div>
@@ -66,6 +73,29 @@
           </table>
         </div>
       </section>
+      <section class="panel section-gap">
+        <div class="panel-header"><h2>Benchmark slices</h2><span class="muted">Replay benchmark split by strategy, edge type, and time window</span></div>
+        <div class="controls">
+          <label>Scope
+            <select id="slice-scope">
+              <option value="alert-only">alert-only</option>
+              <option value="generated">generated</option>
+            </select>
+          </label>
+          <label>Strategy
+            <select id="slice-strategy">
+              <option value="all">All</option>
+            </select>
+          </label>
+        </div>
+        <div class="small-note" id="slice-filter-note"></div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Strategy</th><th>Edge type</th><th>Time window</th><th>Score</th><th>Signals</th><th>Labels</th><th>EV @ $10</th><th>Uniq</th><th>Capacity</th></tr></thead>
+            <tbody id="slice-body"></tbody>
+          </table>
+        </div>
+      </section>
     </div>
     <script src="./dashboard.js"></script>
     <script>
@@ -74,6 +104,7 @@
         Dashboard.renderChrome(snapshot, 'Strategies');
         Dashboard.renderAlerts(snapshot);
         const statusSelect = document.getElementById('filter-status');
+        const originSelect = document.getElementById('filter-origin');
         const searchInput = document.getElementById('filter-search');
         const note = document.getElementById('strategy-filter-note');
         const tbody = document.getElementById('strategies-body');
@@ -83,6 +114,10 @@
         const executionSearch = document.getElementById('execution-search');
         const executionNote = document.getElementById('execution-filter-note');
         const executionBody = document.getElementById('execution-body');
+        const sliceScope = document.getElementById('slice-scope');
+        const sliceStrategy = document.getElementById('slice-strategy');
+        const sliceNote = document.getElementById('slice-filter-note');
+        const sliceBody = document.getElementById('slice-body');
         Dashboard.uniqueValues(snapshot.strategies, 'status').forEach((value) => statusSelect.insertAdjacentHTML('beforeend', `<option value="${value}">${value}</option>`));
         Dashboard.uniqueValues(snapshot.executionChecks, 'strategy').forEach((value) => executionStrategy.insertAdjacentHTML('beforeend', `<option value="${value}">${value}</option>`));
         Dashboard.uniqueValues(snapshot.executionChecks, 'source_confidence').forEach((value) => executionConfidence.insertAdjacentHTML('beforeend', `<option value="${value}">${value}</option>`));
@@ -90,12 +125,14 @@
         const renderRows = () => {
           const filtered = snapshot.strategies.filter((s) => {
             if (statusSelect.value !== 'all' && s.status !== statusSelect.value) return false;
+            if (originSelect.value === 'generated' && !s.is_generated) return false;
+            if (originSelect.value === 'core' && s.is_generated) return false;
             const q = searchInput.value.trim().toLowerCase();
             if (q && !s.strategy_name.toLowerCase().includes(q)) return false;
             return true;
           });
           note.textContent = `${filtered.length} shown of ${snapshot.strategies.length} strategies · Phase A metrics are fill proxies, not live fills`;
-          tbody.innerHTML = filtered.map((s) => `<tr><td><div class="strategy-name">${s.strategy_name}</div>${s.warnings?.length ? `<div class="muted">${s.warnings.join(' ')}</div>` : ''}</td><td><span class="${Dashboard.pillClass(s.status)}">${s.status}</span></td><td>${Dashboard.fmtNumber(s.open_exposure)} USDC</td><td>${Dashboard.fmtInt(s.open_positions)}</td><td>${Dashboard.fmtInt(s.recent_signals_count)}</td><td>${Dashboard.fmtInt(s.execution_checks_count_30d)}</td><td>${Dashboard.fmtNumber(s.avg_ev_after_slippage_10_pp_30d)} pp</td><td>${Dashboard.fmtNumber(s.avg_ev_after_slippage_50_pp_30d)} pp</td><td>${Dashboard.fmtNumber(s.avg_max_size_positive_ev_30d)} USD</td><td>${Dashboard.fmtNumber(s.realized_pnl_30d)} USDC</td><td>${Dashboard.fmtNumber(s.realized_pnl_all_time)} USDC</td></tr>`).join('');
+          tbody.innerHTML = filtered.map((s) => `<tr><td><div class="strategy-name">${s.strategy_name}</div>${s.is_generated ? `<div class="muted">module ${s.generated_module_path || 'generated'}${s.generated_proposal_path ? ` · proposal ${s.generated_proposal_path}` : ''}</div>` : ''}${s.warnings?.length ? `<div class="muted">${s.warnings.join(' ')}</div>` : ''}</td><td><span class="${Dashboard.pillClass(s.status)}">${s.status}</span></td><td>${s.is_generated ? `<span class="pill pill-info">generated</span>${s.generated_lifecycle ? `<div class="muted">${s.generated_lifecycle}</div>` : ''}` : `<span class="pill pill-neutral">core</span>`}</td><td>${Dashboard.fmtNumber(s.open_exposure)} USDC</td><td>${Dashboard.fmtInt(s.open_positions)}</td><td>${Dashboard.fmtInt(s.recent_signals_count)}</td><td>${Dashboard.fmtInt(s.execution_checks_count_30d)}</td><td>${s.generated_benchmark_score !== null && s.generated_benchmark_score !== undefined ? `${Dashboard.fmtNumber(s.generated_benchmark_score, 3)}${s.generated_benchmark_labeled ? `<div class="muted">${Dashboard.fmtInt(s.generated_benchmark_labeled)} labels</div>` : ''}` : '—'}</td><td>${Dashboard.fmtNumber(s.avg_ev_after_slippage_10_pp_30d)} pp</td><td>${Dashboard.fmtNumber(s.avg_ev_after_slippage_50_pp_30d)} pp</td><td>${Dashboard.fmtNumber(s.avg_max_size_positive_ev_30d)} USD</td><td>${Dashboard.fmtNumber(s.realized_pnl_30d)} USDC</td><td>${Dashboard.fmtNumber(s.realized_pnl_all_time)} USDC</td></tr>`).join('');
         };
 
         const renderExecution = () => {
@@ -111,14 +148,47 @@
           executionBody.innerHTML = filtered.map((row) => `<tr><td>${Dashboard.fmtDate(row.created_at)}</td><td><div class="strategy-name">${row.strategy}</div><div class="muted code">${row.run_id.slice(0, 8)}</div></td><td><div>${row.market_title}</div><div class="muted code">${row.market_id}</div></td><td><span class="${row.outcome === 'YES' ? 'pill pill-ok' : 'pill pill-warning'}">${row.outcome}</span></td><td><span class="pill pill-neutral">${row.source_confidence}</span></td><td>${Dashboard.fmtNumber(row.quote_price, 4)}</td><td>${Dashboard.fmtNumber(row.best_bid, 4)}</td><td>${Dashboard.fmtNumber(row.best_ask, 4)}</td><td>${Dashboard.fmtNumber(row.fill_price_10, 4)}</td><td>${Dashboard.fmtNumber(row.fill_price_50, 4)}</td><td>${Dashboard.fmtNumber(row.ev_after_slippage_10_pp)} pp</td><td>${Dashboard.fmtNumber(row.ev_after_slippage_50_pp)} pp</td><td>${Dashboard.fmtNumber(row.max_size_positive_ev)} USD</td></tr>`).join('') || '<tr><td colspan="13" class="muted">No execution checks match the current filters.</td></tr>';
         };
 
+        const refreshSliceStrategies = () => {
+          const previous = sliceStrategy.value || 'all';
+          sliceStrategy.innerHTML = '<option value="all">All</option>';
+          const scope = snapshot.benchmarks?.scopes?.[sliceScope.value];
+          const slices = scope?.strategy_slices || [];
+          Dashboard.uniqueValues(slices, 'strategy').forEach((value) => sliceStrategy.insertAdjacentHTML('beforeend', `<option value="${value}">${value}</option>`));
+          if ([...sliceStrategy.options].some((option) => option.value === previous)) {
+            sliceStrategy.value = previous;
+          }
+        };
+
+        const renderSlices = () => {
+          const scope = snapshot.benchmarks?.scopes?.[sliceScope.value];
+          const slices = scope?.strategy_slices || [];
+          const filtered = slices.filter((row) => sliceStrategy.value === 'all' || row.strategy === sliceStrategy.value);
+          sliceNote.textContent = scope
+            ? `${filtered.length} shown of ${slices.length} slices · scope ${sliceScope.value}`
+            : `No replay benchmark loaded for scope ${sliceScope.value}`;
+          sliceBody.innerHTML = filtered.map((row) => `<tr><td>${row.strategy}</td><td>${row.edge_type}</td><td>${row.time_window}</td><td>${Dashboard.fmtNumber(row.benchmark_score, 3)}</td><td>${Dashboard.fmtInt(row.signals)}</td><td>${Dashboard.fmtInt(row.labeled_signals)}</td><td>${Dashboard.fmtNumber(row.avg_ev_after_slippage_10_pp)} pp</td><td>${Dashboard.fmtNumber(row.uniqueness_score, 3)}</td><td>${Dashboard.fmtNumber(row.capacity_score, 3)}</td></tr>`).join('')
+            || '<tr><td colspan="9" class="muted">No benchmark slices match the current filters.</td></tr>';
+        };
+
         statusSelect.addEventListener('change', renderRows);
+        originSelect.addEventListener('change', renderRows);
         searchInput.addEventListener('input', renderRows);
         executionStrategy.addEventListener('change', renderExecution);
         executionOutcome.addEventListener('change', renderExecution);
         executionConfidence.addEventListener('change', renderExecution);
         executionSearch.addEventListener('input', renderExecution);
+        sliceScope.addEventListener('change', () => {
+          refreshSliceStrategies();
+          renderSlices();
+        });
+        sliceStrategy.addEventListener('change', renderSlices);
+        if (!snapshot.benchmarks?.scopes?.generated) {
+          sliceScope.value = 'alert-only';
+        }
+        refreshSliceStrategies();
         renderRows();
         renderExecution();
+        renderSlices();
       }).catch((err) => {
         document.body.innerHTML = `<div class="shell"><div class="panel"><h1>Dashboard failed to load</h1><p>${err.message}</p></div></div>`;
       });

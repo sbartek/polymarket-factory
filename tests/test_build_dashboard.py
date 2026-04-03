@@ -40,3 +40,12 @@ def test_dashboard_js_exports_load_json_for_wiki_page():
     assert "Dashboard.loadJson" in wiki_html
     assert "window.Dashboard = {" in dashboard_js
     assert "loadJson, loadSnapshot" in dashboard_js
+
+
+def test_md_to_html_does_not_italicize_strategy_names_with_underscores():
+    html = build_dashboard._md_to_html("Strategies: ev_news stale_market and _actual emphasis_.")
+
+    assert "ev_news" in html
+    assert "stale_market" in html
+    assert "<em>actual emphasis</em>" in html
+    assert "ev<em>news" not in html
