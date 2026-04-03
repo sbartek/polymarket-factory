@@ -8,7 +8,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parents[1]))
 from factory.broker import PaperBroker
+from factory.db import FactoryDB
 from factory.strategy_meta import ACTIVE_STRATEGIES, strategy_metadata
+
+LLM_STRATEGIES = ("ev_news", "stale_market")
 
 KILL_WIN_RATE = 0.30
 KILL_ROI = -0.10
@@ -109,6 +112,56 @@ def evaluate():
     print("SUMMARY:")
     for name, v in verdicts:
         print(f"  {name}: {v}")
+    print()
+
+    _print_brier_scores()
+
+
+def _print_brier_scores():
+    """
+    LLM calibration report using Brier scores for ev_news and stale_market.
+
+    Only trades with resolved_outcome IN ('YES','NO') are scored — named-outcome
+    markets (sports team names) are excluded because their exit_price is
+    unreliable until the close-trade normalization is fixed.
+
+    Reference points:
+      0.00  = perfect calibration
+      0.25  = uninformative (always predict 50%)
+      1.00  = perfectly wrong
+    """
+    db = FactoryDB()
+    rows = db.get_brier_score_data(strategies=list(LLM_STRATEGIES))
+
+    print(f"{'─'*60}")
+    print("LLM CALIBRATION — BRIER SCORES")
+    print("  (only YES/NO resolved trades; named-outcome markets excluded)")
+
+    if not rows:
+        print("  No scored trades yet.\n")
+        return
+
+    by_strategy: dict[str, list[dict]] = defaultdict(list)
+    for r in rows:
+        by_strategy[r["strategy"]].append(r)
+
+    for strategy in LLM_STRATEGIES:
+        trades = by_strategy.get(strategy, [])
+        if not trades:
+            print(f"  {strategy}: no data")
+            continue
+        scores = [r["brier_score"] for r in trades]
+        mean_bs = sum(scores) / len(scores)
+        correct = sum(1 for r in trades if r["actual"] == 1.0)
+        print(f"\n  [{strategy}]  n={len(trades)}  mean Brier={mean_bs:.3f}  correct={correct}/{len(trades)}")
+        for r in trades:
+            direction = "✓" if r["actual"] == 1.0 else "✗"
+            print(
+                f"    {direction} p̂={r['p_hat']:.2f} actual={r['actual']:.0f}"
+                f"  BS={r['brier_score']:.3f}"
+                f"  [{r['outcome']}→{r['resolved_outcome']}]"
+                f"  {r['market_title'][:45]}"
+            )
     print()
 
 

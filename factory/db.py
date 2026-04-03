@@ -757,3 +757,50 @@ class FactoryDB:
                 ),
             )
             conn.commit()
+
+    def get_brier_score_data(self, strategies: list[str] | None = None) -> list[dict]:
+        """
+        Return per-trade Brier score data for closed trades that have a clean YES/NO
+        resolved_outcome and a matching signal at open time.
+
+        Only trades where resolved_outcome IN ('YES', 'NO') are included — named-outcome
+        markets (sports scores, team names) are skipped because the pnl/exit_price
+        normalization is unreliable for those.
+
+        Brier score = (p_hat - actual)^2 where:
+          - p_hat  : LLM's probability for the direction we bet (from the opening signal)
+          - actual : 1.0 if that direction resolved correctly, 0.0 otherwise (exit_price)
+        """
+        placeholders = ""
+        params: list = []
+        if strategies:
+            placeholders = f"AND t.strategy IN ({','.join('?' * len(strategies))})"
+            params = list(strategies)
+
+        query = f"""
+            SELECT
+                t.strategy,
+                t.market_id,
+                t.market_title,
+                t.outcome,
+                t.resolved_outcome,
+                t.exit_price          AS actual,
+                s.p_hat,
+                (s.p_hat - t.exit_price) * (s.p_hat - t.exit_price) AS brier_score,
+                t.opened_at,
+                t.closed_at
+            FROM trades t
+            JOIN signals s
+              ON  s.market_id  = t.market_id
+              AND s.strategy   = t.strategy
+              AND s.run_id     = t.run_id_opened
+            WHERE t.status          = 'closed'
+              AND t.mode            = 'paper'
+              AND t.resolved_outcome IN ('YES', 'NO')
+              AND s.p_hat IS NOT NULL
+              {placeholders}
+            ORDER BY t.strategy, t.closed_at
+        """
+        with self._connect() as conn:
+            rows = conn.execute(query, params).fetchall()
+        return [dict(r) for r in rows]
