@@ -79,8 +79,8 @@ class LiveBroker:
             if self.db and self.run_id:
                 self.db.log_event(
                     self.run_id, "error", "partial_fill_unhedged_yes",
-                    strategy=signal.strategy, market_id=signal.market_id,
-                    payload={"yes_order_id": yes_order_id, "yes_size": yes_size},
+                    strategy=signal.strategy,
+                    payload={"yes_order_id": yes_order_id, "yes_size": yes_size, "market_id": signal.market_id},
                 )
             return self._record_trade(
                 signal, amount_usdc, p_yes, outcome="PARTIAL_YES_UNHEDGED",
