@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PPLayouts Dashboard · Wiki</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <style>
+      .wiki-layout { display: grid; grid-template-columns: 200px 1fr; gap: 16px; align-items: start; }
+      .wiki-sidebar { position: sticky; top: 16px; }
+      .wiki-sidebar .section-group { margin-bottom: 20px; }
+      .wiki-sidebar .section-label { color: var(--muted); font-size: 0.75em; text-transform: uppercase; letter-spacing: 0.1em; padding: 4px 8px; }
+      .wiki-sidebar a { display: block; padding: 6px 8px; color: var(--text-dim); text-decoration: none; border-left: 2px solid transparent; font-size: 0.85em; }
+      .wiki-sidebar a:hover { color: var(--text); border-left-color: var(--border-bright); }
+      .wiki-sidebar a.active { color: var(--text); border-left-color: var(--ok); }
+      .wiki-content { min-width: 0; }
+      .wiki-page { display: none; }
+      .wiki-page.active { display: block; }
+      .wiki-page h1 { color: var(--text); font-size: 1.4em; margin: 0 0 4px; border-bottom: 1px solid var(--border-bright); padding-bottom: 8px; }
+      .wiki-page h2 { color: var(--text); font-size: 1.1em; margin: 24px 0 8px; border-left: 3px solid var(--ok); padding-left: 8px; }
+      .wiki-page h3 { color: var(--text-dim); font-size: 0.95em; margin: 16px 0 6px; }
+      .wiki-page p { color: var(--text-dim); line-height: 1.6; margin: 8px 0; }
+      .wiki-page ul { color: var(--text-dim); line-height: 1.7; padding-left: 20px; margin: 8px 0; }
+      .wiki-page li { margin-bottom: 4px; }
+      .wiki-page strong { color: var(--text); }
+      .wiki-page em { color: var(--info); font-style: normal; }
+      .wiki-page code { background: var(--panel-2); color: var(--ok); padding: 1px 5px; font-size: 0.88em; }
+      .wiki-page table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 0.85em; }
+      .wiki-page th { color: var(--text); border-bottom: 1px solid var(--border-bright); padding: 6px 8px; text-align: left; }
+      .wiki-page td { color: var(--text-dim); border-bottom: 1px solid var(--border); padding: 6px 8px; }
+      .wiki-page tr:last-child td { border-bottom: none; }
+      .wiki-meta { color: var(--muted); font-size: 0.78em; margin-bottom: 20px; }
+      .wiki-empty { color: var(--muted); padding: 40px; text-align: center; }
+      @media (max-width: 700px) {
+        .wiki-layout { grid-template-columns: 1fr; }
+        .wiki-sidebar { position: static; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <header class="topbar">
+        <div><p class="eyebrow">PPLayouts</p><h1 id="page-title">Wiki</h1><p id="snapshot-meta" class="muted">Loading snapshot…</p></div>
+        <div class="status-cluster"><span id="snapshot-age" class="pill pill-neutral">…</span><span id="run-status-pill" class="pill pill-neutral">run: …</span></div>
+      </header>
+      <nav class="nav">
+        <a href="./index.html" data-nav="overview">Overview</a>
+        <a href="./strategies.html" data-nav="strategies">Strategies</a>
+        <a href="./positions.html" data-nav="positions">Positions</a>
+        <a href="./runs.html" data-nav="runs">Runs</a>
+        <a href="./experiments.html" data-nav="experiments">Experiments</a>
+        <a href="./wiki.html" data-nav="wiki">Wiki</a>
+      </nav>
+
+      <section id="alerts-section" class="panel hidden section-gap"><div class="panel-header"><h2>Alerts</h2></div><div id="alerts-list" class="stack"></div></section>
+
+      <div id="wiki-empty" class="panel wiki-empty hidden">Wiki not built yet — run <code>scripts/update_wiki.py</code> then <code>scripts/build_dashboard.py</code>.</div>
+
+      <div class="wiki-layout section-gap" id="wiki-layout" style="display:none">
+        <aside class="panel wiki-sidebar" id="wiki-sidebar"></aside>
+        <div class="panel wiki-content" id="wiki-content"></div>
+      </div>
+    </div>
+
+    <script src="./dashboard.js"></script>
+    <script>
+      Dashboard.renderNav('wiki');
+
+      async function loadWiki() {
+        try {
+          return await Dashboard.loadJson(Dashboard.dataPath('wiki'));
+        } catch (_) {
+          return [];
+        }
+      }
+
+      function renderWiki(pages) {
+        const sidebar = document.getElementById('wiki-sidebar');
+        const content = document.getElementById('wiki-content');
+        const layout = document.getElementById('wiki-layout');
+        const empty = document.getElementById('wiki-empty');
+
+        if (!pages.length) {
+          empty.classList.remove('hidden');
+          return;
+        }
+
+        layout.style.display = 'grid';
+
+        // Group by section
+        const sections = {};
+        pages.forEach((p) => {
+          if (!sections[p.section]) sections[p.section] = [];
+          sections[p.section].push(p);
+        });
+
+        // Build sidebar
+        let sidebarHtml = '';
+        Object.entries(sections).forEach(([section, sPages]) => {
+          sidebarHtml += `<div class="section-group"><div class="section-label">${sPages[0].section_label}</div>`;
+          sPages.forEach((p) => {
+            sidebarHtml += `<a href="#" data-slug="${p.slug}" data-section="${p.section}">${p.title}</a>`;
+          });
+          sidebarHtml += '</div>';
+        });
+        sidebar.innerHTML = sidebarHtml;
+
+        // Build content pages
+        let contentHtml = '';
+        pages.forEach((p, idx) => {
+          contentHtml += `<div class="wiki-page${idx === 0 ? ' active' : ''}" id="wiki-page-${p.slug}">${p.html}</div>`;
+        });
+        content.innerHTML = contentHtml;
+
+        // Activate first link
+        const firstLink = sidebar.querySelector('a');
+        if (firstLink) firstLink.classList.add('active');
+
+        // Nav click handler
+        sidebar.querySelectorAll('a').forEach((link) => {
+          link.addEventListener('click', (e) => {
+            e.preventDefault();
+            const slug = link.dataset.slug;
+            sidebar.querySelectorAll('a').forEach((l) => l.classList.remove('active'));
+            link.classList.add('active');
+            document.querySelectorAll('.wiki-page').forEach((p) => p.classList.remove('active'));
+            const target = document.getElementById(`wiki-page-${slug}`);
+            if (target) target.classList.add('active');
+          });
+        });
+
+        // Hash routing
+        const hash = location.hash.slice(1);
+        if (hash) {
+          const link = sidebar.querySelector(`[data-slug="${hash}"]`);
+          if (link) link.click();
+        }
+      }
+
+      Promise.all([Dashboard.loadSnapshot(), loadWiki()]).then(([snapshot, pages]) => {
+        Dashboard.renderChrome(snapshot, 'Wiki');
+        Dashboard.renderAlerts(snapshot);
+        renderWiki(pages);
+      }).catch((err) => {
+        console.error(err);
+        document.getElementById('wiki-empty').classList.remove('hidden');
+      });
+    </script>
+  </body>
+</html>
