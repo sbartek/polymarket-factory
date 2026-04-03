@@ -13,9 +13,12 @@ from urllib.parse import urlparse
 
 from ddgs import DDGS
 
-from ..feed import event_url, get_yes_price
+from ..feed import event_url, fetch_by_tag, get_yes_price
 from ..models import Signal
 from .base import Strategy
+
+CELEBRITY_TAGS = ("celebrities", "pop-culture", "reality-tv", "music")
+CELEBRITY_TAG_LIMIT = 30  # per tag
 
 GOSSIP_DOMAINS = (
     "people.com",
@@ -60,12 +63,12 @@ EVENT_FAMILY_PATTERNS = [
     ("romance_down", re.compile(r"\b(breakup|break up|split|divorc|cheat|affair|separat)\w*\b", re.IGNORECASE)),
     ("scandal", re.compile(r"\b(arrest|lawsuit|sue|rehab|hospitaliz|charged)\w*\b", re.IGNORECASE)),
 ]
-MIN_VOLUME = 10_000
-MIN_PRICE = 0.12
+MIN_VOLUME = 100         # celebrity markets are inherently low-volume
+MIN_PRICE = 0.08
 MAX_PRICE = 0.88
 MIN_DAYS = 1
-MAX_DAYS = 45
-MIN_CANDIDATE_SCORE = 4.0
+MAX_DAYS = 365           # include "by end of year" markets
+MIN_CANDIDATE_SCORE = 3.0  # lower: no volume bonus for thin celebrity markets
 MIN_CORROBORATING_HITS = 2
 MIN_CORROBORATION_SCORE = 2.5
 MAX_ALERTS_PER_RUN = 3
@@ -100,12 +103,16 @@ def _collect_text(value) -> list[str]:
 
 
 def _market_text(ev: dict) -> str:
-    return " | ".join(_collect_text({
+    parts = _collect_text({
         "title": ev.get("title"),
         "category": ev.get("category"),
-        "tags": ev.get("tags"),
         "series": ev.get("series"),
-    }))
+    })
+    for tag in ev.get("tags") or []:
+        label = tag.get("label") or tag.get("slug") or ""
+        if label:
+            parts.append(label.lower())
+    return " | ".join(parts)
 
 
 def _extract_names(title: str, ev: dict) -> list[str]:
@@ -258,8 +265,25 @@ class CelebrityTabloidStrategy(Strategy):
         )
         return outcome, market_price, p_hat, confidence, rationale[:180]
 
+    def _fetch_celebrity_markets(self, base_markets: list[dict]) -> list[dict]:
+        """Augment the top-100 feed with tag-filtered celebrity markets."""
+        seen_slugs = {ev.get("slug") or ev.get("id") for ev in base_markets}
+        extra: list[dict] = []
+        for tag in CELEBRITY_TAGS:
+            try:
+                results = fetch_by_tag(tag, limit=CELEBRITY_TAG_LIMIT)
+                for ev in results:
+                    slug = ev.get("slug") or ev.get("id")
+                    if slug not in seen_slugs:
+                        seen_slugs.add(slug)
+                        extra.append(ev)
+            except Exception:
+                pass
+        return base_markets + extra
+
     def scan(self, markets: list[dict]) -> list[Signal]:
         self.last_check_details = []
+        markets = self._fetch_celebrity_markets(markets)
         candidates = []
         for ev in markets:
             row = self._eligible(ev)
