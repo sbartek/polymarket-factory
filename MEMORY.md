@@ -148,6 +148,14 @@ Full summary at 09:00 Madrid time; delta updates at other runs.
 
 ---
 
+## Context files
+
+- `MEMORY.md` (this file) — full project context for Claude and codex
+- `CLAUDE.md` — one-liner pointing here; auto-loaded by Claude Code
+- No `AGENTS.md` yet — add one if codex needs auto-loading too
+
+---
+
 ## Wiki system
 
 Auto-generated from DB via Claude (Karpathy pattern). Pages in `wiki/` (gitignored).
