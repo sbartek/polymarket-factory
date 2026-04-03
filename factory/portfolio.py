@@ -1,4 +1,6 @@
 """Portfolio summary — P&L and stats across all strategies."""
+import json
+
 from .broker import PaperBroker
 from .strategy_meta import ACTIVE_STRATEGIES, TIME_WINDOW_EXPOSURE_CAPS, strategy_metadata
 
@@ -115,6 +117,68 @@ def format_summary(stats: dict) -> str:
     for name, s in stats["by_edge_type"].items():
         lines.append(_format_bucket_line(name, s))
     return "\n".join(lines)
+
+
+def snapshot_open_positions(broker: PaperBroker, market_index: dict[str, dict]) -> dict:
+    def _event_market(market_id: str) -> tuple[dict | None, dict | None]:
+        direct = market_index.get(market_id)
+        if direct:
+            return direct.get("event"), direct.get("market")
+        if ":" in market_id:
+            event_slug, submarket_id = market_id.split(":", 1)
+            event = market_index.get(event_slug, {}).get("event")
+            if event:
+                for market in event.get("markets", []) or []:
+                    if str(market.get("id")) == submarket_id:
+                        return event, market
+                return event, None
+        event = market_index.get(market_id, {}).get("event")
+        if event:
+            return event, market_index.get(market_id, {}).get("market")
+        return None, None
+
+    def _yes_price(market: dict | None) -> float | None:
+        if not market:
+            return None
+        raw = market.get("outcomePrices", "[]")
+        try:
+            prices = json.loads(raw) if isinstance(raw, str) else raw
+            if prices:
+                return float(prices[0])
+        except (ValueError, TypeError, IndexError):
+            return None
+        return None
+
+    open_positions = broker.get_open_positions()
+    total_cost = 0.0
+    total_value = 0.0
+    marked = 0
+    missing = 0
+    for trade in open_positions:
+        amount = float(trade.get("amount_usdc") or 0)
+        shares = float(trade.get("shares") or 0)
+        total_cost += amount
+        _, market = _event_market(str(trade.get("market_id") or ""))
+        yes_price = _yes_price(market)
+        if yes_price is None:
+            price = float(trade.get("entry_price") or 0)
+            missing += 1
+        else:
+            price = yes_price if trade.get("outcome") == "YES" else max(0.0, min(1.0, 1 - yes_price))
+            marked += 1
+        total_value += shares * price
+
+    closed_pnl = sum(float(t.get("pnl_usdc") or 0) for t in broker.get_all_trades() if t.get("status") == "closed")
+    return {
+        "open_positions": len(open_positions),
+        "open_cost_usdc": round(total_cost, 2),
+        "open_mark_value_usdc": round(total_value, 2),
+        "unrealized_pnl_usdc": round(total_value - total_cost, 2),
+        "closed_pnl_usdc": round(closed_pnl, 2),
+        "net_usdc": round(total_value + closed_pnl, 2),
+        "marked_positions": marked,
+        "stale_positions": missing,
+    }
 
 
 def format_wa_table(stats: dict, new_by_strategy: dict[str, int]) -> str:

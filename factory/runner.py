@@ -11,7 +11,7 @@ Supports `fast_dry_run=True` to aggressively trim slow strategy work for debuggi
 Includes live-run locking + strategy detail logging.
 """
 from dataclasses import asdict, is_dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from .broker import PaperBroker
 from .db import FactoryDB
@@ -19,7 +19,7 @@ from .execution import build_market_index, snapshot_for_signal
 from .feed import fetch_top, fetch_closed, get_market_winner, get_submarket_outcome
 from .models import Signal
 from .notify import send_whatsapp
-from .portfolio import summary, format_summary, format_wa_table
+from .portfolio import summary, format_summary, format_wa_table, snapshot_open_positions
 from .strategies import STRATEGIES
 from .strategy_meta import strategy_metadata, should_run_in_cycle
 
@@ -204,7 +204,35 @@ def _restore_fast_dry_run_overrides(saved: list[tuple[object, dict]]):
                 setattr(strategy, attr, value)
 
 
-def format_wa_summary(new_trades: list[tuple], closed_trades: list[dict], alert_signals: list[Signal], closed_count: int, stats: dict, now: str, skipped: list[str], hour: int, dry_run: bool = False, fast_dry_run: bool = False) -> str:
+def _format_hourly_delta(snapshot: dict | None, previous_snapshot: dict | None) -> str | None:
+    if not snapshot or not previous_snapshot:
+        return None
+    net_delta = round(float(snapshot.get("net_usdc") or 0) - float(previous_snapshot.get("net_usdc") or 0), 2)
+    unrealized_delta = round(float(snapshot.get("unrealized_pnl_usdc") or 0) - float(previous_snapshot.get("unrealized_pnl_usdc") or 0), 2)
+    sign = "+" if net_delta >= 0 else "-"
+    marked = int(snapshot.get("marked_positions") or 0)
+    stale = int(snapshot.get("stale_positions") or 0)
+    coverage = f"marked {marked}"
+    if stale:
+        coverage += f", {stale} stale"
+    return f"*1h delta:* {sign}${abs(net_delta):.2f} net · unrealized {unrealized_delta:+.2f} · {coverage}"
+
+
+def format_wa_summary(new_trades: list[tuple], closed_trades: list[dict], alert_signals: list[Signal], closed_count: int, stats: dict, now: str, skipped: list[str] | None = None, hour: int = 9, dry_run: bool = False, fast_dry_run: bool = False, hourly_delta: str | None = None) -> str:
+    if not isinstance(stats, dict) and isinstance(closed_count, dict):
+        old_alert_signals = closed_trades
+        old_closed_count = alert_signals if isinstance(alert_signals, int) else 0
+        old_stats = closed_count
+        old_now = stats
+        old_skipped = now if isinstance(now, list) else []
+        closed_trades = []
+        alert_signals = old_alert_signals
+        closed_count = old_closed_count
+        stats = old_stats
+        now = old_now
+        skipped = old_skipped
+
+    skipped = skipped or []
     new_by_strategy: dict[str, int] = {}
     for sig, _ in new_trades:
         new_by_strategy[sig.strategy] = new_by_strategy.get(sig.strategy, 0) + 1
@@ -219,6 +247,8 @@ def format_wa_summary(new_trades: list[tuple], closed_trades: list[dict], alert_
 
     if full_summary_window:
         lines.append(format_wa_table(stats, new_by_strategy))
+        if hourly_delta:
+            lines.append("\n" + hourly_delta)
         if closed_count:
             lines.append(f"\n{closed_count} position(s) {'would resolve' if dry_run else 'resolved'} this run.")
         if alert_signals:
@@ -252,6 +282,10 @@ def format_wa_summary(new_trades: list[tuple], closed_trades: list[dict], alert_
             )
     else:
         lines.append("*Closed this run:* none")
+
+    if hourly_delta:
+        lines.append("")
+        lines.append(hourly_delta)
 
     if alert_signals:
         lines.append("")
@@ -395,8 +429,14 @@ def run(dry_run: bool = False, send: bool = True, fast_dry_run: bool = False):
             db.log_event(run_id, "info", "strategy_finished", strategy=strategy.name, payload={"signals": len(signals)})
 
         stats = summary(broker)
+        portfolio_snapshot = snapshot_open_positions(broker, market_index)
+        previous_snapshot = db.get_latest_portfolio_snapshot_before((now_dt - timedelta(hours=1)).isoformat(timespec="seconds"))
+        hourly_delta = _format_hourly_delta(portfolio_snapshot, previous_snapshot)
+        if not dry_run:
+            db.log_portfolio_snapshot(run_id, portfolio_snapshot)
+            db.log_event(run_id, "info", "portfolio_snapshot", payload=portfolio_snapshot)
         print(format_summary(stats))
-        wa_msg = format_wa_summary(new_trades, closed_trades, alert_signals, closed_count, stats, now, skipped_this_cycle, now_dt.hour, dry_run=dry_run, fast_dry_run=fast_dry_run)
+        wa_msg = format_wa_summary(new_trades, closed_trades, alert_signals, closed_count, stats, now, skipped_this_cycle, now_dt.hour, dry_run=dry_run, fast_dry_run=fast_dry_run, hourly_delta=hourly_delta)
         if dry_run or not send:
             print("\n--- WHATSAPP PREVIEW ---")
             print(wa_msg)

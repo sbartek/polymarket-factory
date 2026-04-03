@@ -1,0 +1,43 @@
+from factory.runner import _format_hourly_delta, format_wa_summary
+
+
+def test_format_hourly_delta_shows_sign_and_coverage():
+    current = {
+        "net_usdc": 112.34,
+        "unrealized_pnl_usdc": 7.89,
+        "marked_positions": 4,
+        "stale_positions": 1,
+    }
+    previous = {
+        "net_usdc": 100.00,
+        "unrealized_pnl_usdc": 2.50,
+    }
+
+    text = _format_hourly_delta(current, previous)
+
+    assert text == "*1h delta:* +$12.34 net · unrealized +5.39 · marked 4, 1 stale"
+
+
+def test_format_wa_summary_includes_hourly_delta_in_intraday_updates():
+    stats = {
+        "by_strategy": {},
+        "by_status_group": {},
+        "total_pnl": 0.0,
+        "total_staked": 0.0,
+        "roi": 0.0,
+        "open": 0,
+    }
+
+    text = format_wa_summary(
+        new_trades=[],
+        closed_trades=[],
+        alert_signals=[],
+        closed_count=0,
+        stats=stats,
+        now="2026-04-03 11:00",
+        skipped=[],
+        hour=11,
+        hourly_delta="*1h delta:* -$3.21 net · unrealized -1.10 · marked 2",
+    )
+
+    assert "*1h delta:* -$3.21 net · unrealized -1.10 · marked 2" in text

@@ -121,6 +121,21 @@ CREATE TABLE IF NOT EXISTS run_logs (
     FOREIGN KEY(run_id) REFERENCES runs(id)
 );
 
+CREATE TABLE IF NOT EXISTS portfolio_snapshots (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id TEXT NOT NULL,
+    open_positions INTEGER NOT NULL,
+    open_cost_usdc REAL NOT NULL,
+    open_mark_value_usdc REAL NOT NULL,
+    unrealized_pnl_usdc REAL NOT NULL,
+    closed_pnl_usdc REAL NOT NULL,
+    net_usdc REAL NOT NULL,
+    marked_positions INTEGER DEFAULT 0,
+    stale_positions INTEGER DEFAULT 0,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(run_id) REFERENCES runs(id)
+);
+
 CREATE TABLE IF NOT EXISTS spread_arb_baskets (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     run_id TEXT NOT NULL,
@@ -452,6 +467,33 @@ class FactoryDB:
         with self._connect() as conn:
             conn.execute("INSERT INTO run_logs (run_id, level, strategy, message, payload_json, created_at) VALUES (?, ?, ?, ?, ?, ?)", (run_id, level, strategy, message, json.dumps(payload or {}, ensure_ascii=False), utcnow()))
             conn.commit()
+
+    def log_portfolio_snapshot(self, run_id: str, snapshot: dict):
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT INTO portfolio_snapshots (run_id, open_positions, open_cost_usdc, open_mark_value_usdc, unrealized_pnl_usdc, closed_pnl_usdc, net_usdc, marked_positions, stale_positions, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    run_id,
+                    int(snapshot.get("open_positions") or 0),
+                    float(snapshot.get("open_cost_usdc") or 0),
+                    float(snapshot.get("open_mark_value_usdc") or 0),
+                    float(snapshot.get("unrealized_pnl_usdc") or 0),
+                    float(snapshot.get("closed_pnl_usdc") or 0),
+                    float(snapshot.get("net_usdc") or 0),
+                    int(snapshot.get("marked_positions") or 0),
+                    int(snapshot.get("stale_positions") or 0),
+                    utcnow(),
+                ),
+            )
+            conn.commit()
+
+    def get_latest_portfolio_snapshot_before(self, created_at: str) -> dict | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM portfolio_snapshots WHERE created_at <= ? ORDER BY created_at DESC LIMIT 1",
+                (created_at,),
+            ).fetchone()
+            return dict(row) if row else None
 
     def log_spread_arb_basket(self, run_id: str, basket: dict):
         with self._connect() as conn:
