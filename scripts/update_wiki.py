@@ -164,6 +164,7 @@ OUTPUT ONLY THE MARKDOWN. No preamble, no commentary, no "here is the page" intr
     print(f"  Updating wiki/strategies/{name}.md...")
     content = call_claude(prompt, max_tokens=1500)
     path = WIKI_DIR / "strategies" / f"{name}.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content)
 
 
@@ -207,6 +208,7 @@ OUTPUT ONLY THE MARKDOWN. No preamble, no commentary, no "here is the page" intr
     print("  Updating wiki/patterns/cross_strategy.md...")
     content = call_claude(prompt, max_tokens=1500)
     path = WIKI_DIR / "patterns" / "cross_strategy.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content)
 
 
@@ -257,6 +259,7 @@ OUTPUT ONLY THE MARKDOWN. No preamble, no commentary, no "here is the page" intr
     print("  Updating wiki/meta/overview.md...")
     content = call_claude(prompt, max_tokens=1500)
     path = WIKI_DIR / "meta" / "overview.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content)
 
 
@@ -275,6 +278,10 @@ def main():
     db = FactoryDB()
     data = _load_all_data(db)
     print(f"  {len(data['by_strategy'])} strategies, {data['total_closed']} closed trades, {data['total_open']} open\n")
+
+    if not data["by_strategy"] and data["total_closed"] == 0 and data["total_open"] == 0:
+        print("DB appears empty — no wiki pages to generate. Skipping.")
+        return
 
     if args.page in ("strategies", "all"):
         strategies = [args.strategy] if args.strategy else list(data["by_strategy"].keys())
