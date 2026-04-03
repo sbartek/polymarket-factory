@@ -11,7 +11,7 @@ A framework for rapidly spinning up, paper-trading, and evaluating Polymarket in
 ```
 You (idea) → new file in factory/strategies/ → add to STRATEGIES registry → runs automatically
                                                                                 ↓
-                                                              runner.py (3x/day via launchd)
+                                                              runner.py (every 2h via launchd)
                                                                 ├── fetch 100 top markets (Gamma API)
                                                                 ├── each strategy: scan → signal → size → open position
                                                                 ├── check open positions → close resolved ones
@@ -164,7 +164,7 @@ Current graduation status:
 ## Operations
 
 ```bash
-# Main runner cadence: 3x/day base schedule, but medium/long strategies skip some cycles.
+# Main runner cadence: every 2h (12x/day), but medium/long strategies skip some cycles.
 # WhatsApp messaging policy:
 # - 09:00 Europe/Madrid → full general summary
 # - other runs → opened/closed delta update (plus a small alert snippet if relevant)
@@ -327,7 +327,7 @@ The live DB and local backups are gitignored.
 ## Launchd
 
 Main factory job:
-- `com.polymarket.factory` — 09:30 / 14:30 / 19:30 CEST
+- `com.polymarket.factory` — every 2 hours at :00 (00:00, 02:00 … 22:00)
 
 Backup template included in repo:
 - `launchd/com.polymarket.factory.backup.plist`
