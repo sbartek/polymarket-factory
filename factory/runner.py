@@ -361,6 +361,11 @@ def run(dry_run: bool = False, send: bool = True, fast_dry_run: bool = False):
                 skipped_this_cycle.append(f"{strategy.name}[fast-skip]")
                 db.log_decision(run_id, "cycle_skip", "skip", strategy=strategy.name, reason="fast_dry_run", details={"time_window": strategy_meta.get("time_window")})
                 continue
+            if strategy_meta.get("paused") or getattr(strategy, "paused", False):
+                print(f"Skipping [{strategy.name}] (paused).")
+                skipped_this_cycle.append(f"{strategy.name}[paused]")
+                db.log_decision(run_id, "cycle_skip", "skip", strategy=strategy.name, reason="paused")
+                continue
             if not should_run_in_cycle(strategy_meta.get("time_window", "unknown"), now_dt.hour):
                 print(f"Skipping [{strategy.name}] this cycle ({strategy_meta.get('time_window')}).")
                 skipped_this_cycle.append(f"{strategy.name}[{strategy_meta.get('time_window')}]")

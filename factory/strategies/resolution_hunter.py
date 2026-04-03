@@ -58,11 +58,13 @@ class ResolutionHunterStrategy(Strategy):
     time_window = "short"
     target_hold_min_days = 0.04
     target_hold_max_days = 7
-    scan_frequency = "3x/day"
+    scan_frequency = "paused"
     max_position_usdc = 20.0
     min_ev_pp = 15.0
     min_position_usdc = 2.0
     fast_dry_run_candidates = 6
+    paused = True
+    trading_enabled = False
 
     def _candidate_score(self, title: str, days: int, vol: float) -> float:
         tl = title.lower()

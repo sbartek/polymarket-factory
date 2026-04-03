@@ -34,7 +34,7 @@ TIME_WINDOW_EXPOSURE_CAPS = {
 STRATEGY_EXPOSURE_CAPS = {
     "spread_arb": 80.0,
     "ev_news": 40.0,
-    "resolution_hunter": 40.0,
+    "resolution_hunter": 0.0,  # killed — -92.3% ROI on 12 trades
     "stale_market": 35.0,
     "correlated_pairs": 30.0,
     "correlated_laggard": 0.0,
@@ -43,7 +43,7 @@ STRATEGY_EXPOSURE_CAPS = {
     "carry_rewards": 0.0,  # alert_only — no paper positions opened
 }
 
-ACTIVE_STRATEGIES = {"ev_news", "spread_arb", "resolution_hunter", "stale_market", "correlated_pairs", "correlated_laggard", "esport48", "celebrity_tabloid", "carry_rewards"}
+ACTIVE_STRATEGIES = {"ev_news", "spread_arb", "stale_market", "correlated_pairs", "correlated_laggard", "esport48", "celebrity_tabloid", "carry_rewards"}
 
 
 def expected_window_from_days(min_days: float | int, max_days: float | int) -> TimeWindow:
