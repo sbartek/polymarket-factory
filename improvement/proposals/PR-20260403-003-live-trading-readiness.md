@@ -8,23 +8,13 @@
 
 ## Phase 1 — Infrastructure (Week 1)
 
-### 1.1 Set ANTHROPIC_API_KEY in launchd
-
-Currently falling back to Claude CLI. Set the key in the plist env so ev_news/resolution_hunter/stale_market get consistent, fast API calls.
-
-```bash
-# in com.polymarket.factory.plist, add:
-<key>ANTHROPIC_API_KEY</key>
-<string>sk-ant-...</string>
-```
-
-### 1.2 Fund Polymarket wallet
+### 1.1 Fund Polymarket wallet
 
 - ~€50 USDC on Polygon via MetaMask
 - Connect to Polymarket CLOB API: generate API keys from the UI
 - Store in `.env`: `POLYMARKET_API_KEY`, `POLYMARKET_API_SECRET`, `POLYMARKET_PASSPHRASE`, `POLYMARKET_WALLET_PRIVATE_KEY`
 
-### 1.3 CLOB API wrapper
+### 1.2 CLOB API wrapper
 
 Create `factory/clob.py` — thin wrapper around `py-clob-client`:
 - `get_order_book(token_id)` — real bid/ask depth
@@ -35,7 +25,7 @@ Create `factory/clob.py` — thin wrapper around `py-clob-client`:
 
 This is the only new external dependency. Keep it isolated — nothing in strategies touches it directly.
 
-### 1.4 LiveBroker implementation
+### 1.3 LiveBroker implementation
 
 Create `factory/live_broker.py` implementing the same `Broker` interface as `PaperBroker`:
 - `open_position()` → calls `clob.place_market_order()`, stores actual fill price in DB
@@ -43,7 +33,7 @@ Create `factory/live_broker.py` implementing the same `Broker` interface as `Pap
 - Hard position cap: refuse to open if total live exposure > $100
 - Log every order with CLOB order ID for reconciliation
 
-### 1.5 Health check + alerting
+### 1.4 Health check + alerting
 
 Add `factory/healthcheck.py`:
 - Called at end of every runner cycle
@@ -151,18 +141,17 @@ This is the core feedback loop to understand if paper results are predictive of 
 
 | # | Task | Phase | Effort | Blocker for live? |
 |---|------|-------|--------|-------------------|
-| 1 | Set ANTHROPIC_API_KEY in launchd plist | 1.1 | 10 min | No |
-| 2 | Fund Polymarket wallet (~€50 USDC) | 1.2 | 30 min | YES |
-| 3 | Create `factory/clob.py` wrapper | 1.3 | 2–3h | YES |
-| 4 | Create `factory/live_broker.py` | 1.4 | 3–4h | YES |
-| 5 | Runner dual-track routing | 3.1 | 1h | YES |
-| 6 | Claude calibration script | 2.1 | 2h | YES (for LLM strategies) |
-| 7 | Slippage reality check | 2.2 | 1h | Yes |
-| 8 | Write `docs/live_graduation.md` | 2.3 | 30 min | Yes |
-| 9 | Graduate spread_arb to live | 3.2 | 30 min | — |
-| 10 | Kill switch script | 3.4 | 1h | No (but add before live) |
-| 11 | Health check + alerting | 1.5 | 2h | No (but add before live) |
-| 12 | Monthly live calibration report | 4.3 | 3h | No (post-live) |
+| 1 | Fund Polymarket wallet (~€50 USDC) | 1.1 | 30 min | YES |
+| 2 | Create `factory/clob.py` wrapper | 1.2 | 2–3h | YES |
+| 3 | Create `factory/live_broker.py` | 1.3 | 3–4h | YES |
+| 4 | Runner dual-track routing | 3.1 | 1h | YES |
+| 5 | Claude calibration script | 2.1 | 2h | YES (for LLM strategies) |
+| 6 | Slippage reality check | 2.2 | 1h | Yes |
+| 7 | Write `docs/live_graduation.md` | 2.3 | 30 min | Yes |
+| 8 | Graduate spread_arb to live | 3.2 | 30 min | — |
+| 9 | Kill switch script | 3.4 | 1h | No (but add before live) |
+| 10 | Health check + alerting | 1.4 | 2h | No (but add before live) |
+| 11 | Monthly live calibration report | 4.3 | 3h | No (post-live) |
 
 ---
 
