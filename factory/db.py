@@ -155,6 +155,15 @@ CREATE TABLE IF NOT EXISTS market_observations (
     FOREIGN KEY(run_id) REFERENCES runs(id)
 );
 
+CREATE TABLE IF NOT EXISTS market_snapshot_archives (
+    run_id TEXT PRIMARY KEY,
+    source TEXT NOT NULL,
+    event_count INTEGER NOT NULL,
+    payload_json TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(run_id) REFERENCES runs(id)
+);
+
 CREATE TABLE IF NOT EXISTS spread_arb_baskets (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     run_id TEXT NOT NULL,
@@ -319,6 +328,7 @@ CREATE INDEX IF NOT EXISTS idx_signal_execution_checks_market_id ON signal_execu
 CREATE INDEX IF NOT EXISTS idx_market_observations_run_id ON market_observations(run_id);
 CREATE INDEX IF NOT EXISTS idx_market_observations_market_id ON market_observations(market_id);
 CREATE INDEX IF NOT EXISTS idx_market_observations_created_at ON market_observations(created_at);
+CREATE INDEX IF NOT EXISTS idx_market_snapshot_archives_created_at ON market_snapshot_archives(created_at);
 """
 
 
@@ -581,6 +591,19 @@ class FactoryDB:
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 payload,
+            )
+            conn.commit()
+
+    def log_market_snapshot_archive(self, run_id: str, events: list[dict], source: str = "fetch_top"):
+        payload_json = json.dumps(events, ensure_ascii=False, separators=(",", ":"))
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO market_snapshot_archives (
+                    run_id, source, event_count, payload_json, created_at
+                ) VALUES (?, ?, ?, ?, ?)
+                """,
+                (run_id, source, len(events), payload_json, utcnow()),
             )
             conn.commit()
 

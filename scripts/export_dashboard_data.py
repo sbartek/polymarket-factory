@@ -38,6 +38,10 @@ ACTIVE_STRATEGIES = {
     "esport48",
 }
 TIME_WINDOWS = ["super_short", "intraday", "short", "medium", "long", "unknown"]
+RAW_SNAPSHOT_RETENTION_DAYS = 365 * 2
+PROJECT_STORAGE_SOFT_LIMIT_BYTES = 90 * 1024 * 1024 * 1024
+PROJECT_STORAGE_HARD_LIMIT_BYTES = 100 * 1024 * 1024 * 1024
+PROJECT_STORAGE_EXCLUDED_DIRS = {".git", ".venv", "node_modules", "__pycache__", ".pytest_cache"}
 
 
 def utc_now_iso() -> str:
@@ -299,6 +303,26 @@ def scalar(conn: sqlite3.Connection, sql: str, params: tuple = (), default=None)
     return default if value is None else value
 
 
+def file_size_bytes(path: Path) -> int:
+    try:
+        return int(path.stat().st_size)
+    except FileNotFoundError:
+        return 0
+
+
+def dir_size_bytes(path: Path, *, excluded_dirs: set[str] | None = None) -> int:
+    if not path.exists():
+        return 0
+    excluded_dirs = excluded_dirs or set()
+    total = 0
+    for child in path.rglob("*"):
+        if any(part in excluded_dirs for part in child.parts):
+            continue
+        if child.is_file():
+            total += file_size_bytes(child)
+    return total
+
+
 def count_distinct(conn: sqlite3.Connection, sql: str, params: tuple = ()) -> int:
     value = scalar(conn, sql, params, 0)
     return int(value or 0)
@@ -318,6 +342,47 @@ def fetch_execution_summary(conn: sqlite3.Connection) -> dict:
         "avg_ev_after_slippage_50_pp_30d": round(float(avg_ev_50), 2) if avg_ev_50 is not None else None,
         "avg_max_size_positive_ev_30d": round(float(avg_max_positive), 2) if avg_max_positive is not None else None,
         "source_confidence_counts_30d": {row["source_confidence"]: int(row["cnt"] or 0) for row in confidence_rows},
+    }
+
+
+def fetch_storage(conn: sqlite3.Connection) -> dict:
+    archive_rows = conn.execute(
+        """
+        SELECT run_id, created_at, event_count, LENGTH(payload_json) AS payload_bytes
+        FROM market_snapshot_archives
+        ORDER BY created_at DESC
+        LIMIT 20
+        """
+    ).fetchall()
+    archive_total_bytes = scalar(conn, "SELECT COALESCE(SUM(LENGTH(payload_json)), 0) FROM market_snapshot_archives", (), 0)
+    archive_run_count = scalar(conn, "SELECT COUNT(*) FROM market_snapshot_archives", (), 0)
+    observation_row_count = scalar(conn, "SELECT COUNT(*) FROM market_observations", (), 0)
+    db_bytes = file_size_bytes(DB_PATH)
+    benchmark_bytes = dir_size_bytes(BENCHMARK_DIR)
+    dashboard_bytes = dir_size_bytes(OUTPUT_DIR)
+    project_bytes = dir_size_bytes(PROJECT_ROOT, excluded_dirs=PROJECT_STORAGE_EXCLUDED_DIRS)
+    return {
+        "generated_at": utc_now_iso(),
+        "database_bytes": db_bytes,
+        "benchmark_data_bytes": benchmark_bytes,
+        "dashboard_data_bytes": dashboard_bytes,
+        "project_storage_bytes": project_bytes,
+        "raw_snapshot_archive_bytes": int(archive_total_bytes or 0),
+        "raw_snapshot_archive_runs": int(archive_run_count or 0),
+        "market_observation_rows": int(observation_row_count or 0),
+        "raw_snapshot_retention_days": RAW_SNAPSHOT_RETENTION_DAYS,
+        "project_storage_soft_limit_bytes": PROJECT_STORAGE_SOFT_LIMIT_BYTES,
+        "project_storage_hard_limit_bytes": PROJECT_STORAGE_HARD_LIMIT_BYTES,
+        "project_storage_alert": project_bytes >= PROJECT_STORAGE_SOFT_LIMIT_BYTES,
+        "recent_snapshot_archives": [
+            {
+                "run_id": row["run_id"],
+                "created_at": row["created_at"],
+                "event_count": int(row["event_count"] or 0),
+                "payload_bytes": int(row["payload_bytes"] or 0),
+            }
+            for row in archive_rows
+        ][::-1],
     }
 
 
@@ -390,6 +455,9 @@ def load_generated_registry(benchmarks: dict | None = None) -> dict[str, dict]:
                 "generated_benchmark_score": benchmark_row.get("benchmark_score"),
                 "generated_benchmark_signals": benchmark_row.get("signals"),
                 "generated_benchmark_labeled": benchmark_row.get("labeled_signals"),
+                "generated_benchmark_observed": benchmark_row.get("observed_signals"),
+                "generated_benchmark_missing_forward": benchmark_row.get("no_forward_observation_signals"),
+                "generated_benchmark_flat_observations": benchmark_row.get("flat_observation_signals"),
             }
             existing = rows.get(strategy_name)
             if lifecycle == "archived":
@@ -403,7 +471,7 @@ def load_generated_registry(benchmarks: dict | None = None) -> dict[str, dict]:
     return rows
 
 
-def fetch_overview(conn: sqlite3.Connection, experiments: list[dict], warnings: list[str], benchmarks: dict | None = None) -> dict:
+def fetch_overview(conn: sqlite3.Connection, experiments: list[dict], warnings: list[str], benchmarks: dict | None = None, storage: dict | None = None) -> dict:
     latest = conn.execute("SELECT * FROM runs ORDER BY started_at DESC LIMIT 1").fetchone()
     open_active_exposure = scalar(conn, "SELECT COALESCE(SUM(amount_usdc), 0) FROM trades WHERE status='open' AND strategy IN ({})".format(
         ",".join("?" for _ in ACTIVE_STRATEGIES)
@@ -423,12 +491,24 @@ def fetch_overview(conn: sqlite3.Connection, experiments: list[dict], warnings: 
     alert_only_benchmark = benchmark_scopes.get("alert-only") or {}
     alert_only_rows = alert_only_benchmark.get("strategies") or []
     top_alert_only = alert_only_rows[0] if alert_only_rows else None
+    observed_alert_only = sum(int(row.get("observed_signals") or 0) for row in alert_only_rows)
+    labeled_alert_only = sum(int(row.get("labeled_signals") or 0) for row in alert_only_rows)
+    missing_alert_only = sum(int(row.get("no_forward_observation_signals") or 0) for row in alert_only_rows)
 
     alerts = []
     if latest and normalize_status(latest["status"]) != "ok":
         alerts.append({"level": "warning", "message": f"Latest run status is {normalize_status(latest['status'])}."})
     if execution["checks_30d"] == 0:
         alerts.append({"level": "warning", "message": "No Phase A execution checks recorded in the last 30 days."})
+    if storage and storage.get("project_storage_alert"):
+        project_gb = float(storage.get("project_storage_bytes") or 0) / (1024 ** 3)
+        alerts.append({
+            "level": "warning",
+            "message": (
+                f"Project storage is {project_gb:.1f} GB, near the 100 GB limit. "
+                f"Raw snapshot retention policy is {RAW_SNAPSHOT_RETENTION_DAYS} days."
+            ),
+        })
     for warning in warnings[:5]:
         alerts.append({"level": "warning", "message": warning})
 
@@ -451,6 +531,9 @@ def fetch_overview(conn: sqlite3.Connection, experiments: list[dict], warnings: 
         "benchmark_scope_count": len((benchmarks or {}).get("available_scopes", [])),
         "benchmark_strategy_count_alert_only": int(alert_only_benchmark.get("strategy_count") or 0),
         "benchmark_signal_count_alert_only": int(alert_only_benchmark.get("signal_count") or 0),
+        "benchmark_observed_signal_count_alert_only": observed_alert_only,
+        "benchmark_labeled_signal_count_alert_only": labeled_alert_only,
+        "benchmark_missing_forward_signal_count_alert_only": missing_alert_only,
         "benchmark_top_strategy_alert_only": top_alert_only.get("strategy") if top_alert_only else None,
         "benchmark_top_score_alert_only": top_alert_only.get("benchmark_score") if top_alert_only else None,
         "alerts": alerts,
@@ -515,6 +598,10 @@ def fetch_positions_open(conn: sqlite3.Connection) -> list[dict]:
 
 def fetch_strategies(conn: sqlite3.Connection, warnings: list[str], benchmarks: dict | None = None) -> list[dict]:
     meta_lookup = strategy_metadata()
+    benchmark_scopes = (benchmarks or {}).get("scopes", {})
+    alert_only_benchmark_rows = {
+        row.get("strategy"): row for row in (benchmark_scopes.get("alert-only", {}) or {}).get("strategies", []) if row.get("strategy")
+    }
     base = {row["strategy"]: row for row in fetch_strategy_rows(conn)}
     generated_registry = load_generated_registry(benchmarks)
     signal_counts = dict(conn.execute(
@@ -573,6 +660,7 @@ def fetch_strategies(conn: sqlite3.Connection, warnings: list[str], benchmarks: 
         meta = meta_lookup.get(name, {})
         open_positions = int(row.get("open_positions") or 0)
         generated_meta = generated_registry.get(name)
+        benchmark_row = generated_meta or alert_only_benchmark_rows.get(name, {})
         status = generated_meta.get("generated_lifecycle") if generated_meta else strategy_status(name, open_count=open_positions)
         execution = execution_by_strategy.get(name, {})
         strategy_warnings = []
@@ -595,6 +683,17 @@ def fetch_strategies(conn: sqlite3.Connection, warnings: list[str], benchmarks: 
             "generated_benchmark_score": generated_meta.get("generated_benchmark_score") if generated_meta else None,
             "generated_benchmark_signals": generated_meta.get("generated_benchmark_signals") if generated_meta else None,
             "generated_benchmark_labeled": generated_meta.get("generated_benchmark_labeled") if generated_meta else None,
+            "generated_benchmark_observed": generated_meta.get("generated_benchmark_observed") if generated_meta else None,
+            "generated_benchmark_missing_forward": generated_meta.get("generated_benchmark_missing_forward") if generated_meta else None,
+            "generated_benchmark_flat_observations": generated_meta.get("generated_benchmark_flat_observations") if generated_meta else None,
+            "benchmark_score": benchmark_row.get("benchmark_score"),
+            "benchmark_signals": benchmark_row.get("signals"),
+            "benchmark_observed_signals": benchmark_row.get("observed_signals"),
+            "benchmark_missing_forward_signals": benchmark_row.get("no_forward_observation_signals"),
+            "benchmark_flat_observation_signals": benchmark_row.get("flat_observation_signals"),
+            "benchmark_labeled_signals": benchmark_row.get("labeled_signals"),
+            "benchmark_observation_coverage": benchmark_row.get("observation_coverage"),
+            "benchmark_label_coverage": benchmark_row.get("label_coverage"),
             "alert_only": bool(meta.get("alert_only", False)),
             "trading_enabled": bool(meta.get("trading_enabled", True)),
             "promotable": bool(meta.get("promotable", False)),
@@ -744,14 +843,13 @@ def main() -> None:
     if not sqlite_available:
         raise SystemExit("SQLite DB not found; wrote manifest with warning context only.")
 
-    overview = fetch_overview(conn, experiments, warnings)
     benchmarks = load_benchmarks()
     runs = fetch_runs(conn)
     strategies = fetch_strategies(conn, warnings, benchmarks)
     execution_checks = fetch_execution_checks(conn)
     positions_open = fetch_positions_open(conn)
-
-    overview = fetch_overview(conn, experiments, warnings, benchmarks)
+    storage = fetch_storage(conn)
+    overview = fetch_overview(conn, experiments, warnings, benchmarks, storage)
 
     write_json(OUTPUT_DIR / "overview.json", overview)
     write_json(OUTPUT_DIR / "runs.json", runs)
@@ -760,6 +858,7 @@ def main() -> None:
     write_json(OUTPUT_DIR / "experiments.json", experiments)
     write_json(OUTPUT_DIR / "positions-open.json", positions_open)
     write_json(OUTPUT_DIR / "benchmarks.json", benchmarks)
+    write_json(OUTPUT_DIR / "storage.json", storage)
 
     print("Exported dashboard snapshot:")
     print(f"- manifest.json ({manifest['warning_count']} warning(s))")
@@ -770,6 +869,7 @@ def main() -> None:
     print(f"- experiments.json ({len(experiments)} rows)")
     print(f"- positions-open.json ({len(positions_open)} rows)")
     print(f"- benchmarks.json ({len(benchmarks.get('available_scopes', []))} scope(s))")
+    print(f"- storage.json")
 
     if warnings:
         print("Warnings:")

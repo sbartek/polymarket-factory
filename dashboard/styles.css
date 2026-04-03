@@ -237,6 +237,39 @@ h3 {
 }
 
 .stack { display: flex; flex-direction: column; gap: 12px; }
+.mini-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  min-height: 120px;
+  padding: 10px 0 4px;
+}
+
+.mini-bar-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.mini-bar {
+  width: 100%;
+  max-width: 28px;
+  background: linear-gradient(180deg, var(--info), var(--ok));
+  border: 1px solid var(--border-bright);
+  box-shadow: var(--glow);
+}
+
+.mini-bar-label {
+  font-size: 0.68rem;
+  color: var(--muted);
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  text-align: center;
+  line-height: 1;
+}
 
 .alert {
   padding: 12px 14px;

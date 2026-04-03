@@ -123,6 +123,12 @@ def test_apply_price_window_labels_uses_future_market_observation():
     assert row.future_yes_price == 0.48
     assert row.price_move_pp == 8.0
 
+    summary = build_summary([row], scope="all", min_signals=1, min_labeled=1)
+    alpha = summary["strategies"][0]
+    assert alpha["observed_signals"] == 1
+    assert alpha["labeled_signals"] == 1
+    assert alpha["no_forward_observation_signals"] == 0
+
 
 def test_load_price_observations_prefers_market_observations_table(tmp_path):
     conn = sqlite3.connect(tmp_path / "bench.sqlite3")

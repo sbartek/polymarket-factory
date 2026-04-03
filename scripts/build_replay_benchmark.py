@@ -402,6 +402,14 @@ def summarize_strategy(
 ) -> dict:
     total = len(rows)
     labeled = [row for row in rows if row.is_labeled]
+    observed = [row for row in rows if row.future_observed_at or row.label_source == "trade_resolution"]
+    observed_count = len(observed)
+    no_forward_observation_count = max(total - observed_count, 0)
+    flat_observation_count = sum(
+        1
+        for row in rows
+        if row.future_observed_at and row.price_move_pp is not None and abs(row.price_move_pp) < (PRICE_MOVE_THRESHOLD * 100)
+    )
     labeled_count = len(labeled)
     correct_count = sum(1 for row in labeled if row.is_correct)
     correctness_rate = (correct_count / labeled_count) if labeled_count else 0.5
@@ -433,8 +441,13 @@ def summarize_strategy(
     return {
         "strategy": strategy,
         "signals": total,
+        "observed_signals": observed_count,
+        "no_forward_observation_signals": no_forward_observation_count,
+        "flat_observation_signals": flat_observation_count,
         "labeled_signals": labeled_count,
         "correct_signals": correct_count,
+        "observation_coverage": round((observed_count / total) if total else 0.0, 4),
+        "label_coverage": round((labeled_count / total) if total else 0.0, 4),
         "correctness_rate": round(correctness_rate, 4),
         "directional_score": round(directional_score, 4),
         "avg_ev_after_slippage_10_pp": None if avg_ev_10 is None else round(avg_ev_10, 3),

@@ -597,6 +597,24 @@ Recommended updates:
 3. Add dashboard/reference visibility for observation coverage
 4. Decide whether a backfill or retention policy is needed for `market_observations`
 
+## Week 8
+1. Make generated-strategy retention coverage-aware, not score-only
+2. Keep low-evidence generated strategies in `pending_benchmark_review`
+3. Archive only when both score and evidence quality clear the gate
+4. Use dashboard coverage views to monitor whether the stricter gate is too conservative
+
+## Week 9
+1. Persist raw fetched market snapshots per run for future reconstruction
+2. Record explicitly that historical backfill is not feasible from current local artifacts
+3. Let future runs build reconstructible history organically
+4. Revisit whether a retention policy is needed once raw snapshot volume is visible
+
+## Week 10
+1. Add project storage monitoring to the dashboard
+2. Define raw snapshot retention at 2 years
+3. Alert near 100 GB project storage before hard pressure appears
+4. Defer cleanup/compression until growth justifies it
+
 ---
 
 # 6) Concrete coding checklist
@@ -651,10 +669,15 @@ Recommended updates:
 - [x] add strategy-slice replay benchmark breakdowns
 - [x] derive directional labels from price-window moves
 - [x] persist market snapshot observations for future labeling
-- [ ] expose market-observation coverage in dashboard/reference
-- [ ] add a benchmark coverage metric to generated-strategy retention decisions
-- [ ] decide whether to backfill old runs or wait for organic coverage growth
+- [x] expose market-observation coverage in dashboard/reference
+- [x] add a benchmark coverage metric to generated-strategy retention decisions
+- [x] decide whether to backfill old runs or wait for organic coverage growth
+- [x] persist raw per-run market snapshots for future reconstruction
+- [x] add dashboard monitoring for project/raw-snapshot storage
+- [x] define raw snapshot retention policy (2 years)
+- [x] alert near 100 GB project storage
 - [ ] add retention/cleanup policy for `market_observations` if table growth becomes material
+- [ ] add pruning or compression for raw snapshot archives if storage growth justifies it
 
 ---
 
@@ -666,6 +689,7 @@ Recommended path:
 - build `stale_market` next
 - then add `correlated_pairs`
 - keep the benchmark-first autonomous strategy loop as the control layer around generated strategies
+- historical backfill is not feasible from current local artifacts, so coverage now grows forward from stored raw snapshots + observations
 - next focus: grow label coverage and observation coverage rather than adding more autonomous generation
 
 That gives PPLayouts a portfolio built around:

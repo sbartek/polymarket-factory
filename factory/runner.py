@@ -482,6 +482,7 @@ def run(environment: str = "paper", dry_run: bool = False, send: bool = True, fa
         markets_fetched = len(markets)
         print(f"{markets_fetched} markets.\n")
         db.log_event(run_id, "info", "markets_fetched", payload={"count": markets_fetched})
+        db.log_market_snapshot_archive(run_id, markets, source="fetch_top")
         db.log_market_observations(run_id, _extract_market_observations(markets))
 
         new_trades: list[tuple[Signal, float]] = []

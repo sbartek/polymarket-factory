@@ -23,6 +23,18 @@ const fmtDuration = (seconds) => {
   return `${min}m ${sec}s`;
 };
 
+const fmtBytes = (value) => {
+  if (value === null || value === undefined) return '—';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let size = Number(value);
+  let unit = 0;
+  while (size >= 1024 && unit < units.length - 1) {
+    size /= 1024;
+    unit += 1;
+  }
+  return `${size.toFixed(unit === 0 ? 0 : 1)} ${units[unit]}`;
+};
+
 const pillClass = (status) => {
   const s = (status || '').toLowerCase();
   if (s === 'ok' || s === 'active' || s === 'completed') return 'pill pill-ok';
@@ -60,7 +72,7 @@ const dataPath = (name) => {
 };
 
 async function loadSnapshot() {
-  const [manifest, overview, strategies, runs, experiments, executionChecks, evaluation, benchmarks] = await Promise.all([
+  const [manifest, overview, strategies, runs, experiments, executionChecks, evaluation, benchmarks, storage] = await Promise.all([
     loadJson(dataPath('manifest')),
     loadJson(dataPath('overview')),
     loadJson(dataPath('strategies')),
@@ -69,8 +81,9 @@ async function loadSnapshot() {
     loadJson(dataPath('execution-checks')).catch(() => []),
     loadJson(dataPath('evaluation')).catch(() => null),
     loadJson(dataPath('benchmarks')).catch(() => null),
+    loadJson(dataPath('storage')).catch(() => null),
   ]);
-  return { manifest, overview, strategies, runs, experiments, executionChecks, evaluation, benchmarks };
+  return { manifest, overview, strategies, runs, experiments, executionChecks, evaluation, benchmarks, storage };
 }
 
 function renderChrome(snapshot, pageTitle) {
@@ -109,6 +122,6 @@ function uniqueValues(items, key) {
 }
 
 window.Dashboard = {
-  fmtNumber, fmtInt, fmtDate, fmtDuration, pillClass, cleanSummary,
+  fmtNumber, fmtInt, fmtDate, fmtDuration, fmtBytes, pillClass, cleanSummary,
   loadJson, loadSnapshot, renderChrome, renderAlerts, renderNav, uniqueValues, dataPath,
 };

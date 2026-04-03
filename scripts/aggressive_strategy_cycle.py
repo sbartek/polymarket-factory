@@ -37,6 +37,8 @@ BENCHMARK_DIR = PROJECT_ROOT / "benchmark-data"
 GENERATED_RETENTION_GRACE_DAYS = 3
 GENERATED_MIN_SIGNALS_FOR_GATE = 5
 GENERATED_MIN_LABELED_FOR_GATE = 3
+GENERATED_MIN_OBSERVED_SIGNALS_FOR_GATE = 3
+GENERATED_MIN_OBSERVATION_COVERAGE = 0.30
 GENERATED_MIN_BENCHMARK_SCORE = 0.60
 
 
@@ -146,6 +148,14 @@ def rewrite_proposal_status(paths: list[Path], *, status: str, note: str | None 
         path.write_text(text + ("\n" if not text.endswith("\n") else ""), encoding="utf-8")
 
 
+def mark_generated_pending_review(row: dict, note: str) -> None:
+    rewrite_proposal_status(
+        proposal_paths_for_strategy(row["strategy_name"]),
+        status="pending_benchmark_review",
+        note=note,
+    )
+
+
 def archive_generated_module(row: dict, reason: str) -> dict:
     GENERATED_ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
     source = row["path"]
@@ -173,12 +183,37 @@ def apply_generated_retention_gate() -> list[dict]:
             score = float(bench.get("benchmark_score") or 0.0)
             signals = int(bench.get("signals") or 0)
             labeled = int(bench.get("labeled_signals") or 0)
-            if signals >= GENERATED_MIN_SIGNALS_FOR_GATE and labeled >= GENERATED_MIN_LABELED_FOR_GATE and score < GENERATED_MIN_BENCHMARK_SCORE:
+            observed = int(bench.get("observed_signals") or 0)
+            observation_coverage = float(bench.get("observation_coverage") or 0.0)
+            if (
+                signals >= GENERATED_MIN_SIGNALS_FOR_GATE
+                and labeled >= GENERATED_MIN_LABELED_FOR_GATE
+                and observed >= GENERATED_MIN_OBSERVED_SIGNALS_FOR_GATE
+                and observation_coverage >= GENERATED_MIN_OBSERVATION_COVERAGE
+                and score < GENERATED_MIN_BENCHMARK_SCORE
+            ):
                 archived.append(archive_generated_module(
                     row,
-                    f"benchmark_score {score:.3f} below {GENERATED_MIN_BENCHMARK_SCORE:.2f} with {signals} signals / {labeled} labeled",
+                    f"benchmark_score {score:.3f} below {GENERATED_MIN_BENCHMARK_SCORE:.2f} with {signals} signals / {observed} observed / {labeled} labeled",
                 ))
                 continue
+            if score < GENERATED_MIN_BENCHMARK_SCORE:
+                insufficiency = []
+                if signals < GENERATED_MIN_SIGNALS_FOR_GATE:
+                    insufficiency.append(f"{signals} signals<{GENERATED_MIN_SIGNALS_FOR_GATE}")
+                if observed < GENERATED_MIN_OBSERVED_SIGNALS_FOR_GATE:
+                    insufficiency.append(f"{observed} observed<{GENERATED_MIN_OBSERVED_SIGNALS_FOR_GATE}")
+                if labeled < GENERATED_MIN_LABELED_FOR_GATE:
+                    insufficiency.append(f"{labeled} labeled<{GENERATED_MIN_LABELED_FOR_GATE}")
+                if observation_coverage < GENERATED_MIN_OBSERVATION_COVERAGE:
+                    insufficiency.append(
+                        f"obs_cov {observation_coverage:.2f}<{GENERATED_MIN_OBSERVATION_COVERAGE:.2f}"
+                    )
+                if insufficiency:
+                    mark_generated_pending_review(
+                        row,
+                        "Benchmark evidence still too thin for archive decision: " + ", ".join(insufficiency),
+                    )
         if age_days >= GENERATED_RETENTION_GRACE_DAYS and not bench:
             archived.append(archive_generated_module(
                 row,

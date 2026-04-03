@@ -199,3 +199,29 @@ class TestMarketObservations:
         assert row["best_bid"] == pytest.approx(0.4)
         assert row["best_ask"] == pytest.approx(0.44)
         assert row["volume_24hr"] == pytest.approx(400.0)
+
+    def test_logs_raw_market_snapshot_archive(self, db):
+        run_id = db.start_run("paper")
+        events = [
+            {
+                "slug": "event-a",
+                "title": "Event A",
+                "markets": [
+                    {"id": 123, "question": "Example market", "outcomePrices": "[0.42,0.58]"}
+                ],
+            }
+        ]
+
+        db.log_market_snapshot_archive(run_id, events)
+
+        with db._connect() as conn:
+            row = conn.execute(
+                "SELECT run_id, source, event_count, payload_json FROM market_snapshot_archives WHERE run_id = ?",
+                (run_id,),
+            ).fetchone()
+
+        assert row is not None
+        assert row["run_id"] == run_id
+        assert row["source"] == "fetch_top"
+        assert row["event_count"] == 1
+        assert '"slug":"event-a"' in row["payload_json"]

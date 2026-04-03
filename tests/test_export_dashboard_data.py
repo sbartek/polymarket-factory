@@ -88,6 +88,52 @@ def test_load_benchmarks_reads_available_scopes(tmp_path, monkeypatch):
     assert payload["scopes"]["alert-only"]["strategies"][0]["strategy"] == "esport48"
 
 
+def test_fetch_overview_includes_benchmark_coverage_counts(tmp_path, monkeypatch):
+    db_path = tmp_path / "factory.sqlite3"
+    db = FactoryDB(path=db_path)
+    run_id = db.start_run("paper")
+    db.finish_run(run_id, "success", markets_fetched=10)
+    monkeypatch.setattr(export_dashboard_data, "DB_PATH", db_path)
+
+    conn = export_dashboard_data.connect_db()
+    try:
+        overview = export_dashboard_data.fetch_overview(
+            conn,
+            experiments=[],
+            warnings=[],
+            benchmarks={
+                "scopes": {
+                    "alert-only": {
+                        "strategy_count": 2,
+                        "signal_count": 10,
+                        "strategies": [
+                            {
+                                "strategy": "esport48",
+                                "benchmark_score": 0.71,
+                                "observed_signals": 6,
+                                "labeled_signals": 4,
+                                "no_forward_observation_signals": 2,
+                            },
+                            {
+                                "strategy": "correlated_laggard",
+                                "benchmark_score": 0.68,
+                                "observed_signals": 1,
+                                "labeled_signals": 0,
+                                "no_forward_observation_signals": 3,
+                            },
+                        ],
+                    }
+                }
+            },
+        )
+    finally:
+        conn.close()
+
+    assert overview["benchmark_observed_signal_count_alert_only"] == 7
+    assert overview["benchmark_labeled_signal_count_alert_only"] == 4
+    assert overview["benchmark_missing_forward_signal_count_alert_only"] == 5
+
+
 def test_load_generated_registry_includes_archived_reason_and_benchmark(tmp_path, monkeypatch):
     generated_dir = tmp_path / "factory" / "strategies" / "generated"
     archive_dir = generated_dir / "archive"
@@ -122,3 +168,77 @@ def test_load_generated_registry_includes_archived_reason_and_benchmark(tmp_path
     assert rows["bad_edge"]["generated_lifecycle"] == "archived"
     assert "benchmark_score 0.410 below 0.60" in rows["bad_edge"]["archive_reason"]
     assert rows["bad_edge"]["generated_benchmark_score"] == 0.41
+
+
+def test_load_generated_registry_includes_coverage_fields(tmp_path, monkeypatch):
+    generated_dir = tmp_path / "factory" / "strategies" / "generated"
+    generated_dir.mkdir(parents=True)
+    (generated_dir / "auto_20260403_001_good_edge.py").write_text(
+        'class X:\n    name = "good_edge"\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(export_dashboard_data, "GENERATED_DIR", generated_dir)
+    monkeypatch.setattr(export_dashboard_data, "GENERATED_ARCHIVE_DIR", generated_dir / "archive")
+    monkeypatch.setattr(export_dashboard_data, "PROPOSALS_DIR", tmp_path / "improvement" / "proposals")
+    monkeypatch.setattr(export_dashboard_data, "PROJECT_ROOT", tmp_path)
+
+    rows = export_dashboard_data.load_generated_registry({
+        "scopes": {
+            "generated": {
+                "strategies": [
+                    {
+                        "strategy": "good_edge",
+                        "benchmark_score": 0.73,
+                        "signals": 9,
+                        "observed_signals": 5,
+                        "labeled_signals": 3,
+                        "no_forward_observation_signals": 4,
+                        "flat_observation_signals": 1,
+                    }
+                ]
+            }
+        }
+    })
+
+    assert rows["good_edge"]["generated_benchmark_observed"] == 5
+    assert rows["good_edge"]["generated_benchmark_missing_forward"] == 4
+    assert rows["good_edge"]["generated_benchmark_flat_observations"] == 1
+
+
+def test_fetch_storage_reports_sizes_and_recent_archives(tmp_path, monkeypatch):
+    db_path = tmp_path / "factory.sqlite3"
+    benchmark_dir = tmp_path / "benchmark-data"
+    output_dir = tmp_path / "dashboard-data"
+    project_root = tmp_path / "project"
+    benchmark_dir.mkdir()
+    output_dir.mkdir()
+    project_root.mkdir()
+    (project_root / "app.py").write_text("print('ok')\n", encoding="utf-8")
+    (benchmark_dir / "sample.json").write_text('{"ok":true}\n', encoding="utf-8")
+    (output_dir / "sample.json").write_text('{"ok":true}\n', encoding="utf-8")
+
+    db = FactoryDB(path=db_path)
+    run_id = db.start_run("paper")
+    db.log_market_snapshot_archive(run_id, [{"slug": "event-a"}])
+    db.log_market_observations(run_id, [{"market_id": "event-a", "market_title": "Event A"}])
+
+    monkeypatch.setattr(export_dashboard_data, "DB_PATH", db_path)
+    monkeypatch.setattr(export_dashboard_data, "BENCHMARK_DIR", benchmark_dir)
+    monkeypatch.setattr(export_dashboard_data, "OUTPUT_DIR", output_dir)
+    monkeypatch.setattr(export_dashboard_data, "PROJECT_ROOT", project_root)
+
+    conn = db._connect()
+    try:
+        storage = export_dashboard_data.fetch_storage(conn)
+    finally:
+        conn.close()
+
+    assert storage["database_bytes"] > 0
+    assert storage["benchmark_data_bytes"] > 0
+    assert storage["dashboard_data_bytes"] > 0
+    assert storage["project_storage_bytes"] > 0
+    assert storage["raw_snapshot_archive_runs"] == 1
+    assert storage["market_observation_rows"] == 1
+    assert storage["raw_snapshot_retention_days"] == 730
+    assert storage["project_storage_hard_limit_bytes"] > storage["project_storage_soft_limit_bytes"]
+    assert len(storage["recent_snapshot_archives"]) == 1
