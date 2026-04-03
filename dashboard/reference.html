@@ -1,0 +1,699 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PPLayouts Dashboard · Reference</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <style>
+      .wiki-toc { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 24px; }
+      .wiki-toc a { color: var(--info); text-decoration: none; font-size: 0.85rem; letter-spacing: 0.06em; padding: 4px 10px; border: 1px solid var(--info); opacity: 0.7; }
+      .wiki-toc a:hover { opacity: 1; text-shadow: 0 0 6px var(--info); }
+      .wiki-section { margin-bottom: 32px; }
+      .wiki-section h2 { font-size: 1rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ok); border-bottom: 1px solid var(--border-bright); padding-bottom: 6px; margin-bottom: 16px; }
+      .wiki-section h3 { font-size: 0.9rem; letter-spacing: 0.08em; color: var(--text-dim); text-transform: uppercase; margin: 20px 0 8px; }
+      .wiki-section p, .wiki-section li { font-size: 0.88rem; line-height: 1.7; color: var(--text); margin: 0 0 6px; }
+      .wiki-section ul, .wiki-section ol { padding-left: 20px; margin: 6px 0 12px; }
+      .wiki-section li { margin-bottom: 4px; }
+      .strategy-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 14px; margin-top: 12px; }
+      .strategy-card { background: var(--panel-2); border: 1px solid var(--border-bright); padding: 16px; }
+      .strategy-card h3 { margin-top: 0; font-size: 0.95rem; letter-spacing: 0.1em; text-transform: none; }
+      .strategy-card .sc-meta { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 10px; }
+      .strategy-card p { font-size: 0.84rem; margin: 0 0 6px; }
+      .strategy-card .sc-params { margin-top: 10px; border-top: 1px solid var(--border); padding-top: 10px; }
+      .strategy-card .sc-params table { width: 100%; font-size: 0.82rem; border-collapse: collapse; }
+      .strategy-card .sc-params td { padding: 3px 6px; border-bottom: 1px solid var(--border); vertical-align: top; }
+      .strategy-card .sc-params td:first-child { color: var(--muted); width: 55%; }
+      .metric-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 12px 0; }
+      .metric-table th { text-align: left; color: var(--muted); text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.08em; padding: 6px 8px; border-bottom: 1px solid var(--border-bright); }
+      .metric-table td { padding: 6px 8px; border-bottom: 1px solid var(--border); vertical-align: top; line-height: 1.5; }
+      .metric-table td:first-child { color: var(--info); font-family: 'Share Tech Mono', monospace; white-space: nowrap; }
+      .code-block { background: var(--panel-2); border: 1px solid var(--border); padding: 12px 16px; font-size: 0.82rem; line-height: 1.8; overflow-x: auto; margin: 10px 0; white-space: pre; }
+      .tag-killed { color: var(--error); }
+      .tag-paused { color: var(--warn); }
+      .tag-active { color: var(--ok); }
+      .tag-alert { color: var(--info); }
+      .inset { background: var(--panel-2); border-left: 3px solid var(--border-bright); padding: 10px 14px; margin: 12px 0; font-size: 0.85rem; }
+      .inset.warn { border-left-color: var(--warn); }
+      .inset.info { border-left-color: var(--info); }
+      .eval-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 12px 0; }
+      .eval-table th { text-align: left; color: var(--muted); text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.08em; padding: 6px 8px; border-bottom: 1px solid var(--border-bright); }
+      .eval-table td { padding: 6px 8px; border-bottom: 1px solid var(--border); }
+      .eval-table td:nth-child(2) { color: var(--error); }
+      .eval-table td:nth-child(3) { color: var(--ok); }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">PPLayouts</p>
+          <h1 id="page-title">Reference</h1>
+          <p class="muted">Static reference docs — architecture, strategy specs, ops runbook, metric definitions, glossary</p>
+        </div>
+        <div class="status-cluster">
+          <span id="snapshot-age" class="pill pill-neutral">…</span>
+          <span id="run-status-pill" class="pill pill-neutral">run: …</span>
+        </div>
+      </header>
+
+      <nav class="nav">
+        <a href="./index.html" data-nav="overview">Overview</a>
+        <a href="./strategies.html" data-nav="strategies">Strategies</a>
+        <a href="./positions.html" data-nav="positions">Positions</a>
+        <a href="./runs.html" data-nav="runs">Runs</a>
+        <a href="./experiments.html" data-nav="experiments">Experiments</a>
+        <a href="./wiki.html" data-nav="wiki">Wiki</a>
+        <a href="./reference.html" data-nav="reference">Reference</a>
+      </nav>
+
+      <section class="panel">
+        <div class="panel-header"><h2>Table of Contents</h2></div>
+        <div class="wiki-toc">
+          <a href="#architecture">Architecture</a>
+          <a href="#strategies">Strategies</a>
+          <a href="#time-windows">Time Windows</a>
+          <a href="#evaluation">Evaluation</a>
+          <a href="#graduation">Alert-Only Graduation</a>
+          <a href="#phase-a">Phase A Execution</a>
+          <a href="#metrics">Metric Definitions</a>
+          <a href="#operations">Operations</a>
+          <a href="#glossary">Glossary</a>
+        </div>
+      </section>
+
+      <!-- ARCHITECTURE -->
+      <section class="panel section-gap" id="architecture">
+        <div class="wiki-section">
+          <h2>Architecture</h2>
+          <p>The factory is a framework for rapidly spinning up, paper-trading, and evaluating Polymarket strategies. The core loop runs 3&times;/day via launchd.</p>
+          <div class="code-block">You (idea) → factory/strategies/my_strategy.py → STRATEGIES registry
+                                                                  ↓
+                                                    runner.py (3×/day via launchd)
+                                                    ├── fetch 100 top markets (Gamma API)
+                                                    ├── each strategy: scan → signal → size → open position
+                                                    ├── check open positions → close resolved ones
+                                                    └── WhatsApp summary → Polymarket Signals group</div>
+
+          <h3>Stack</h3>
+          <ul>
+            <li>Python 3.11+ · uv</li>
+            <li>Gamma API — top markets feed</li>
+            <li>DDGS — news search</li>
+            <li>Claude API — LLM reasoning passes</li>
+            <li>OpenClaw — WhatsApp messaging</li>
+            <li>SQLite — trade state, runs, signals, decisions</li>
+          </ul>
+
+          <h3>Key files</h3>
+          <table class="metric-table">
+            <thead><tr><th>Path</th><th>Purpose</th></tr></thead>
+            <tbody>
+              <tr><td>factory/runner.py</td><td>Main run loop — orchestrates all strategies per cycle</td></tr>
+              <tr><td>factory/strategies/*.py</td><td>Individual strategy implementations</td></tr>
+              <tr><td>factory/broker.py</td><td>Trade opening/closing, portfolio state</td></tr>
+              <tr><td>factory/db.py</td><td>SQLite schema, queries, migrations</td></tr>
+              <tr><td>factory/feed.py</td><td>Gamma API market fetching + formatting</td></tr>
+              <tr><td>factory/claude.py</td><td>Claude API wrapper for strategy reasoning</td></tr>
+              <tr><td>factory/notify.py</td><td>WhatsApp/alert dispatch</td></tr>
+              <tr><td>factory/models.py</td><td>Signal, Trade, Run dataclasses</td></tr>
+              <tr><td>eval/report.py</td><td>Weekly evaluation report generator</td></tr>
+              <tr><td>scripts/export_dashboard_data.py</td><td>Exports JSON snapshot for this dashboard</td></tr>
+              <tr><td>scripts/update_wiki.py</td><td>Generates wiki/*.md from DB via Claude (Karpathy pattern)</td></tr>
+              <tr><td>data/factory.sqlite3</td><td>Live database (gitignored)</td></tr>
+            </tbody>
+          </table>
+
+          <h3>WhatsApp messaging policy</h3>
+          <ul>
+            <li><strong>09:00 Europe/Madrid</strong> — full general summary</li>
+            <li><strong>14:30 / 19:30</strong> — opened/closed delta update + alert snippet if relevant</li>
+          </ul>
+
+          <h3>Dashboard pipeline</h3>
+          <div class="code-block">uv run python scripts/update_wiki.py                        # regenerate wiki/*.md from DB
+uv run python scripts/export_dashboard_data.py              # write JSON to dashboard-data/
+uv run python scripts/build_dashboard.py                    # bundle into dashboard-dist/
+uv run python scripts/publish_dashboard.py ~/path/to/repo --commit --push</div>
+          <div class="inset info">The dashboard is snapshot-based, not live. Data freshness is shown in the top-right snapshot-age pill.</div>
+        </div>
+      </section>
+
+      <!-- STRATEGIES -->
+      <section class="panel section-gap" id="strategies">
+        <div class="wiki-section">
+          <h2>Strategies</h2>
+
+          <h3>Strategy interface</h3>
+          <div class="code-block">class Strategy(ABC):
+    name: str
+    mode: str               # "paper" | "live"
+    max_position_usdc: float
+    min_ev_pp: float
+    alert_only: bool        # if True, log/report only; runner will not open positions
+    trading_enabled: bool   # explicit runner gate; keep False for alert-only
+    promotable: bool        # candidate for later graduation
+    live_ready: bool        # reserved for real-money path
+
+    # portfolio taxonomy
+    edge_type: str
+    time_window: str        # super_short | intraday | short | medium | long
+    target_hold_min_days: float
+    target_hold_max_days: float
+    scan_frequency: str
+
+    def scan(self, markets) -> list[Signal]
+    def size(self, signal) -> float
+    def should_exit(self, trade, price) -> bool</div>
+
+          <h3>Active strategies (paper trading)</h3>
+          <div class="strategy-grid">
+
+            <div class="strategy-card">
+              <h3><span class="tag-active">●</span> ev_news</h3>
+              <div class="sc-meta">
+                <span class="pill pill-ok">active</span>
+                <span class="pill pill-neutral">information</span>
+                <span class="pill pill-neutral">medium</span>
+                <span class="pill pill-neutral">3×/day</span>
+              </div>
+              <p><strong>Thesis:</strong> Recent news contains information not yet priced into prediction markets.</p>
+              <p><strong>Method:</strong> Claude scans top markets + news headlines, picks topics with likely EV, then estimates p̂ per market from news snippets.</p>
+              <div class="sc-params">
+                <table>
+                  <tr><td>max_position_usdc</td><td>$15</td></tr>
+                  <tr><td>min_ev_pp</td><td>10 pp</td></tr>
+                  <tr><td>hold window</td><td>7–30 days</td></tr>
+                  <tr><td>n_topics per run</td><td>3</td></tr>
+                  <tr><td>min_volume</td><td>$10,000</td></tr>
+                  <tr><td>days_to_close</td><td>7–60 days</td></tr>
+                  <tr><td>max_trades_per_run</td><td>3</td></tr>
+                </table>
+              </div>
+            </div>
+
+            <div class="strategy-card">
+              <h3><span class="tag-active">●</span> spread_arb</h3>
+              <div class="sc-meta">
+                <span class="pill pill-ok">active</span>
+                <span class="pill pill-neutral">structural</span>
+                <span class="pill pill-neutral">medium</span>
+                <span class="pill pill-neutral">daily</span>
+              </div>
+              <p><strong>Thesis:</strong> In multi-outcome markets the sum of all YES prices should be ~1.0. When the sum is significantly below 1.0, buying all outcomes locks in basket EV.</p>
+              <p><strong>Method:</strong> Scan multi-outcome events, compute basket sum, filter for clean legs, score by gap and volume.</p>
+              <div class="sc-params">
+                <table>
+                  <tr><td>max_position_usdc</td><td>$8 per leg</td></tr>
+                  <tr><td>arb_threshold</td><td>≤ 0.90</td></tr>
+                  <tr><td>min_outcomes</td><td>3</td></tr>
+                  <tr><td>min_volume</td><td>$15,000</td></tr>
+                  <tr><td>days_to_close</td><td>7–90 days</td></tr>
+                  <tr><td>max_new_baskets_per_run</td><td>3</td></tr>
+                </table>
+              </div>
+            </div>
+
+            <div class="strategy-card">
+              <h3><span class="tag-active">●</span> stale_market</h3>
+              <div class="sc-meta">
+                <span class="pill pill-ok">active</span>
+                <span class="pill pill-neutral">information</span>
+                <span class="pill pill-neutral">short</span>
+                <span class="pill pill-neutral">3×/day</span>
+              </div>
+              <p><strong>Thesis:</strong> Liquid markets sometimes lag relevant news and do not reprice quickly enough.</p>
+              <p><strong>Method:</strong> Filters liquid near-term markets, fetches recent news, uses Claude to judge whether the market appears stale. Dedupes by topic cluster.</p>
+              <div class="sc-params">
+                <table>
+                  <tr><td>max_position_usdc</td><td>$10</td></tr>
+                  <tr><td>days_to_close</td><td>3–45 days</td></tr>
+                  <tr><td>price range</td><td>0.10–0.85</td></tr>
+                  <tr><td>min_volume</td><td>$8,000</td></tr>
+                  <tr><td>max_trades_per_run</td><td>2</td></tr>
+                </table>
+              </div>
+            </div>
+
+            <div class="strategy-card">
+              <h3><span class="tag-active">●</span> correlated_pairs</h3>
+              <div class="sc-meta">
+                <span class="pill pill-ok">active</span>
+                <span class="pill pill-neutral">logical_inconsistency</span>
+                <span class="pill pill-neutral">medium</span>
+                <span class="pill pill-neutral">daily</span>
+              </div>
+              <p><strong>Thesis:</strong> Some market pairs violate basic logical consistency (prerequisite vs downstream, broader vs narrower).</p>
+              <p><strong>Method:</strong> Heuristic pair discovery by keyword clustering, then a Claude pass to classify the relationship and identify the cheaper implication.</p>
+              <div class="sc-params">
+                <table>
+                  <tr><td>max_position_usdc</td><td>$10</td></tr>
+                  <tr><td>min_ev_pp</td><td>10 pp</td></tr>
+                  <tr><td>relationship_gap_pp</td><td>10 pp</td></tr>
+                  <tr><td>days_to_close</td><td>≤ 120 days</td></tr>
+                  <tr><td>max_trades_per_run</td><td>2</td></tr>
+                  <tr><td>hold window</td><td>3–30 days</td></tr>
+                </table>
+              </div>
+            </div>
+
+            <div class="strategy-card">
+              <h3><span class="tag-active">●</span> celebrity_tabloid</h3>
+              <div class="sc-meta">
+                <span class="pill pill-ok">active</span>
+                <span class="pill pill-neutral">information</span>
+                <span class="pill pill-neutral">short</span>
+              </div>
+              <p><strong>Thesis:</strong> Gossip/tabloid coverage directionally corroborates celebrity event markets before the crowd reprices.</p>
+              <p><strong>Method:</strong> Screener for celebrity event markets (pregnancy, romance, scandal). Fails closed unless tabloid coverage corroborates the market side.</p>
+              <div class="inset warn" style="margin-top:10px;font-size:0.82rem;">Active blocker: top-100 Gamma feed does not typically surface celebrity/tabloid markets. 0 eligible candidates seen to date.</div>
+            </div>
+
+          </div>
+
+          <h3 style="margin-top:24px;">Alert-only strategies</h3>
+          <div class="strategy-grid">
+
+            <div class="strategy-card">
+              <h3><span class="tag-alert">&#9670;</span> correlated_laggard</h3>
+              <div class="sc-meta">
+                <span class="pill pill-neutral">alert-only</span>
+                <span class="pill pill-neutral">promotable</span>
+                <span class="pill pill-neutral">logical_inconsistency</span>
+              </div>
+              <p><strong>Thesis:</strong> Liquid leader / laggard divergences across obviously related markets create short-lived arbitrage windows.</p>
+              <p><strong>Method:</strong> Finds markets correlated by keyword, compares prices of leader vs laggard, alerts when divergence exceeds threshold.</p>
+              <p style="font-size:0.82rem;color:var(--muted);">trading_enabled=False · promotable=True · live_ready=False</p>
+            </div>
+
+            <div class="strategy-card">
+              <h3><span class="tag-alert">&#9670;</span> esport48</h3>
+              <div class="sc-meta">
+                <span class="pill pill-neutral">alert-only</span>
+                <span class="pill pill-neutral">promotable</span>
+                <span class="pill pill-neutral">super_short</span>
+              </div>
+              <p><strong>Thesis:</strong> Esport markets expiring within 48 hours with strong liquidity/price signals can be identified with deterministic filters.</p>
+              <p><strong>Method:</strong> Screener using deterministic liquidity/price filters + subtype tagging. No LLM pass — pure heuristic.</p>
+              <p style="font-size:0.82rem;color:var(--muted);">trading_enabled=False · promotable=True · live_ready=False</p>
+            </div>
+
+          </div>
+
+          <h3 style="margin-top:24px;">Paused / killed strategies</h3>
+          <div class="strategy-grid">
+
+            <div class="strategy-card">
+              <h3><span class="tag-killed">&#10005;</span> resolution_hunter</h3>
+              <div class="sc-meta">
+                <span class="pill pill-error">killed</span>
+                <span class="pill pill-neutral">resolution_lag</span>
+                <span class="pill pill-neutral">short</span>
+              </div>
+              <p><strong>Thesis:</strong> Markets sometimes stay open after real-world resolution, creating free EV.</p>
+              <p><strong>Kill reason:</strong> -92.3% ROI on 12 closed trades. Conclusive failure — paused=True, trading_enabled=False, exposure cap set to 0.</p>
+            </div>
+
+            <div class="strategy-card">
+              <h3><span class="tag-killed">&#10005;</span> fade_certainty</h3>
+              <div class="sc-meta">
+                <span class="pill pill-error">killed</span>
+                <span class="pill pill-neutral">mean_reversion</span>
+              </div>
+              <p><strong>Thesis:</strong> Markets at extreme prices (&gt;93% or &lt;7%) are systematically overconfident and can be faded.</p>
+              <p><strong>Kill reason:</strong> 0% win rate, -100% ROI on 6 closed trades. Too blunt — no category filtering, no news validation, static fade amounts.</p>
+              <div class="inset" style="margin-top:8px;font-size:0.82rem;">Revival only as narrow subtype: political outrights only, no sports/novelty, with stale-price evidence required.</div>
+            </div>
+
+            <div class="strategy-card">
+              <h3><span class="tag-paused">&#8856;</span> weather_edge</h3>
+              <div class="sc-meta">
+                <span class="pill pill-warning">paused</span>
+                <span class="pill pill-neutral">quantitative</span>
+              </div>
+              <p><strong>Thesis:</strong> Open-Meteo ensemble probabilities can beat Polymarket crowd pricing on daily temperature bucket markets.</p>
+              <p><strong>Pause reason:</strong> 45% WR, -19.5% ROI on 82 closed trades. Too many correlated bets per city/day, EV threshold too low for noisy bucket outcomes.</p>
+              <div class="inset" style="margin-top:8px;font-size:0.82rem;">v2 salvage path: trade only 1–2 strongest buckets per city, raise EV threshold, avoid same-day markets.</div>
+            </div>
+
+          </div>
+
+          <h3 style="margin-top:24px;">Planned strategies</h3>
+          <ul>
+            <li><strong>polling_vs_market</strong> — compare polling data to Polymarket political prices</li>
+            <li><strong>base_rate</strong> — use historical base rates to identify mispriced recurring events</li>
+            <li><strong>crypto_options_basis</strong> — cross-venue crypto options implied vol vs Polymarket</li>
+            <li><strong>pre_event_drift</strong> — detect systematic price drift in the hours before scheduled events</li>
+          </ul>
+
+          <h3>Adding a new strategy</h3>
+          <div class="code-block">1. Create factory/strategies/my_strategy.py implementing Strategy base class
+2. Register in factory/strategies/__init__.py STRATEGIES dict
+3. Set trading_enabled=False and alert_only=True for the first paper-eval period
+4. Run: uv run python -c "from factory.runner import run; run(dry_run=True)"
+5. Inspect with: uv run python scripts/strategy_checks.py my_strategy --limit 10</div>
+        </div>
+      </section>
+
+      <!-- TIME WINDOWS -->
+      <section class="panel section-gap" id="time-windows">
+        <div class="wiki-section">
+          <h2>Time Window Taxonomy</h2>
+          <p>Time windows drive operational scheduling — faster buckets run every cycle, slower ones skip midday churn.</p>
+          <table class="metric-table">
+            <thead><tr><th>Label</th><th>Duration</th><th>Runner cadence</th><th>Current strategies</th></tr></thead>
+            <tbody>
+              <tr><td>super_short</td><td>&lt; 1 hour</td><td>Every cycle</td><td>esport48</td></tr>
+              <tr><td>intraday</td><td>1h – 24h</td><td>Every cycle</td><td>—</td></tr>
+              <tr><td>short</td><td>1–7 days</td><td>Every cycle</td><td>stale_market, celebrity_tabloid</td></tr>
+              <tr><td>medium</td><td>8–30 days</td><td>Can skip midday</td><td>ev_news, spread_arb, correlated_pairs, correlated_laggard</td></tr>
+              <tr><td>long</td><td>31+ days</td><td>Once/day</td><td>—</td></tr>
+            </tbody>
+          </table>
+          <p>Open exposure is capped by both strategy-level limits and time-window-level portfolio limits.</p>
+        </div>
+      </section>
+
+      <!-- EVALUATION -->
+      <section class="panel section-gap" id="evaluation">
+        <div class="wiki-section">
+          <h2>Evaluation</h2>
+
+          <h3>Kill / keep thresholds</h3>
+          <table class="eval-table">
+            <thead><tr><th>Metric</th><th>Kill threshold</th><th>Keep threshold</th></tr></thead>
+            <tbody>
+              <tr><td>Win rate</td><td>&lt; 30%</td><td>&gt; 50%</td></tr>
+              <tr><td>ROI</td><td>&lt; -10%</td><td>&gt; 0%</td></tr>
+              <tr><td>Min trades to evaluate</td><td colspan="2" style="color:var(--text);">5 closed trades minimum</td></tr>
+            </tbody>
+          </table>
+
+          <h3>Evaluation dimensions</h3>
+          <ul>
+            <li>By strategy</li>
+            <li>By time window</li>
+            <li>By edge type</li>
+            <li>Active vs legacy</li>
+          </ul>
+
+          <h3>Running the weekly eval</h3>
+          <div class="code-block">uv run eval/report.py</div>
+
+          <h3>Edge types</h3>
+          <table class="metric-table">
+            <thead><tr><th>Edge type</th><th>Description</th></tr></thead>
+            <tbody>
+              <tr><td>information</td><td>Faster / better news processing than the crowd (ev_news, stale_market, celebrity_tabloid)</td></tr>
+              <tr><td>structural</td><td>Mathematical inconsistency baked into market structure (spread_arb)</td></tr>
+              <tr><td>resolution_lag</td><td>Markets staying open after real-world outcome (resolution_hunter — killed)</td></tr>
+              <tr><td>logical_inconsistency</td><td>Cross-market logical violations (correlated_pairs, correlated_laggard)</td></tr>
+              <tr><td>quantitative</td><td>External data model beats crowd calibration (weather_edge — paused)</td></tr>
+              <tr><td>mean_reversion</td><td>Extreme-price markets revert (fade_certainty — killed)</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- GRADUATION -->
+      <section class="panel section-gap" id="graduation">
+        <div class="wiki-section">
+          <h2>Alert-Only Graduation Checklist</h2>
+          <p>Promote an alert-only strategy to paper trading only after <strong>all</strong> of the following are true:</p>
+          <ol>
+            <li>At least <strong>10 live runs</strong> reviewed with persisted detail-table evidence.</li>
+            <li>At least <strong>15 alerts</strong> or <strong>30 candidate checks</strong> inspected — not anecdotal.</li>
+            <li>Top alerts look directionally sensible on manual replay, no duplicate/cluster spam.</li>
+            <li>Liquidity and fillability plausible for intended size — not relying on dead books.</li>
+            <li>Logged reasons explain why alert fired and why weaker candidates were skipped.</li>
+            <li>Initial paper cap small enough to fail safely on first promotion.</li>
+          </ol>
+
+          <h3>Promotion workflow</h3>
+          <ol>
+            <li>Keep <code>trading_enabled = False</code> while paper-eval checklist is open.</li>
+            <li>Mark strategy record with clear keep/promote decision.</li>
+            <li>Flip <code>trading_enabled = True</code> only after checklist complete.</li>
+            <li>Leave <code>live_ready = False</code> until a separate live-broker checklist exists.</li>
+          </ol>
+
+          <h3>Current graduation status</h3>
+          <table class="metric-table">
+            <thead><tr><th>Strategy</th><th>Status</th><th>Promotable</th><th>Blocker</th></tr></thead>
+            <tbody>
+              <tr><td>correlated_laggard</td><td><span class="pill pill-neutral">alert-only</span></td><td>Yes</td><td>Paper-eval checklist open — see EX-20260401-006</td></tr>
+              <tr><td>esport48</td><td><span class="pill pill-neutral">alert-only</span></td><td>Yes</td><td>Paper-eval checklist open — see EX-20260401-007</td></tr>
+              <tr><td>celebrity_tabloid</td><td><span class="pill pill-ok">paper trading</span></td><td>—</td><td>Feed coverage — top-100 Gamma rarely surfaces celebrity markets</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- PHASE A -->
+      <section class="panel section-gap" id="phase-a">
+        <div class="wiki-section">
+          <h2>Phase A Execution Checks</h2>
+          <div class="inset warn">Phase A metrics are <strong>fill proxies</strong>, not actual fills. They are a market-microstructure snapshot taken at signal time, not a live trade confirmation.</div>
+
+          <h3>What Phase A captures</h3>
+          <p>At the moment a signal fires, the runner records:</p>
+          <ul>
+            <li>The quote price (current market YES price)</li>
+            <li>Best bid / best ask from the CLOB</li>
+            <li>Estimated fill price at $10 and $50 notional</li>
+            <li>EV after slippage at $10 and $50</li>
+            <li>Max size with positive EV</li>
+            <li>Source confidence label (direct quote vs heuristic fallback)</li>
+          </ul>
+
+          <h3>How to interpret</h3>
+          <ul>
+            <li><strong>EV @ $10 / $50 pp</strong> — rough comparative metric. Do not treat as realized return.</li>
+            <li><strong>Max +EV size</strong> — proxy capacity summary, not a live guarantee.</li>
+            <li><strong>Source confidence</strong> — how much of the phase A layer is grounded in direct quote fields vs fallback heuristics.</li>
+          </ul>
+
+          <h3>Inspecting execution checks</h3>
+          <div class="code-block">uv run python scripts/signal_execution_checks.py --limit 20
+uv run python scripts/signal_execution_checks.py --strategy spread_arb --limit 20</div>
+        </div>
+      </section>
+
+      <!-- METRICS -->
+      <section class="panel section-gap" id="metrics">
+        <div class="wiki-section">
+          <h2>Metric Definitions</h2>
+
+          <h3>Status vocabularies</h3>
+
+          <p><strong>Run status:</strong></p>
+          <table class="metric-table">
+            <thead><tr><th>Value</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td>ok</td><td>Run completed successfully without fatal errors</td></tr>
+              <tr><td>warning</td><td>Run completed but warnings/errors exceeded threshold</td></tr>
+              <tr><td>error</td><td>Run failed or ended in a clearly broken state</td></tr>
+              <tr><td>unknown</td><td>Status cannot be determined from stored data</td></tr>
+            </tbody>
+          </table>
+
+          <p><strong>Strategy status:</strong></p>
+          <table class="metric-table">
+            <thead><tr><th>Value</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td>active</td><td>Currently part of the active strategy stack</td></tr>
+              <tr><td>paused</td><td>Intentionally disabled but still in current-era reporting context</td></tr>
+              <tr><td>legacy</td><td>Historical strategy, no longer part of current active stack</td></tr>
+              <tr><td>unknown</td><td>Cannot classify with confidence</td></tr>
+            </tbody>
+          </table>
+
+          <p><strong>Experiment status:</strong></p>
+          <table class="metric-table">
+            <thead><tr><th>Value</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td>active</td><td>Currently in progress</td></tr>
+              <tr><td>planned</td><td>Defined but not yet active</td></tr>
+              <tr><td>review_due</td><td>Has reached or passed a stated review point</td></tr>
+              <tr><td>completed</td><td>Reached a documented conclusion</td></tr>
+              <tr><td>archived</td><td>Retained for history, not current focus</td></tr>
+            </tbody>
+          </table>
+
+          <h3>Exposure metrics</h3>
+          <table class="metric-table">
+            <thead><tr><th>Field</th><th>Definition</th></tr></thead>
+            <tbody>
+              <tr><td>open_exposure_active</td><td>Total open exposure from active strategies (absolute, not signed)</td></tr>
+              <tr><td>open_exposure_legacy</td><td>Total open exposure from legacy/paused strategies</td></tr>
+              <tr><td>open_position_count_active</td><td>Count of open positions from active strategies</td></tr>
+              <tr><td>open_position_count_legacy</td><td>Count of open positions from legacy strategies</td></tr>
+            </tbody>
+          </table>
+
+          <h3>PnL metrics</h3>
+          <table class="metric-table">
+            <thead><tr><th>Field</th><th>Definition</th></tr></thead>
+            <tbody>
+              <tr><td>realized_pnl_30d</td><td>Realized P&amp;L from closed positions in the last 30 days</td></tr>
+              <tr><td>realized_pnl_all_time</td><td>Realized P&amp;L across all available history</td></tr>
+            </tbody>
+          </table>
+          <div class="inset info">Realized and unrealized P&amp;L are never combined into one headline metric.</div>
+
+          <h3>Phase A execution fields</h3>
+          <table class="metric-table">
+            <thead><tr><th>Field</th><th>Definition</th></tr></thead>
+            <tbody>
+              <tr><td>execution_checks_30d</td><td>Count of signal execution checks in the last 30 days</td></tr>
+              <tr><td>strategies_with_execution_checks_30d</td><td>Distinct strategies with at least 1 check in the last 30 days</td></tr>
+              <tr><td>avg_ev_after_slippage_50_pp_30d</td><td>Average EV after $50 slippage across checks (30d)</td></tr>
+              <tr><td>avg_max_size_positive_ev_30d</td><td>Average max +EV size (USD) across checks (30d)</td></tr>
+            </tbody>
+          </table>
+
+          <h3>Null / unknown policy</h3>
+          <ul>
+            <li>Use <code>null</code> for absent scalar values</li>
+            <li>Use <code>unknown</code> for enum-like status fields</li>
+            <li>Use <code>[]</code> for genuinely empty collections</li>
+            <li>Never substitute <code>0</code> for unknown, or empty string for unknown status</li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- OPERATIONS -->
+      <section class="panel section-gap" id="operations">
+        <div class="wiki-section">
+          <h2>Operations Runbook</h2>
+
+          <h3>Common commands</h3>
+          <div class="code-block"># Manual full run
+uv run python -m factory.runner
+
+# Safe dry run (no writes, no closes, no sends)
+uv run python -c "from factory.runner import run; run(dry_run=True)"
+
+# Fast safe dry run (skips ev_news, trims workloads)
+uv run python -c "from factory.runner import run; run(dry_run=True, fast_dry_run=True)"
+
+# Open book
+uv run python scripts/open_positions.py
+uv run python scripts/open_positions.py --top-oldest 5
+uv run python scripts/open_positions.py --strategy ev_news
+uv run python scripts/open_positions.py --time-window medium
+
+# Latest run summary
+uv run python scripts/latest_run.py -n 1
+
+# Inspect decisions
+uv run python scripts/inspect_decisions.py --limit 20
+
+# Strategy-specific checks
+uv run python scripts/strategy_checks.py stale_market --limit 10
+uv run python scripts/strategy_checks.py correlated_laggard --limit 10
+uv run python scripts/strategy_checks.py esport48 --limit 10
+
+# Run analytics
+uv run python scripts/run_analytics.py --runs 20
+
+# Active experiments
+uv run python scripts/active_experiments.py
+
+# Weekly evaluation
+uv run eval/report.py
+
+# Regenerate wiki from DB
+uv run python scripts/update_wiki.py
+
+# Local DB backup (keep 14 days)
+uv run python scripts/backup_db.py --keep 14</div>
+
+          <h3>Launchd schedule</h3>
+          <table class="metric-table">
+            <thead><tr><th>Job</th><th>Schedule</th></tr></thead>
+            <tbody>
+              <tr><td>com.polymarket.factory</td><td>09:30 / 14:30 / 19:30 CEST</td></tr>
+              <tr><td>com.polymarket.factory.backup</td><td>03:45 daily</td></tr>
+            </tbody>
+          </table>
+
+          <h3>SQLite database</h3>
+          <p>Live at <code>data/factory.sqlite3</code> (gitignored). Tables:</p>
+          <ul>
+            <li><code>runs</code> — one row per runner execution</li>
+            <li><code>signals</code> — strategy signals generated each run</li>
+            <li><code>decisions</code> — open/close/skip decisions per signal</li>
+            <li><code>run_logs</code> — log entries per run</li>
+            <li>Trade state is SQLite-backed; <code>data/trades.csv</code> is exported during migration period</li>
+          </ul>
+
+          <h3>Dashboard publishing</h3>
+          <div class="code-block">uv run python scripts/update_wiki.py
+uv run python scripts/export_dashboard_data.py
+uv run python scripts/build_dashboard.py
+uv run python scripts/publish_dashboard.py ~/path/to/dashboard-repo --commit --push</div>
+
+          <h3>Key resources</h3>
+          <ul>
+            <li>Gamma API: <code>https://gamma-api.polymarket.com/markets</code></li>
+            <li>CLOB API: <code>https://clob.polymarket.com</code></li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- GLOSSARY -->
+      <section class="panel section-gap" id="glossary">
+        <div class="wiki-section">
+          <h2>Glossary</h2>
+          <table class="metric-table">
+            <thead><tr><th>Term</th><th>Definition</th></tr></thead>
+            <tbody>
+              <tr><td>p̂</td><td>Estimated true probability for a market outcome, derived by a strategy's reasoning pass</td></tr>
+              <tr><td>EV</td><td>Expected value — the edge a trade offers relative to the current market price, in percentage points</td></tr>
+              <tr><td>EV pp</td><td>EV expressed in percentage points (e.g. 12 pp EV = 12% expected edge)</td></tr>
+              <tr><td>Phase A</td><td>Signal-time execution check — a fill-proxy snapshot of market microstructure when a signal fires</td></tr>
+              <tr><td>fill proxy</td><td>An estimate of what fill price would have been, based on CLOB bid/ask data. Not an actual fill.</td></tr>
+              <tr><td>basket EV</td><td>In spread_arb: the guaranteed return from buying all legs in a multi-outcome market when sum &lt; 1.0</td></tr>
+              <tr><td>alert-only</td><td>Strategy mode where signals are logged and reported but no positions are opened</td></tr>
+              <tr><td>paper trading</td><td>Strategy mode where positions are opened in the simulator but no real money is deployed</td></tr>
+              <tr><td>live_ready</td><td>Flag reserved for the future real-money promotion path; always False until a live-broker checklist exists</td></tr>
+              <tr><td>promotable</td><td>Flag indicating a strategy is a valid candidate for promotion once evidence is sufficient</td></tr>
+              <tr><td>source_confidence</td><td>Label indicating whether Phase A data came from a direct CLOB quote or a heuristic fallback</td></tr>
+              <tr><td>Gamma API</td><td>Polymarket's market data API — provides the top-100 active markets feed used by all strategies</td></tr>
+              <tr><td>CLOB</td><td>Central Limit Order Book — Polymarket's on-chain order book, used for execution checks</td></tr>
+              <tr><td>DDGS</td><td>DuckDuckGo Search — used by news-based strategies to fetch recent headlines</td></tr>
+              <tr><td>OpenClaw</td><td>Internal tool for WhatsApp messaging via the runner summary dispatch</td></tr>
+              <tr><td>launchd</td><td>macOS daemon scheduler — runs the factory runner at 09:30 / 14:30 / 19:30 CEST</td></tr>
+              <tr><td>Karpathy pattern</td><td>Auto-generating living documentation from DB data via LLM — used by update_wiki.py</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+    </div>
+    <script src="./dashboard.js"></script>
+    <script>
+      Dashboard.renderNav('reference');
+      Dashboard.loadSnapshot().then((snapshot) => {
+        const ageEl = document.getElementById('snapshot-age');
+        const runEl = document.getElementById('run-status-pill');
+        const generated = snapshot && snapshot.manifest && snapshot.manifest.generated_at;
+        if (generated) {
+          const mins = Math.round((Date.now() - new Date(generated).getTime()) / 60000);
+          const cls = mins <= 90 ? 'pill pill-ok' : mins <= 360 ? 'pill pill-warning' : 'pill pill-error';
+          const label = mins <= 90 ? 'fresh \xB7 ' + mins + 'm old' : mins <= 360 ? 'stale \xB7 ' + mins + 'm old' : 'old \xB7 ' + mins + 'm old';
+          ageEl.className = cls;
+          ageEl.textContent = label;
+        }
+        const status = snapshot && snapshot.overview && snapshot.overview.latest_run_status;
+        if (status) {
+          runEl.className = Dashboard.pillClass(status);
+          runEl.textContent = 'run: ' + status;
+        }
+      }).catch(function() {
+        document.getElementById('snapshot-age').textContent = 'snapshot unavailable';
+      });
+    </script>
+  </body>
+</html>
