@@ -14,7 +14,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from factory.db import FactoryDB
-from factory.strategy_meta import strategy_metadata
+from factory.strategy_meta import strategy_metadata, ACTIVE_STRATEGIES as _CANONICAL_ACTIVE
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DB_PATH = PROJECT_ROOT / "data" / "factory.sqlite3"
@@ -28,15 +28,7 @@ PROPOSALS_DIR = IMPROVEMENT_DIR / "proposals"
 GENERATED_DIR = PROJECT_ROOT / "factory" / "strategies" / "generated"
 GENERATED_ARCHIVE_DIR = GENERATED_DIR / "archive"
 
-ACTIVE_STRATEGIES = {
-    "ev_news",
-    "spread_arb",
-    "resolution_hunter",
-    "stale_market",
-    "correlated_pairs",
-    "correlated_laggard",
-    "esport48",
-}
+ACTIVE_STRATEGIES = _CANONICAL_ACTIVE
 TIME_WINDOWS = ["super_short", "intraday", "short", "medium", "long", "unknown"]
 RAW_SNAPSHOT_RETENTION_DAYS = 365 * 2
 PROJECT_STORAGE_SOFT_LIMIT_BYTES = 90 * 1024 * 1024 * 1024
