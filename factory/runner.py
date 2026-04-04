@@ -119,9 +119,6 @@ def _log_strategy_details(db: FactoryDB, run_id: str, strategy):
     if strategy.name == "spread_arb":
         for row in getattr(strategy, "last_basket_details", []):
             db.log_spread_arb_basket(run_id, row)
-    elif strategy.name == "resolution_hunter":
-        for row in getattr(strategy, "last_check_details", []):
-            db.log_resolution_hunter_check(run_id, row)
     elif strategy.name == "stale_market":
         for row in getattr(strategy, "last_check_details", []):
             db.log_stale_market_check(run_id, row)

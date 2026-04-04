@@ -34,7 +34,6 @@ TIME_WINDOW_EXPOSURE_CAPS = {
 STRATEGY_EXPOSURE_CAPS = {
     "spread_arb": 80.0,
     "ev_news": 40.0,
-    "resolution_hunter": 0.0,  # killed — -92.3% ROI on 12 trades
     "stale_market": 35.0,
     "correlated_pairs": 30.0,
     "correlated_laggard": 0.0,
@@ -63,28 +62,7 @@ def expected_window_from_days(min_days: float | int, max_days: float | int) -> T
     return "long"
 
 
-STATIC_STRATEGY_METADATA = {
-    "fade_certainty": {
-        "name": "fade_certainty",
-        "edge_type": "statistical_fade",
-        "time_window": "medium",
-        "time_window_label": TIME_WINDOW_LABELS["medium"],
-        "target_hold_min_days": 7,
-        "target_hold_max_days": 30,
-        "scan_frequency": "paused",
-        "paused": True,
-    },
-    "weather_edge": {
-        "name": "weather_edge",
-        "edge_type": "model_vs_market",
-        "time_window": "super_short",
-        "time_window_label": TIME_WINDOW_LABELS["super_short"],
-        "target_hold_min_days": 0.02,
-        "target_hold_max_days": 0.5,
-        "scan_frequency": "paused",
-        "paused": True,
-    },
-}
+STATIC_STRATEGY_METADATA = {}
 
 
 def should_run_in_cycle(time_window: str, hour: int) -> bool:
