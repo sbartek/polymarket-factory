@@ -23,7 +23,8 @@
       .strategy-card .sc-params { margin-top: 10px; border-top: 1px solid var(--border); padding-top: 10px; }
       .strategy-card .sc-params table { width: 100%; font-size: 0.82rem; border-collapse: collapse; }
       .strategy-card .sc-params td { padding: 3px 6px; border-bottom: 1px solid var(--border); vertical-align: top; }
-      .strategy-card .sc-params td:first-child { color: var(--muted); width: 55%; }
+      .strategy-card .sc-params td:first-child { color: var(--muted); width: 48%; font-size: 0.76rem; word-break: break-word; }
+      .strategy-card .sc-params td:last-child { white-space: nowrap; }
       .metric-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 12px 0; }
       .metric-table th { text-align: left; color: var(--muted); text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.08em; padding: 6px 8px; border-bottom: 1px solid var(--border-bright); }
       .metric-table td { padding: 6px 8px; border-bottom: 1px solid var(--border); vertical-align: top; line-height: 1.5; }
@@ -223,7 +224,7 @@ uv run python scripts/publish_dashboard.py ~/path/to/repo --commit --push</div>
                   <tr><td>arb_threshold</td><td>≤ 0.90</td></tr>
                   <tr><td>min_outcomes</td><td>3</td></tr>
                   <tr><td>min_volume</td><td>$15,000</td></tr>
-                  <tr><td>days_to_close</td><td>7–90 days</td></tr>
+                  <tr><td>days_to_close</td><td>7–30 days</td></tr>
                   <tr><td>max_new_baskets_per_run</td><td>3</td></tr>
                 </table>
               </div>
