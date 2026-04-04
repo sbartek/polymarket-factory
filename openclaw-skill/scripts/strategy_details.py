@@ -29,14 +29,21 @@ from factory.strategy_meta import ACTIVE_STRATEGIES, strategy_metadata
 
 STRATEGY_ALIASES = {
     "ev": "ev_news",
-    "fade": "fade_certainty",
-    "weather": "weather_edge",
+    "fade": "fade_certainty_v2",
+    "weather": "weather_edge_v2",
     "arb": "spread_arb",
-    "resolution": "resolution_hunter",
-    "hunter": "resolution_hunter",
+    "resolution": "resolution_hunter_v2",
+    "hunter": "resolution_hunter_v2",
     "stale": "stale_market",
     "corr": "correlated_pairs",
     "pairs": "correlated_pairs",
+    "laggard": "correlated_laggard",
+    "esport": "esport48",
+    "celebrity": "celebrity_tabloid",
+    "oversum": "mutually_exclusive_oversum",
+    "polling": "polling_vs_market",
+    "carry": "carry_rewards",
+    "price": "price_move_fade",
     "portfolio": "portfolio",
     "book": "portfolio",
     "legacy": "legacy",
@@ -44,18 +51,7 @@ STRATEGY_ALIASES = {
     "run": "latest",
 }
 
-VALID_STRATEGIES = [
-    "ev_news",
-    "fade_certainty",
-    "weather_edge",
-    "spread_arb",
-    "resolution_hunter",
-    "stale_market",
-    "correlated_pairs",
-    "portfolio",
-    "legacy",
-    "latest",
-]
+VALID_STRATEGIES = sorted(ACTIVE_STRATEGIES) + ["portfolio", "legacy", "latest"]
 
 
 def load_trades(strategy: str) -> list[dict]:

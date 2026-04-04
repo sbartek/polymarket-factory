@@ -20,9 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from factory.db import DB_PATH
 from factory.queries import get_open_positions, open_db
-from factory.strategies import STRATEGIES
-
-_ACTIVE_STRATEGIES = {s.name for s in STRATEGIES}
+from factory.strategy_meta import ACTIVE_STRATEGIES as _ACTIVE_STRATEGIES
 
 
 def _group_summary(positions: list[dict], key: str) -> list[tuple[str, int, float]]:
