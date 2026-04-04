@@ -606,7 +606,7 @@ def run(environment: str = "paper", dry_run: bool = False, send: bool = True, fa
                     db.log_decision(run_id, "execution", "live_open" if is_live else ("dry_open" if dry_run else "open"), strategy=sig.strategy, market_id=sig.market_id, reason=execution_decision.reason,
                                     details={"amount": amount, "ev_pp": sig.ev_pp, "confidence": sig.confidence, "phase": "execute"})
 
-            if consumed_ids:
+            if consumed_ids and not dry_run:
                 db.mark_signals_consumed(consumed_ids, run_id)
                 db.log_event(run_id, "info", "signals_consumed", payload={"count": len(consumed_ids)})
 
