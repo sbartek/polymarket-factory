@@ -575,6 +575,16 @@ class FactoryDB:
             ).fetchall()
             return [dict(r) for r in rows]
 
+    def has_recent_signal(self, strategy: str, market_id: str, hours: float = 24.0) -> bool:
+        """Check if a signal for (strategy, market_id) was generated in the last N hours."""
+        cutoff = (datetime.now(UTC) - timedelta(hours=hours)).isoformat(timespec="seconds")
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT 1 FROM signals WHERE strategy = ? AND market_id = ? AND created_at >= ? LIMIT 1",
+                (strategy, market_id, cutoff),
+            ).fetchone()
+            return row is not None
+
     def mark_signals_consumed(self, signal_ids: list[int], run_id: str):
         """Mark signals as consumed by an execute-phase run."""
         if not signal_ids:
@@ -669,17 +679,41 @@ class FactoryDB:
             conn.commit()
 
     def cleanup_old_snapshots(self, retention_days: int = 730) -> dict[str, int]:
-        """Delete market_snapshot_archives and market_observations older than retention_days."""
+        """Delete old rows from all unbounded tables (except trades which are permanent)."""
         cutoff = (datetime.now(UTC) - timedelta(days=retention_days)).isoformat(timespec="seconds")
+        tables_with_created_at = [
+            "market_snapshot_archives",
+            "market_observations",
+            "signals",
+            "decisions",
+            "run_logs",
+            "portfolio_snapshots",
+            "spread_arb_baskets",
+            "resolution_hunter_checks",
+            "stale_market_checks",
+            "correlated_pairs_checks",
+            "correlated_laggard_checks",
+            "esport48_checks",
+            "celebrity_tabloid_checks",
+            "mutually_exclusive_oversum_checks",
+            "polling_vs_market_checks",
+            "signal_execution_checks",
+        ]
+        result = {}
         with self._connect() as conn:
-            archives_deleted = conn.execute(
-                "DELETE FROM market_snapshot_archives WHERE created_at < ?", (cutoff,)
-            ).rowcount
-            observations_deleted = conn.execute(
-                "DELETE FROM market_observations WHERE created_at < ?", (cutoff,)
-            ).rowcount
+            for table in tables_with_created_at:
+                try:
+                    deleted = conn.execute(
+                        f"DELETE FROM {table} WHERE created_at < ?", (cutoff,)
+                    ).rowcount
+                except Exception:
+                    deleted = 0  # table may not exist yet
+                result[f"{table}_deleted"] = deleted
             conn.commit()
-        return {"archives_deleted": archives_deleted, "observations_deleted": observations_deleted}
+        # Backward-compatible keys
+        result["archives_deleted"] = result.get("market_snapshot_archives_deleted", 0)
+        result["observations_deleted"] = result.get("market_observations_deleted", 0)
+        return result
 
     def get_latest_portfolio_snapshot_before(self, created_at: str) -> dict | None:
         with self._connect() as conn:
