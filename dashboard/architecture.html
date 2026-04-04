@@ -89,7 +89,7 @@
               <div class="arch-phase-header"><strong>Scan Phase</strong> &mdash; every 2h at :30</div>
               <div class="arch-box external">
                 <div class="label">External APIs</div>
-                Polymarket Gamma API (200 markets)<br>
+                Polymarket Gamma API (500 markets)<br>
                 ECMWF Ensemble (weather)<br>
                 DDGS / Claude (news/LLM)<br>
                 <div class="detail">Slow: 2-10 min total</div>
@@ -207,9 +207,9 @@
           <div class="arch-flow">
             <div class="arch-box external" style="flex:1">
               <div class="label">Markets</div>
-              200 events from Gamma API<br>
+              500 events from Gamma API<br>
               + tag-based fetches (weather)<br>
-              <div class="detail">~600 sub-markets</div>
+              <div class="detail">~1500 sub-markets</div>
             </div>
             <div class="arch-arrow"><div>&#x27A1;</div></div>
             <div class="arch-box" style="flex:1">
@@ -244,10 +244,12 @@
         <div class="arch-grid">
           <div class="arch-card">
             <h3>Launchd Schedule</h3>
-            <div class="schedule-row"><span class="schedule-time">:30</span><span class="schedule-label">Scan phase &mdash; fetch 200 markets, run all strategies, cache signals</span></div>
+            <div class="schedule-row"><span class="schedule-time">:30</span><span class="schedule-label">Scan phase &mdash; fetch 500 markets, run all strategies, cache signals</span></div>
             <div class="schedule-row"><span class="schedule-time">:00</span><span class="schedule-label">Execute phase &mdash; read cached signals, size, trade, resolve, notify</span></div>
             <div class="schedule-row"><span class="schedule-time">09:00</span><span class="schedule-label">Full WhatsApp summary (all strategies, portfolio stats)</span></div>
-            <div class="schedule-row"><span class="schedule-time">every 2h</span><span class="schedule-label">Both phases run on 2-hour cadence (scan at :30, execute at :00)</span></div>
+            <div class="schedule-row"><span class="schedule-time">every 2h</span><span class="schedule-label">Combined run: fast pass (1000 mkts observations) + slow pass (500 mkts strategies)</span></div>
+            <div class="schedule-row"><span class="schedule-time">every 30m</span><span class="schedule-label">Observer &mdash; price snapshots for 1000 markets (no LLM)</span></div>
+            <div class="schedule-row"><span class="schedule-time">every 30m</span><span class="schedule-label">Trade fetcher &mdash; CLOB trade data from Polymarket Data API (no auth)</span></div>
           </div>
 
           <div class="arch-card">
@@ -289,13 +291,17 @@
               <li><strong>decisions</strong> &mdash; sizing, cap, skip, review log</li>
               <li><strong>events</strong> &mdash; errors, milestones, info</li>
               <li><strong>portfolio_snapshots</strong> &mdash; periodic mark-to-market</li>
+              <li><strong>market_observations</strong> &mdash; price snapshots every 30 min (1000 markets)</li>
+              <li><strong>market_trades</strong> &mdash; CLOB trade data (deduped by tx_hash)</li>
             </ul>
           </div>
           <div class="arch-card">
             <h3>Key Files</h3>
             <ul>
-              <li><strong>factory/scanner.py</strong> &mdash; scan phase entry point</li>
-              <li><strong>factory/runner.py</strong> &mdash; execute phase + combined mode</li>
+              <li><strong>factory/scanner.py</strong> &mdash; scan phase (500 markets)</li>
+              <li><strong>factory/runner.py</strong> &mdash; combined mode (1000 obs + 500 strategies)</li>
+              <li><strong>factory/observer.py</strong> &mdash; lightweight price observer (1000 markets)</li>
+              <li><strong>factory/trade_fetcher.py</strong> &mdash; CLOB trade data pipeline</li>
               <li><strong>factory/strategies/</strong> &mdash; one file per strategy</li>
               <li><strong>factory/db.py</strong> &mdash; SQLite ORM + migrations</li>
               <li><strong>factory/broker.py</strong> &mdash; Paper + Live broker</li>

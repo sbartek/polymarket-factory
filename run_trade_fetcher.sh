@@ -1,5 +1,5 @@
 #!/bin/bash
-# Lightweight price observer — fetch snapshots every 30 min for price history.
+# CLOB trade data fetcher — fetch recent trades every 30 min.
 
 set -uo pipefail
 
@@ -15,4 +15,4 @@ fi
 export PATH="/Users/barteks/.local/bin:/Users/barteks/.local/share/fnm/node-versions/v24.14.0/installation/bin:$PATH"
 
 cd "$SCRIPT_DIR"
-uv run python -m factory.observer --limit 1000
+uv run python -m factory.trade_fetcher --limit 5000

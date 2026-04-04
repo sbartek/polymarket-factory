@@ -72,7 +72,7 @@ const dataPath = (name) => {
 };
 
 async function loadSnapshot() {
-  const [manifest, overview, strategies, runs, experiments, executionChecks, evaluation, benchmarks, storage] = await Promise.all([
+  const [manifest, overview, strategies, runs, experiments, executionChecks, evaluation, benchmarks, storage, approvals] = await Promise.all([
     loadJson(dataPath('manifest')),
     loadJson(dataPath('overview')),
     loadJson(dataPath('strategies')),
@@ -82,8 +82,9 @@ async function loadSnapshot() {
     loadJson(dataPath('evaluation')).catch(() => null),
     loadJson(dataPath('benchmarks')).catch(() => null),
     loadJson(dataPath('storage')).catch(() => null),
+    loadJson(dataPath('approvals')).catch(() => []),
   ]);
-  return { manifest, overview, strategies, runs, experiments, executionChecks, evaluation, benchmarks, storage };
+  return { manifest, overview, strategies, runs, experiments, executionChecks, evaluation, benchmarks, storage, approvals };
 }
 
 function renderChrome(snapshot, pageTitle) {

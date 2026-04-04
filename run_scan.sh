@@ -17,4 +17,4 @@ export PATH="/Users/barteks/.local/bin:/Users/barteks/.local/share/fnm/node-vers
 export FACTORY_ENV="${FACTORY_ENV:-paper}"
 
 cd "$SCRIPT_DIR"
-uv run python -m factory.scanner --limit 400
+uv run python -m factory.scanner --limit 500

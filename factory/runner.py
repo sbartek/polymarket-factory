@@ -23,7 +23,7 @@ from .db import FactoryDB
 from .environment import classify_strategy_execution, get_environment_policy
 from .live_broker import LiveBroker
 from .execution import build_market_index, snapshot_for_signal
-from .feed import fetch_top, fetch_closed, get_market_winner, get_submarket_outcome
+from .feed import fetch_top, fetch_top_paginated, fetch_closed, get_market_winner, get_submarket_outcome
 from .models import Signal
 from .notify import send_whatsapp
 from .portfolio import summary, format_summary, format_wa_table, snapshot_open_positions
@@ -348,7 +348,7 @@ def _extract_market_observations(events: list[dict]) -> list[dict]:
     return rows
 
 
-def format_wa_summary(new_trades: list[tuple], closed_trades: list[dict], alert_signals: list[Signal], closed_count: int, stats: dict, now: str, skipped: list[str] | None = None, hour: int = 9, dry_run: bool = False, fast_dry_run: bool = False, hourly_delta: str | None = None, loss_streaks: dict | None = None) -> str:
+def format_wa_summary(new_trades: list[tuple], closed_trades: list[dict], alert_signals: list[Signal], closed_count: int, stats: dict, now: str, skipped: list[str] | None = None, hour: int = 9, dry_run: bool = False, fast_dry_run: bool = False, hourly_delta: str | None = None, loss_streaks: dict | None = None, pipeline_health: list[dict] | None = None) -> str:
     if not isinstance(stats, dict) and isinstance(closed_count, dict):
         old_alert_signals = closed_trades
         old_closed_count = alert_signals if isinstance(alert_signals, int) else 0
@@ -391,6 +391,15 @@ def format_wa_summary(new_trades: list[tuple], closed_trades: list[dict], alert_
             lines.append("\n⚠ *REVIEW NEEDED:*")
             for strat, info in loss_streaks.items():
                 lines.append(f"- {strat}: {info['streak']} consecutive losses (${info['total_lost']:.2f}) — betting {info['last_outcome']}, consider flipping?")
+        if pipeline_health:
+            overdue = [p for p in pipeline_health if p["overdue"]]
+            if overdue:
+                lines.append("\n⚠ *PIPELINE ALERTS:*")
+                for p in overdue:
+                    age = f"{p['age_minutes']}m ago" if p["age_minutes"] is not None else "never run"
+                    lines.append(f"- {p['name']}: {p['status']} ({age})")
+            else:
+                lines.append("\nPipelines: all OK")
         lines.append("\n_/details <strategy> for trade breakdown_")
         return "\n".join(lines)
 
@@ -432,6 +441,15 @@ def format_wa_summary(new_trades: list[tuple], closed_trades: list[dict], alert_
         lines.append("⚠ *REVIEW NEEDED:*")
         for strat, info in loss_streaks.items():
             lines.append(f"- {strat}: {info['streak']} consecutive losses (${info['total_lost']:.2f}) — betting {info['last_outcome']}, consider flipping?")
+
+    if pipeline_health:
+        overdue = [p for p in pipeline_health if p["overdue"]]
+        if overdue:
+            lines.append("")
+            lines.append("⚠ *PIPELINE ALERTS:*")
+            for p in overdue:
+                age = f"{p['age_minutes']}m ago" if p["age_minutes"] is not None else "never run"
+                lines.append(f"- {p['name']}: {p['status']} ({age})")
 
     return "\n".join(lines)
 
@@ -519,19 +537,25 @@ def run(environment: str = "paper", dry_run: bool = False, send: bool = True, fa
             closed_trades = []
             print("Skipping open-position resolution in research environment.\n")
 
-        print("Fetching market snapshot...", end=" ", flush=True)
+        # Fast pass: fetch 1000 markets for price observations
+        print("Fast pass: fetching 1000 markets for observations...", end=" ", flush=True)
         try:
-            markets = fetch_top(limit=100)
+            all_markets = fetch_top_paginated(total=1000)
         except Exception as e:
             print(f"FAILED after retries: {e}")
-            db.log_event(run_id, "error", f"fetch_top failed: {e}")
-            db.finish_run(run_id, status="failed", markets_fetched=0, closed_count=closed_count, new_positions_count=0, notes=f"fetch_top failed: {e}")
+            db.log_event(run_id, "error", f"fetch_top_paginated failed: {e}")
+            db.finish_run(run_id, status="failed", markets_fetched=0, closed_count=closed_count, new_positions_count=0, notes=f"fetch failed: {e}")
             return
+        print(f"{len(all_markets)} markets.")
+        db.log_market_observations(run_id, _extract_market_observations(all_markets))
+        db.log_event(run_id, "info", "observations_logged", payload={"count": len(all_markets)})
+
+        # Slow pass: use top 500 for strategies + execution
+        markets = all_markets[:500]
         markets_fetched = len(markets)
-        print(f"{markets_fetched} markets.\n")
-        db.log_event(run_id, "info", "markets_fetched", payload={"count": markets_fetched})
+        print(f"Slow pass: running strategies on top {markets_fetched} markets.\n")
+        db.log_event(run_id, "info", "markets_fetched", payload={"count": markets_fetched, "observed": len(all_markets)})
         db.log_market_snapshot_archive(run_id, markets, source="fetch_top")
-        db.log_market_observations(run_id, _extract_market_observations(markets))
 
         new_trades: list[tuple[Signal, float]] = []
         alert_signals: list[Signal] = []
@@ -745,7 +769,8 @@ def run(environment: str = "paper", dry_run: bool = False, send: bool = True, fa
             db.log_portfolio_snapshot(run_id, portfolio_snapshot)
             db.log_event(run_id, "info", "portfolio_snapshot", payload=portfolio_snapshot)
         print(format_summary(stats))
-        wa_msg = format_wa_summary(new_trades, closed_trades, alert_signals, closed_count, stats, now, skipped_this_cycle, now_dt.hour, dry_run=dry_run, fast_dry_run=fast_dry_run, hourly_delta=hourly_delta, loss_streaks=loss_streaks)
+        pipeline_health = db.get_pipeline_health()
+        wa_msg = format_wa_summary(new_trades, closed_trades, alert_signals, closed_count, stats, now, skipped_this_cycle, now_dt.hour, dry_run=dry_run, fast_dry_run=fast_dry_run, hourly_delta=hourly_delta, loss_streaks=loss_streaks, pipeline_health=pipeline_health)
         if dry_run or not send:
             print("\n--- WHATSAPP PREVIEW ---")
             print(wa_msg)

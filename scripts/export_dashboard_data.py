@@ -116,12 +116,12 @@ def read_text(path: Path) -> str:
 
 
 def extract_field(text: str, field: str) -> str:
-    m = re.search(rf"^- \*\*{re.escape(field)}:\*\*[ \t]*(.*)$", text, re.M)
+    m = re.search(rf"^\s*- \*\*{re.escape(field)}:\*\*[ \t]*(.*)$", text, re.M)
     return m.group(1).strip() if m else ""
 
 
 def extract_section(text: str, heading: str) -> str:
-    m = re.search(rf"## {re.escape(heading)}\n\n(.+?)(\n## |\Z)", text, re.S)
+    m = re.search(rf"^\s*## {re.escape(heading)}\s*\n\n(.+?)(\n\s*## |\Z)", text, re.S | re.M)
     return m.group(1).strip() if m else ""
 
 
@@ -190,6 +190,90 @@ def load_experiments(changes: dict[str, dict]) -> list[dict]:
             "path": str(path.relative_to(PROJECT_ROOT)),
         })
     return rows
+
+
+def normalize_proposal_status(raw: str | None) -> str:
+    if not raw:
+        return "unknown"
+    value = raw.strip().lower()
+    if value in {"draft", "under_review", "approved", "rejected", "parked", "pending_benchmark_review"}:
+        return value
+    return "unknown"
+
+
+def load_proposals() -> list[dict]:
+    rows: list[dict] = []
+    if not PROPOSALS_DIR.exists():
+        return rows
+    for path in sorted(PROPOSALS_DIR.glob("PR-*.md")):
+        text = read_text(path)
+        proposal_id = extract_field(text, "proposal_id") or path.stem
+        proposed_name = extract_field(text, "proposed_name") or slugify(path.stem)
+        status = normalize_proposal_status(extract_field(text, "status"))
+        thesis = extract_section(text, "Structured thesis")
+        validation_plan = extract_section(text, "Validation plan")
+        failure_modes = extract_section(text, "Expected failure modes")
+        open_questions = extract_section(text, "Open questions for review")
+        approval_note = extract_section(text, "Approval note")
+        category = classify_proposal_category(path, proposal_id, proposed_name, status, thesis, validation_plan)
+        rows.append({
+            "proposal_id": proposal_id,
+            "date": extract_field(text, "date") or None,
+            "proposed_by": extract_field(text, "proposed_by") or None,
+            "strategy_name": proposed_name,
+            "status": status,
+            "proposal_category": category,
+            "plain_language_idea": extract_section(text, "Plain-language idea"),
+            "thesis": thesis,
+            "edge_type": extract_field(text, "edge_type") or None,
+            "time_window": extract_field(text, "time_window") or None,
+            "market_types": extract_field(text, "market_types") or None,
+            "likely_inputs": extract_field(text, "likely_inputs") or None,
+            "validation_plan": validation_plan,
+            "expected_failure_modes": failure_modes,
+            "open_questions": open_questions,
+            "approval_note": approval_note,
+            "approval_summary": summarize_proposal_approval(status, validation_plan, failure_modes, open_questions, approval_note),
+            "path": str(path.relative_to(PROJECT_ROOT)),
+        })
+    return rows
+
+
+def classify_proposal_category(path: Path, proposal_id: str, proposed_name: str, status: str, thesis: str, validation_plan: str) -> str:
+    stem = path.stem.lower()
+    name = (proposed_name or "").strip().lower()
+    thesis_clean = (thesis or "").strip().lower()
+    validation_clean = (validation_plan or "").strip().lower()
+
+    if "live-trading-readiness" in stem or "live_trading_readiness" in name:
+        return "non_strategy"
+    if status == "unknown" and thesis_clean in {"", "what is the actual edge claim?"} and (not validation_clean or "paper window:" in validation_clean):
+        return "cleanup"
+    if name.startswith("pr_") and status == "unknown":
+        return "non_strategy"
+    return "strategy"
+
+
+def summarize_proposal_approval(status: str, validation_plan: str, failure_modes: str, open_questions: str, approval_note: str) -> str:
+    if status == "pending_benchmark_review":
+        if validation_plan:
+            return "Validation in progress — evidence is being collected now before final approval. " + " ".join(validation_plan.split())[:240]
+        return "Validation in progress — benchmark evidence is being collected before final approval."
+    if status in {"draft", "under_review"}:
+        if open_questions:
+            return "Needs human review. " + " ".join(open_questions.split())[:240]
+        return "Needs human review before approval."
+    if status == "approved":
+        if approval_note:
+            return "Approved. " + " ".join(approval_note.split())[:240]
+        return "Approved."
+    if status == "rejected":
+        return "Rejected."
+    if status == "parked":
+        return "Parked for later."
+    if failure_modes:
+        return " ".join(failure_modes.split())[:240]
+    return "Status unclear; inspect proposal markdown."
 
 
 def normalize_experiment_status(raw: str) -> str:
@@ -832,6 +916,7 @@ def main() -> None:
     changes = load_changes() if CHANGES_DIR.exists() else {}
     reviews = load_reviews() if REVIEWS_DIR.exists() else {}
     experiments = load_experiments(changes) if EXPERIMENTS_DIR.exists() else []
+    proposals = load_proposals() if PROPOSALS_DIR.exists() else []
     attach_linked_reviews(experiments, reviews)
 
     conn = connect_db() if sqlite_available else None
@@ -856,6 +941,7 @@ def main() -> None:
     write_json(OUTPUT_DIR / "strategies.json", strategies)
     write_json(OUTPUT_DIR / "execution-checks.json", execution_checks)
     write_json(OUTPUT_DIR / "experiments.json", experiments)
+    write_json(OUTPUT_DIR / "approvals.json", proposals)
     write_json(OUTPUT_DIR / "positions-open.json", positions_open)
     write_json(OUTPUT_DIR / "benchmarks.json", benchmarks)
     write_json(OUTPUT_DIR / "storage.json", storage)
@@ -867,6 +953,7 @@ def main() -> None:
     print(f"- strategies.json ({len(strategies)} rows)")
     print(f"- execution-checks.json ({len(execution_checks)} rows)")
     print(f"- experiments.json ({len(experiments)} rows)")
+    print(f"- approvals.json ({len(proposals)} rows)")
     print(f"- positions-open.json ({len(positions_open)} rows)")
     print(f"- benchmarks.json ({len(benchmarks.get('available_scopes', []))} scope(s))")
     print(f"- storage.json")

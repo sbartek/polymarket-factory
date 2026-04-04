@@ -351,10 +351,32 @@ CREATE INDEX IF NOT EXISTS idx_run_logs_run_id ON run_logs(run_id);
 CREATE INDEX IF NOT EXISTS idx_signal_execution_checks_run_id ON signal_execution_checks(run_id);
 CREATE INDEX IF NOT EXISTS idx_signal_execution_checks_strategy ON signal_execution_checks(strategy);
 CREATE INDEX IF NOT EXISTS idx_signal_execution_checks_market_id ON signal_execution_checks(market_id);
+CREATE TABLE IF NOT EXISTS market_trades (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id TEXT,
+    condition_id TEXT NOT NULL,
+    slug TEXT,
+    event_slug TEXT,
+    title TEXT,
+    outcome TEXT,
+    side TEXT,
+    price REAL NOT NULL,
+    size REAL NOT NULL,
+    trade_timestamp INTEGER NOT NULL,
+    tx_hash TEXT,
+    fetched_at TEXT NOT NULL,
+    FOREIGN KEY(run_id) REFERENCES runs(id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_market_observations_run_id ON market_observations(run_id);
 CREATE INDEX IF NOT EXISTS idx_market_observations_market_id ON market_observations(market_id);
 CREATE INDEX IF NOT EXISTS idx_market_observations_created_at ON market_observations(created_at);
 CREATE INDEX IF NOT EXISTS idx_market_snapshot_archives_created_at ON market_snapshot_archives(created_at);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_market_trades_tx_hash ON market_trades(tx_hash);
+CREATE INDEX IF NOT EXISTS idx_market_trades_slug ON market_trades(slug);
+CREATE INDEX IF NOT EXISTS idx_market_trades_condition_id ON market_trades(condition_id);
+CREATE INDEX IF NOT EXISTS idx_market_trades_trade_timestamp ON market_trades(trade_timestamp);
+CREATE INDEX IF NOT EXISTS idx_market_trades_fetched_at ON market_trades(fetched_at);
 """
 
 
@@ -692,6 +714,119 @@ class FactoryDB:
             )
             conn.commit()
 
+    def log_market_trades(self, run_id: str, trades_data: list[dict]) -> int:
+        """Insert CLOB trades, skipping duplicates by tx_hash. Returns count inserted."""
+        if not trades_data:
+            return 0
+        fetched_at = utcnow()
+        inserted = 0
+        with self._connect() as conn:
+            for t in trades_data:
+                try:
+                    conn.execute(
+                        """
+                        INSERT OR IGNORE INTO market_trades (
+                            run_id, condition_id, slug, event_slug, title,
+                            outcome, side, price, size, trade_timestamp, tx_hash, fetched_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            run_id,
+                            t.get("conditionId", ""),
+                            t.get("slug", ""),
+                            t.get("eventSlug", ""),
+                            t.get("title", ""),
+                            t.get("outcome", ""),
+                            t.get("side", ""),
+                            float(t.get("price", 0)),
+                            float(t.get("size", 0)),
+                            int(t.get("timestamp", 0)),
+                            t.get("transactionHash", ""),
+                            fetched_at,
+                        ),
+                    )
+                    if conn.total_changes:
+                        inserted += 1
+                except Exception:
+                    continue
+            conn.commit()
+        return inserted
+
+    def get_latest_trade_timestamp(self) -> int:
+        """Return the most recent trade_timestamp in market_trades, or 0."""
+        with self._connect() as conn:
+            row = conn.execute("SELECT MAX(trade_timestamp) AS ts FROM market_trades").fetchone()
+            return int(row["ts"]) if row and row["ts"] else 0
+
+    def get_pipeline_health(self) -> list[dict]:
+        """Check health of all pipelines. Returns list of dicts with name, last_run, status, age_minutes, overdue."""
+        pipelines = [
+            {"name": "combined", "mode_pattern": "paper", "expected_interval_min": 150},
+            {"name": "scanner", "mode_pattern": "paper_scan", "expected_interval_min": 150},
+            {"name": "execute", "mode_pattern": "paper_execute", "expected_interval_min": 150},
+            {"name": "observer", "mode_pattern": "observer", "expected_interval_min": 45},
+            {"name": "trade_fetcher", "mode_pattern": "trade_fetcher", "expected_interval_min": 45},
+        ]
+        results = []
+        with self._connect() as conn:
+            for p in pipelines:
+                row = conn.execute(
+                    "SELECT finished_at, status FROM runs WHERE mode = ? ORDER BY started_at DESC LIMIT 1",
+                    (p["mode_pattern"],),
+                ).fetchone()
+                if not row or not row["finished_at"]:
+                    results.append({
+                        "name": p["name"], "last_run": None, "status": "never_run",
+                        "age_minutes": None, "overdue": True,
+                    })
+                    continue
+                finished = datetime.fromisoformat(row["finished_at"])
+                age_min = (datetime.now(UTC) - finished).total_seconds() / 60
+                results.append({
+                    "name": p["name"],
+                    "last_run": row["finished_at"],
+                    "status": row["status"],
+                    "age_minutes": round(age_min),
+                    "overdue": age_min > p["expected_interval_min"],
+                })
+        return results
+
+    def get_trade_volume_by_slug(self, slug: str, since_hours: float = 24.0) -> dict:
+        """Aggregate trade volume and count for a market slug in the last N hours."""
+        since_ts = int((datetime.now(UTC) - timedelta(hours=since_hours)).timestamp())
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT COUNT(*) as trade_count,
+                       COALESCE(SUM(size), 0) as total_size,
+                       COALESCE(SUM(size * price), 0) as total_notional
+                FROM market_trades
+                WHERE slug = ? AND trade_timestamp >= ?
+                """,
+                (slug, since_ts),
+            ).fetchone()
+            return dict(row) if row else {"trade_count": 0, "total_size": 0, "total_notional": 0}
+
+    def get_hourly_trade_volume(self, slug: str, hours: int = 168) -> list[dict]:
+        """Hourly trade volume bucketed by hour for a market, last N hours (default 7 days)."""
+        since_ts = int((datetime.now(UTC) - timedelta(hours=hours)).timestamp())
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT (trade_timestamp / 3600) * 3600 AS hour_ts,
+                       COUNT(*) AS trade_count,
+                       SUM(size) AS total_size,
+                       SUM(size * price) AS total_notional,
+                       AVG(price) AS avg_price
+                FROM market_trades
+                WHERE slug = ? AND trade_timestamp >= ?
+                GROUP BY hour_ts
+                ORDER BY hour_ts
+                """,
+                (slug, since_ts),
+            ).fetchall()
+            return [dict(r) for r in rows]
+
     def log_market_snapshot_archive(self, run_id: str, events: list[dict], source: str = "fetch_top"):
         payload_json = json.dumps(events, ensure_ascii=False, separators=(",", ":"))
         with self._connect() as conn:
@@ -725,13 +860,17 @@ class FactoryDB:
             "mutually_exclusive_oversum_checks",
             "polling_vs_market_checks",
             "signal_execution_checks",
+            "market_trades",
         ]
+        # Tables where the timestamp column is not created_at
+        timestamp_col = {"market_trades": "fetched_at"}
         result = {}
         with self._connect() as conn:
             for table in tables_with_created_at:
+                col = timestamp_col.get(table, "created_at")
                 try:
                     deleted = conn.execute(
-                        f"DELETE FROM {table} WHERE created_at < ?", (cutoff,)
+                        f"DELETE FROM {table} WHERE {col} < ?", (cutoff,)
                     ).rowcount
                 except Exception:
                     deleted = 0  # table may not exist yet

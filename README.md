@@ -4,6 +4,8 @@ A framework for rapidly spinning up, paper-trading, and evaluating Polymarket in
 
 **Goal:** Find strategies with real edge. Paper-trade each for ~a week, evaluate against kill/keep thresholds, promote winners to live trading.
 
+Project memory lives in `MEMORY.md`. Keep durable project context there; `CLAUDE.md` and external Codex memory should stay as thin pointers.
+
 ---
 
 ## Architecture
@@ -13,7 +15,7 @@ You (idea) → new file in factory/strategies/ → add to STRATEGIES registry �
                                                                                 ↓
                                                               runner.py (every 2h via launchd)
                                                                 ├── fetch 100 top markets (Gamma API)
-                                                                ├── each strategy: scan → signal → size → open position
+                                                                ├── each strategy: scan → signal → env policy → size → open/skip
                                                                 ├── check open positions → close resolved ones
                                                                 └── WhatsApp summary → Polymarket Signals group
 ```
