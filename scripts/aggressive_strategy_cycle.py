@@ -35,6 +35,7 @@ EVAL_JSON = DASHBOARD_DATA / "evaluation.json"
 BENCHMARK_DIR = PROJECT_ROOT / "benchmark-data"
 
 GENERATED_RETENTION_GRACE_DAYS = 3
+GENERATED_MAX_TTL_DAYS = 14  # hard expiry even with insufficient benchmark evidence
 GENERATED_MIN_SIGNALS_FOR_GATE = 5
 GENERATED_MIN_LABELED_FOR_GATE = 3
 GENERATED_MIN_OBSERVED_SIGNALS_FOR_GATE = 3
@@ -210,6 +211,12 @@ def apply_generated_retention_gate() -> list[dict]:
                         f"obs_cov {observation_coverage:.2f}<{GENERATED_MIN_OBSERVATION_COVERAGE:.2f}"
                     )
                 if insufficiency:
+                    if age_days >= GENERATED_MAX_TTL_DAYS:
+                        archived.append(archive_generated_module(
+                            row,
+                            f"hard TTL {GENERATED_MAX_TTL_DAYS}d expired with insufficient evidence: " + ", ".join(insufficiency),
+                        ))
+                        continue
                     mark_generated_pending_review(
                         row,
                         "Benchmark evidence still too thin for archive decision: " + ", ".join(insufficiency),

@@ -144,6 +144,42 @@ class LiveBroker:
     def close_position(self, trade_id: str, resolved_outcome: str):
         self.db.close_trade(trade_id, resolved_outcome, run_id_closed=self.run_id)
 
+    def try_close_unhedged(self, trade: dict, market_index: dict) -> bool:
+        """Attempt to sell YES tokens for a PARTIAL_YES_UNHEDGED position. Returns True if closed."""
+        notes = trade.get("notes") or ""
+        if "UNHEDGED" not in notes:
+            return False
+
+        market_id = trade.get("market_id", "")
+        market_entry = market_index.get(market_id, {})
+        market_dict = market_entry.get("market") or (market_entry.get("event", {}).get("markets") or [None])[0]
+        if not market_dict:
+            print(f"  [live_broker] cannot close unhedged {trade['id']}: no market data")
+            return False
+
+        yes_id, _ = clob_api.get_clob_token_ids(market_dict)
+        if not yes_id:
+            print(f"  [live_broker] cannot close unhedged {trade['id']}: no YES token id")
+            return False
+
+        shares = float(trade.get("shares") or 0)
+        if shares <= 0:
+            return False
+
+        resp = self._place_with_retry(yes_id, shares, leg="SELL_YES", context=f"unhedge:{trade['id']}")
+        if resp is None:
+            print(f"  [live_broker] failed to sell YES for unhedged {trade['id']}")
+            if self.db and self.run_id:
+                self.db.log_event(self.run_id, "error", "unhedged_sell_failed", strategy=trade.get("strategy"), payload={"trade_id": trade["id"]})
+            return False
+
+        sell_order_id = resp.get("orderID", "?")
+        self.db.close_trade(trade["id"], "UNHEDGED_SOLD", run_id_closed=self.run_id)
+        if self.db and self.run_id:
+            self.db.log_event(self.run_id, "info", "unhedged_position_sold", strategy=trade.get("strategy"), payload={"trade_id": trade["id"], "sell_order_id": sell_order_id, "shares": shares})
+        print(f"  [live_broker] sold unhedged YES position {trade['id']} (order {sell_order_id})")
+        return True
+
     def get_open_positions(self) -> list[dict]:
         return [t for t in self.db.load_trades(mode="live") if t.get("status") == "open" and t.get("mode") == "live"]
 

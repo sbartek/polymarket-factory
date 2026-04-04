@@ -16,6 +16,7 @@ from dataclasses import asdict, is_dataclass
 from datetime import datetime, timedelta
 
 from .broker import PaperBroker
+from .claude import reset_circuit_breaker
 from .db import FactoryDB
 from .environment import classify_strategy_execution, get_environment_policy
 from .live_broker import LiveBroker
@@ -142,6 +143,10 @@ def _log_strategy_details(db: FactoryDB, run_id: str, strategy):
     elif strategy.name == "mutually_exclusive_oversum":
         for row in getattr(strategy, "last_check_details", []):
             db.log_mutually_exclusive_oversum_check(run_id, row)
+    elif strategy.name in ("fade_certainty_v2", "resolution_hunter_v2", "weather_edge_v2"):
+        details = getattr(strategy, "last_check_details", [])
+        if details:
+            db.log_event(run_id, "info", f"{strategy.name}_checks", strategy=strategy.name, payload={"checks": details})
 
 
 def resolve_open_positions(broker, dry_run: bool = False, db: FactoryDB | None = None, run_id: str | None = None):
@@ -444,6 +449,7 @@ def run(environment: str = "paper", dry_run: bool = False, send: bool = True, fa
     print(f"POLYMARKET FACTORY — {now}{flag_str}")
     print(f"{'='*60}\n")
 
+    reset_circuit_breaker()
     db = FactoryDB()
     run_id = db.start_run(mode=mode)
     db.log_event(run_id, "info", "run_started", payload={"mode": mode, "environment": policy.name})
@@ -484,7 +490,13 @@ def run(environment: str = "paper", dry_run: bool = False, send: bool = True, fa
             print("Skipping open-position resolution in research environment.\n")
 
         print("Fetching market snapshot...", end=" ", flush=True)
-        markets = fetch_top(limit=100)
+        try:
+            markets = fetch_top(limit=100)
+        except Exception as e:
+            print(f"FAILED after retries: {e}")
+            db.log_event(run_id, "error", f"fetch_top failed: {e}")
+            db.finish_run(run_id, status="failed", markets_fetched=0, closed_count=closed_count, new_positions_count=0, notes=f"fetch_top failed: {e}")
+            return
         markets_fetched = len(markets)
         print(f"{markets_fetched} markets.\n")
         db.log_event(run_id, "info", "markets_fetched", payload={"count": markets_fetched})
@@ -496,6 +508,12 @@ def run(environment: str = "paper", dry_run: bool = False, send: bool = True, fa
         skipped_this_cycle: list[str] = []
         exposure_by_strategy, exposure_by_window = _current_exposure_by_strategy_and_window(broker, meta)
         market_index = build_market_index(markets)
+
+        # Auto-close unhedged partial-fill positions (live only)
+        if not dry_run and hasattr(base_broker, "try_close_unhedged"):
+            for t in base_broker.get_open_positions():
+                if t.get("outcome") == "PARTIAL_YES_UNHEDGED":
+                    base_broker.try_close_unhedged(t, market_index)
 
         for strategy in STRATEGIES:
             strategy_meta = meta.get(strategy.name, {})
@@ -617,6 +635,14 @@ def run(environment: str = "paper", dry_run: bool = False, send: bool = True, fa
             db.log_decision(run_id, "notify", "sent" if sent else "failed", reason="whatsapp_send")
 
         print(f"\n{'Dry run preview generated' if dry_run or not send else 'WhatsApp notification sent'} ✓" if sent else "\nWhatsApp notification FAILED — check openclaw.")
+
+        if not dry_run:
+            cleanup = db.cleanup_old_snapshots()
+            total_cleaned = cleanup["archives_deleted"] + cleanup["observations_deleted"]
+            if total_cleaned:
+                print(f"Retention cleanup: {cleanup['archives_deleted']} archives, {cleanup['observations_deleted']} observations deleted.")
+                db.log_event(run_id, "info", "retention_cleanup", payload=cleanup)
+
         print(f"\n{'='*60}\n")
         db.finish_run(run_id, status="success", markets_fetched=markets_fetched, closed_count=closed_count, new_positions_count=new_positions_count)
     except Exception as e:

@@ -1,5 +1,6 @@
 """Polymarket Gamma API wrappers — shared across all strategies."""
 import json
+import time
 import urllib.parse
 from datetime import datetime
 
@@ -7,13 +8,26 @@ import requests
 
 GAMMA_EVENTS = "https://gamma-api.polymarket.com/events"
 
+FETCH_MAX_RETRIES = 3
+FETCH_BACKOFF_BASE = 2  # seconds
 
-def fetch_top(limit: int = 100) -> list[dict]:
+
+def fetch_top(limit: int = 100, retries: int = FETCH_MAX_RETRIES) -> list[dict]:
     params = {"limit": limit, "active": "true", "closed": "false",
               "order": "volume24hr", "ascending": "false"}
-    resp = requests.get(f"{GAMMA_EVENTS}?{urllib.parse.urlencode(params)}", timeout=10)
-    resp.raise_for_status()
-    return resp.json()
+    last_error = None
+    for attempt in range(retries):
+        try:
+            resp = requests.get(f"{GAMMA_EVENTS}?{urllib.parse.urlencode(params)}", timeout=15)
+            resp.raise_for_status()
+            return resp.json()
+        except (requests.RequestException, ValueError) as e:
+            last_error = e
+            if attempt < retries - 1:
+                wait = FETCH_BACKOFF_BASE * (2 ** attempt)
+                print(f"  [feed] fetch_top attempt {attempt + 1} failed: {e} — retrying in {wait}s")
+                time.sleep(wait)
+    raise last_error
 
 
 def fetch_by_tag(tag_slug: str, limit: int = 5) -> list[dict]:

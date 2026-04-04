@@ -1,10 +1,8 @@
-"""Paper broker — SQLite-backed trade state with optional legacy CSV import/export during migration."""
-import csv
+"""Paper broker — SQLite-backed trade state."""
 import uuid
 from datetime import datetime
-from pathlib import Path
 
-from .db import FactoryDB, TRADE_FIELDS, TRADES_CSV
+from .db import FactoryDB, TRADE_FIELDS
 from .models import Signal, Trade
 from .strategy_meta import ACTIVE_STRATEGIES, strategy_metadata
 
@@ -12,25 +10,13 @@ from .strategy_meta import ACTIVE_STRATEGIES, strategy_metadata
 class PaperBroker:
     """Simulates fills at market price + slippage. No real money involved."""
 
-    def __init__(self, slippage: float = 0.005, db: FactoryDB | None = None, run_id: str | None = None, export_csv: bool = True):
+    def __init__(self, slippage: float = 0.005, db: FactoryDB | None = None, run_id: str | None = None):
         self.slippage = slippage
         self.db = db or FactoryDB()
         self.run_id = run_id
-        self.export_csv = export_csv
-        TRADES_CSV.parent.mkdir(parents=True, exist_ok=True)
-        self.db.ensure_trades_imported_from_csv(TRADES_CSV)
-        if self.export_csv:
-            self.export_trades_csv()
 
     def _load(self) -> list[dict]:
         return self.db.load_trades(mode="paper")
-
-    def export_trades_csv(self):
-        trades = self._load()
-        with open(TRADES_CSV, "w", newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=TRADE_FIELDS, extrasaction="ignore")
-            writer.writeheader()
-            writer.writerows(trades)
 
     def has_position(self, market_id: str, strategy: str) -> bool:
         return self.db.has_open_position(market_id, strategy, mode="paper")
@@ -57,15 +43,12 @@ class PaperBroker:
             "lifecycle_group": "active" if signal.strategy in ACTIVE_STRATEGIES else "legacy",
             "time_window": meta.get("time_window"),
             "edge_type": meta.get("edge_type"),
+            "mode": "paper",
         })
-        if self.export_csv:
-            self.export_trades_csv()
         return trade
 
     def close_position(self, trade_id: str, resolved_outcome: str):
-        updated = self.db.close_trade(trade_id, resolved_outcome, run_id_closed=self.run_id)
-        if updated and self.export_csv:
-            self.export_trades_csv()
+        self.db.close_trade(trade_id, resolved_outcome, run_id_closed=self.run_id)
 
     def get_open_positions(self) -> list[dict]:
         return [t for t in self._load() if t["status"] == "open"]

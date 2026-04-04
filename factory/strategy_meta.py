@@ -43,9 +43,12 @@ STRATEGY_EXPOSURE_CAPS = {
     "carry_rewards": 25.0,
     "polling_vs_market": 30.0,
     "mutually_exclusive_oversum": 0.0,
+    "fade_certainty_v2": 0.0,
+    "resolution_hunter_v2": 0.0,
+    "weather_edge_v2": 0.0,
 }
 
-ACTIVE_STRATEGIES = {"ev_news", "spread_arb", "stale_market", "correlated_pairs", "correlated_laggard", "esport48", "celebrity_tabloid", "carry_rewards", "polling_vs_market", "mutually_exclusive_oversum"}
+ACTIVE_STRATEGIES = {"ev_news", "spread_arb", "stale_market", "correlated_pairs", "correlated_laggard", "esport48", "celebrity_tabloid", "carry_rewards", "polling_vs_market", "mutually_exclusive_oversum", "fade_certainty_v2", "resolution_hunter_v2", "weather_edge_v2"}
 
 
 def expected_window_from_days(min_days: float | int, max_days: float | int) -> TimeWindow:

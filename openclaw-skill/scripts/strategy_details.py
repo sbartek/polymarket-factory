@@ -59,7 +59,7 @@ VALID_STRATEGIES = [
 
 
 def load_trades(strategy: str) -> list[dict]:
-    return [t for t in PaperBroker(export_csv=False).get_all_trades() if t["strategy"] == strategy]
+    return [t for t in PaperBroker().get_all_trades() if t["strategy"] == strategy]
 
 
 def _recent_checks(db, strategy: str, limit: int = 4) -> list[dict]:
@@ -120,7 +120,7 @@ def _format_trade(t: dict) -> str:
 
 
 def _render_portfolio() -> str:
-    broker = PaperBroker(export_csv=False)
+    broker = PaperBroker()
     stats = summary(broker)
     return "*PPLayouts — portfolio*\n\n" + format_wa_table(stats, {})
 

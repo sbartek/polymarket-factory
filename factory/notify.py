@@ -21,6 +21,21 @@ def _load_dotenv():
 _load_dotenv()
 
 
+def _find_openclaw() -> str | None:
+    """Find openclaw binary: PATH first, then fnm-managed node bin dirs."""
+    found = shutil.which("openclaw")
+    if found:
+        return found
+    # Search fnm node version directories for globally installed openclaw
+    fnm_dir = Path.home() / ".local" / "share" / "fnm" / "node-versions"
+    if fnm_dir.is_dir():
+        for version_dir in sorted(fnm_dir.iterdir(), reverse=True):
+            candidate = version_dir / "installation" / "bin" / "openclaw"
+            if candidate.exists():
+                return str(candidate)
+    return None
+
+
 def send_whatsapp(text: str) -> bool:
     """Send a WhatsApp message. Returns True if confirmed sent, False otherwise."""
     group_id = os.environ.get("WHATSAPP_GROUP_ID")
@@ -28,8 +43,10 @@ def send_whatsapp(text: str) -> bool:
         print("  [notify] WHATSAPP_GROUP_ID not set — skipping.")
         return False
 
-    openclaw = shutil.which("openclaw") or \
-        "/Users/barteks/.local/share/fnm/node-versions/v24.14.0/installation/bin/openclaw"
+    openclaw = _find_openclaw()
+    if not openclaw:
+        print("  [notify] openclaw not found in PATH or fnm — skipping.")
+        return False
 
     try:
         result = subprocess.run(

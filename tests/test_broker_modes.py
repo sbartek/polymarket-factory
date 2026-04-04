@@ -25,7 +25,7 @@ def test_paper_broker_excludes_live_trades(tmp_path):
     db = FactoryDB(path=tmp_path / "test.sqlite3")
     _insert_trade(db, "paper1", mode="paper")
     _insert_trade(db, "live1", mode="live")
-    broker = PaperBroker(db=db, export_csv=False)
+    broker = PaperBroker(db=db)
     trades = broker.get_all_trades()
     assert len(trades) == 1
     assert trades[0]["mode"] == "paper"

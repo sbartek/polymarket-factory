@@ -19,7 +19,7 @@ MIN_TRADES_TO_EVALUATE = 5
 
 
 def load_trades() -> list[dict]:
-    return PaperBroker(export_csv=False).get_all_trades()
+    return PaperBroker().get_all_trades()
 
 
 def _stats_for(trades: list[dict]) -> dict:

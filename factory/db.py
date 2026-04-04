@@ -633,6 +633,19 @@ class FactoryDB:
             )
             conn.commit()
 
+    def cleanup_old_snapshots(self, retention_days: int = 730) -> dict[str, int]:
+        """Delete market_snapshot_archives and market_observations older than retention_days."""
+        cutoff = (datetime.now(UTC) - timedelta(days=retention_days)).isoformat(timespec="seconds")
+        with self._connect() as conn:
+            archives_deleted = conn.execute(
+                "DELETE FROM market_snapshot_archives WHERE created_at < ?", (cutoff,)
+            ).rowcount
+            observations_deleted = conn.execute(
+                "DELETE FROM market_observations WHERE created_at < ?", (cutoff,)
+            ).rowcount
+            conn.commit()
+        return {"archives_deleted": archives_deleted, "observations_deleted": observations_deleted}
+
     def get_latest_portfolio_snapshot_before(self, created_at: str) -> dict | None:
         with self._connect() as conn:
             row = conn.execute(

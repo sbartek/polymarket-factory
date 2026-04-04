@@ -6,12 +6,15 @@ from .correlated_pairs import CorrelatedPairsStrategy
 from .esport48 import Esport48Strategy
 from .ev_news import EvNewsStrategy
 from .fade_certainty import FadeCertaintyStrategy
+from .fade_certainty_v2 import FadeCertaintyV2Strategy
 from .mutually_exclusive_oversum import MutuallyExclusiveOversumStrategy
 from .polling_vs_market import PollingVsMarketStrategy
 from .resolution_hunter import ResolutionHunterStrategy
+from .resolution_hunter_v2 import ResolutionHunterV2Strategy
 from .spread_arb import SpreadArbStrategy
 from .stale_market import StaleMarketStrategy
 from .weather_edge import WeatherEdgeStrategy
+from .weather_edge_v2 import WeatherEdgeV2Strategy
 
 
 def _load_generated_strategies():
@@ -59,4 +62,7 @@ STRATEGIES = [
     CarryRewardsStrategy(),
     PollingVsMarketStrategy(),
     MutuallyExclusiveOversumStrategy(),
+    FadeCertaintyV2Strategy(),
+    ResolutionHunterV2Strategy(),
+    WeatherEdgeV2Strategy(),
 ] + _load_generated_strategies()
