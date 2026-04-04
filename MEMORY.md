@@ -61,6 +61,7 @@ runner.py (every 2h, 12x/day via launchd)
 |----------|-------|
 | `correlated_laggard` | Liquid leader/laggard divergence. `promotable=True`. See EX-20260401-006. |
 | `esport48` | Esport markets <48h. `promotable=True`. See EX-20260401-007. |
+| `mutually_exclusive_oversum` | Oversum NO-fade. `promotable=True`. Promote after 20 alerts, >60% revert. Added 2026-04-04. |
 
 ### Killed
 | Strategy | Verdict | Root cause |
@@ -203,12 +204,12 @@ Session 3 (2026-04-04): polling_vs_market integration + wiki cleanup + spread_ar
 - **spread_arb force-close + retest**: All 70 pre-fix positions closed (2 rounds). Full clean slate as of 2026-04-04. spread_arb now scanning fresh under fixed logic. Pre-fix stats: 79 closed, 2% WR, -89.1% ROI (dominated by incomplete basket bug).
 - Portfolio: 132 → 62 open positions, $275 → ~$100 exposure.
 - Dashboard reference.html: fixed sc-params value overflow (label col 55%→48%, smaller font, value col white-space:nowrap).
-- `mutually_exclusive_oversum` shelved: spread_arb diagnosis came first; proposal deferred until spread_arb root cause is better understood.
+- `mutually_exclusive_oversum` built and deployed as alert-only: Σ(YES) > 1.08 → NO on most overpriced leg. Filters: incomplete open fields, price-target non-exclusive legs (hit/reach/dip keywords), MAX_OVERSUM=1.50. 15 tests. Promote to paper after 20 validated alerts showing >60% revert within 7 days.
 
 Remaining backlog:
 - DB retention cleanup job (730-day policy exists, no enforcement)
-- `mutually_exclusive_oversum` proposal (PR-20260403-002) — shelved pending spread_arb learnings
-- spread_arb retest in progress — 0 open positions as of 2026-04-04, accumulating fresh data under fixed logic. Eval after 10+ closed trades.
+- `mutually_exclusive_oversum` alert-only — accumulating signals, promote after 20 validated alerts
+- `spread_arb` retest — 0 open positions as of 2026-04-04, eval after 10+ closed trades
 
 ---
 
