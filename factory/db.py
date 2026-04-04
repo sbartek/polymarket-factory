@@ -378,6 +378,8 @@ class FactoryDB:
     def _migrate_db(self):
         migrations = [
             "ALTER TABLE trades ADD COLUMN mode TEXT DEFAULT 'paper'",
+            "ALTER TABLE signals ADD COLUMN phase TEXT DEFAULT 'combined'",
+            "ALTER TABLE signals ADD COLUMN consumed_by_run_id TEXT",
         ]
         with self._connect() as conn:
             for sql in migrations:
@@ -544,11 +546,44 @@ class FactoryDB:
             )
             conn.commit()
 
-    def log_signal(self, run_id: str, strategy: str, signal: dict, time_window: str | None = None, edge_type: str | None = None, decision_status: str | None = None):
+    def log_signal(self, run_id: str, strategy: str, signal: dict, time_window: str | None = None, edge_type: str | None = None, decision_status: str | None = None, phase: str = "combined"):
         with self._connect() as conn:
             conn.execute(
-                "INSERT INTO signals (run_id, strategy, market_id, market_title, outcome, market_price, p_hat, ev_pp, confidence, closes, url, rationale, time_window, edge_type, decision_status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (run_id, strategy, signal.get("market_id", ""), signal.get("market_title", ""), signal.get("outcome", ""), float(signal.get("market_price", 0) or 0), float(signal.get("p_hat", 0) or 0), float(signal.get("ev_pp", 0) or 0), signal.get("confidence", ""), signal.get("closes", ""), signal.get("url", ""), signal.get("rationale", ""), time_window, edge_type, decision_status, utcnow()),
+                "INSERT INTO signals (run_id, strategy, market_id, market_title, outcome, market_price, p_hat, ev_pp, confidence, closes, url, rationale, time_window, edge_type, decision_status, phase, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (run_id, strategy, signal.get("market_id", ""), signal.get("market_title", ""), signal.get("outcome", ""), float(signal.get("market_price", 0) or 0), float(signal.get("p_hat", 0) or 0), float(signal.get("ev_pp", 0) or 0), signal.get("confidence", ""), signal.get("closes", ""), signal.get("url", ""), signal.get("rationale", ""), time_window, edge_type, decision_status, phase, utcnow()),
+            )
+            conn.commit()
+
+    def get_unconsumed_signals(self, max_age_hours: float = 2.0) -> list[dict]:
+        """Fetch signals from a scan phase that haven't been consumed yet, deduped by (strategy, market_id, outcome)."""
+        cutoff = (datetime.now(UTC) - timedelta(hours=max_age_hours)).isoformat(timespec="seconds")
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT s.* FROM signals s
+                INNER JOIN (
+                    SELECT strategy, market_id, outcome, MAX(id) AS max_id
+                    FROM signals
+                    WHERE phase = 'scan'
+                      AND consumed_by_run_id IS NULL
+                      AND created_at >= ?
+                    GROUP BY strategy, market_id, outcome
+                ) latest ON s.id = latest.max_id
+                ORDER BY s.ev_pp DESC
+                """,
+                (cutoff,),
+            ).fetchall()
+            return [dict(r) for r in rows]
+
+    def mark_signals_consumed(self, signal_ids: list[int], run_id: str):
+        """Mark signals as consumed by an execute-phase run."""
+        if not signal_ids:
+            return
+        with self._connect() as conn:
+            placeholders = ",".join("?" for _ in signal_ids)
+            conn.execute(
+                f"UPDATE signals SET consumed_by_run_id = ? WHERE id IN ({placeholders})",
+                [run_id] + signal_ids,
             )
             conn.commit()
 

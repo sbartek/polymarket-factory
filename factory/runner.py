@@ -1,15 +1,17 @@
 """
 Main runner — called 3x/day by launchd.
-1. Fetch market snapshot
-2. Run each strategy → collect signals
-3. Size + open positions (skip duplicates)
-4. Check open positions → close resolved ones
-5. Send WhatsApp summary
+
+Supports two modes:
+  phase="combined" (default): fetch → scan → execute → notify (legacy single-pass)
+  phase="execute": read cached signals from DB → execute → notify (fast, no LLM calls)
+
+Use factory.scanner for the scan-only phase that caches signals.
 
 Supports `dry_run=True` for a safe manual pass with no writes and no sends.
 Supports `fast_dry_run=True` to aggressively trim slow strategy work for debugging.
 Includes live-run locking + strategy detail logging.
 """
+import argparse
 import os
 import json
 from dataclasses import asdict, is_dataclass
@@ -424,19 +426,40 @@ def format_wa_summary(new_trades: list[tuple], closed_trades: list[dict], alert_
     return "\n".join(lines)
 
 
-def run(environment: str = "paper", dry_run: bool = False, send: bool = True, fast_dry_run: bool = False):
+def _reconstruct_signal(row: dict) -> Signal:
+    """Rebuild a Signal dataclass from a DB signals row."""
+    return Signal(
+        strategy=row["strategy"],
+        market_id=row["market_id"],
+        market_title=row["market_title"],
+        outcome=row["outcome"],
+        market_price=float(row["market_price"]),
+        p_hat=float(row["p_hat"]),
+        ev_pp=float(row["ev_pp"]),
+        confidence=row.get("confidence") or "medium",
+        closes=row.get("closes") or "",
+        url=row.get("url") or "",
+        rationale=row.get("rationale") or "",
+    )
+
+
+def run(environment: str = "paper", dry_run: bool = False, send: bool = True, fast_dry_run: bool = False, phase: str = "combined"):
     policy = get_environment_policy(environment)
     now_dt = datetime.now()
     now = now_dt.strftime("%Y-%m-%d %H:%M")
     flags = []
     if policy.name != "paper":
         flags.append(policy.name.upper())
+    if phase == "execute":
+        flags.append("EXECUTE")
     if dry_run:
         flags.append("DRY RUN")
     if fast_dry_run:
         flags.append("FAST")
     flag_str = f" [{' / '.join(flags)}]" if flags else ""
     mode_parts = [policy.name]
+    if phase == "execute":
+        mode_parts.append("execute")
     if fast_dry_run:
         mode_parts.append("fast_dry_run")
     elif dry_run:
@@ -512,105 +535,182 @@ def run(environment: str = "paper", dry_run: bool = False, send: bool = True, fa
                 if t.get("outcome") == "PARTIAL_YES_UNHEDGED":
                     base_broker.try_close_unhedged(t, market_index)
 
-        for strategy in STRATEGIES:
-            strategy_meta = meta.get(strategy.name, {})
-            if fast_dry_run and strategy.name == "ev_news":
-                print(f"Skipping [{strategy.name}] in fast dry run (expensive LLM path).")
-                skipped_this_cycle.append(f"{strategy.name}[fast-skip]")
-                db.log_decision(run_id, "cycle_skip", "skip", strategy=strategy.name, reason="fast_dry_run", details={"time_window": strategy_meta.get("time_window")})
-                continue
-            if strategy_meta.get("paused") or getattr(strategy, "paused", False):
-                print(f"Skipping [{strategy.name}] (paused).")
-                skipped_this_cycle.append(f"{strategy.name}[paused]")
-                db.log_decision(run_id, "cycle_skip", "skip", strategy=strategy.name, reason="paused")
-                continue
-            if not should_run_in_cycle(strategy_meta.get("time_window", "unknown"), now_dt.hour):
-                print(f"Skipping [{strategy.name}] this cycle ({strategy_meta.get('time_window')}).")
-                skipped_this_cycle.append(f"{strategy.name}[{strategy_meta.get('time_window')}]")
-                db.log_decision(run_id, "cycle_skip", "skip", strategy=strategy.name, reason="cadence", details={"time_window": strategy_meta.get("time_window"), "hour": now_dt.hour})
-                continue
+        # Build strategy lookup for execute phase
+        strategy_by_name = {s.name: s for s in STRATEGIES}
 
-            print(f"Running [{strategy.name}] ({strategy_meta.get('edge_type','other')}/{strategy_meta.get('time_window','?')})...")
-            db.log_event(run_id, "info", "strategy_started", strategy=strategy.name, payload={"edge_type": strategy_meta.get("edge_type"), "time_window": strategy_meta.get("time_window")})
-            try:
-                signals = strategy.scan(markets)
-            except Exception as e:
-                print(f"  Error in {strategy.name}.scan(): {e}")
-                db.log_event(run_id, "error", f"strategy scan error: {e}", strategy=strategy.name)
-                db.log_decision(run_id, "strategy_scan", "error", strategy=strategy.name, reason=str(e))
-                continue
+        if phase == "execute":
+            # --- Execute-only: read cached signals from scan phase ---
+            cached_rows = db.get_unconsumed_signals(max_age_hours=2.0)
+            consumed_ids: list[int] = []
+            if not cached_rows:
+                print("No cached signals to execute (scan may not have run).\n")
+                db.log_event(run_id, "info", "no_cached_signals")
+            else:
+                print(f"Loaded {len(cached_rows)} cached signals from scan phase.\n")
+                db.log_event(run_id, "info", "cached_signals_loaded", payload={"count": len(cached_rows)})
 
-            for sig in signals:
-                sig_dict = _signal_to_dict(sig)
-                db.log_signal(run_id, strategy.name, sig_dict, time_window=strategy_meta.get("time_window"), edge_type=strategy_meta.get("edge_type"), decision_status="generated")
-                execution_snapshot = snapshot_for_signal(sig, strategy, market_index)
-                db.log_signal_execution_check(run_id, execution_snapshot.as_dict())
+            for row in cached_rows:
+                consumed_ids.append(row["id"])
+                sig = _reconstruct_signal(row)
+                strategy = strategy_by_name.get(sig.strategy)
+                if not strategy:
+                    db.log_decision(run_id, "execute", "skip", strategy=sig.strategy, market_id=sig.market_id, reason="unknown_strategy")
+                    continue
 
-                execution_decision = classify_strategy_execution(policy, strategy, strategy_meta)
+                strategy_meta_item = meta.get(sig.strategy, {})
+                execution_decision = classify_strategy_execution(policy, strategy, strategy_meta_item)
 
                 if execution_decision.action == "skip":
-                    db.log_decision(run_id, "environment", "skip", strategy=strategy.name, market_id=sig.market_id, reason=execution_decision.reason)
+                    db.log_decision(run_id, "environment", "skip", strategy=sig.strategy, market_id=sig.market_id, reason=execution_decision.reason)
                     continue
 
                 if execution_decision.action == "alert":
                     alert_signals.append(sig)
-                    print(f"  [{strategy.name}] ALERT {sig.outcome} {sig.market_title[:45]} | gap {sig.ev_pp:.0f}pp | {sig.confidence}")
-                    db.log_decision(
-                        run_id,
-                        "alert",
-                        "alert_only",
-                        strategy=strategy.name,
-                        market_id=sig.market_id,
-                        reason=execution_decision.reason,
-                        details={
-                            "ev_pp": sig.ev_pp,
-                            "confidence": sig.confidence,
-                            "alert_only": strategy_meta.get("alert_only", False),
-                            "promotable": strategy_meta.get("promotable", False),
-                            "live_ready": strategy_meta.get("live_ready", False),
-                        },
-                    )
+                    print(f"  [{sig.strategy}] ALERT {sig.outcome} {sig.market_title[:45]} | gap {sig.ev_pp:.0f}pp | {sig.confidence}")
+                    db.log_decision(run_id, "alert", "alert_only", strategy=sig.strategy, market_id=sig.market_id, reason=execution_decision.reason,
+                                    details={"ev_pp": sig.ev_pp, "confidence": sig.confidence, "phase": "execute"})
                     continue
 
                 is_live = execution_decision.action == "live"
-                active_broker = broker
-
-                if active_broker.has_position(sig.market_id, strategy.name):
-                    print(f"  [{strategy.name}] skip duplicate: {sig.market_title[:45]}")
-                    db.log_decision(run_id, "duplicate_check", "skip", strategy=strategy.name, market_id=sig.market_id, reason="already_open")
+                if broker.has_position(sig.market_id, sig.strategy):
+                    print(f"  [{sig.strategy}] skip duplicate: {sig.market_title[:45]}")
+                    db.log_decision(run_id, "duplicate_check", "skip", strategy=sig.strategy, market_id=sig.market_id, reason="already_open")
                     continue
                 amount = strategy.size(sig)
                 if amount < 1.0:
-                    print(f"  [{strategy.name}] skip tiny size (${amount}): {sig.market_title[:45]}")
-                    db.log_decision(run_id, "size_check", "skip", strategy=strategy.name, market_id=sig.market_id, reason="tiny_size", details={"amount": amount})
+                    db.log_decision(run_id, "size_check", "skip", strategy=sig.strategy, market_id=sig.market_id, reason="tiny_size", details={"amount": amount})
                     continue
-                allowed, reason = _can_open(amount, strategy.name, meta, exposure_by_strategy, exposure_by_window)
+                allowed, reason = _can_open(amount, sig.strategy, meta, exposure_by_strategy, exposure_by_window)
                 if not allowed:
-                    print(f"  [{strategy.name}] skip capped: {sig.market_title[:45]} | {reason}")
-                    db.log_decision(run_id, "cap_check", "skip", strategy=strategy.name, market_id=sig.market_id, reason=reason, details={"amount": amount, "strategy_exposure": exposure_by_strategy.get(strategy.name, 0.0), "window_exposure": exposure_by_window.get(strategy_meta.get("time_window", "unknown"), 0.0)})
+                    print(f"  [{sig.strategy}] skip capped: {sig.market_title[:45]} | {reason}")
+                    db.log_decision(run_id, "cap_check", "skip", strategy=sig.strategy, market_id=sig.market_id, reason=reason, details={"amount": amount})
                     continue
 
                 if is_live:
                     market_entry = market_index.get(sig.market_id, {})
                     market_dict = market_entry.get("market") or (market_entry.get("event", {}).get("markets") or [None])[0]
-                    trade = active_broker.open_position(sig, amount, market=market_dict)
+                    trade = broker.open_position(sig, amount, market=market_dict)
                     track = trade is not None
                 else:
-                    active_broker.open_position(sig, amount)
+                    broker.open_position(sig, amount)
                     track = True
 
                 if track:
-                    exposure_by_strategy[strategy.name] = exposure_by_strategy.get(strategy.name, 0.0) + amount
-                    exposure_by_window[strategy_meta.get("time_window", "unknown")] = exposure_by_window.get(strategy_meta.get("time_window", "unknown"), 0.0) + amount
+                    exposure_by_strategy[sig.strategy] = exposure_by_strategy.get(sig.strategy, 0.0) + amount
+                    window = strategy_meta_item.get("time_window", "unknown")
+                    exposure_by_window[window] = exposure_by_window.get(window, 0.0) + amount
                     new_trades.append((sig, amount))
                     new_positions_count += 1
                     mode_label = "LIVE" if is_live else ("WOULD OPEN" if dry_run else "OPEN")
-                    print(f"  [{strategy.name}] {mode_label} {sig.outcome} {sig.market_title[:45]} | EV +{sig.ev_pp:.0f}pp | ${amount} | {sig.confidence}")
-                    db.log_decision(run_id, "execution", "live_open" if is_live else ("dry_open" if dry_run else "open"), strategy=strategy.name, market_id=sig.market_id, reason=execution_decision.reason, details={"amount": amount, "ev_pp": sig.ev_pp, "confidence": sig.confidence, "mode": "live" if is_live else "paper", "environment": policy.name})
+                    print(f"  [{sig.strategy}] {mode_label} {sig.outcome} {sig.market_title[:45]} | EV +{sig.ev_pp:.0f}pp | ${amount} | {sig.confidence}")
+                    db.log_decision(run_id, "execution", "live_open" if is_live else ("dry_open" if dry_run else "open"), strategy=sig.strategy, market_id=sig.market_id, reason=execution_decision.reason,
+                                    details={"amount": amount, "ev_pp": sig.ev_pp, "confidence": sig.confidence, "phase": "execute"})
 
-            print()
-            _log_strategy_details(db, run_id, strategy)
-            db.log_event(run_id, "info", "strategy_finished", strategy=strategy.name, payload={"signals": len(signals)})
+            if consumed_ids:
+                db.mark_signals_consumed(consumed_ids, run_id)
+                db.log_event(run_id, "info", "signals_consumed", payload={"count": len(consumed_ids)})
+
+        else:
+            # --- Combined mode: scan + execute in one pass ---
+            for strategy in STRATEGIES:
+                strategy_meta_item = meta.get(strategy.name, {})
+                if fast_dry_run and strategy.name == "ev_news":
+                    print(f"Skipping [{strategy.name}] in fast dry run (expensive LLM path).")
+                    skipped_this_cycle.append(f"{strategy.name}[fast-skip]")
+                    db.log_decision(run_id, "cycle_skip", "skip", strategy=strategy.name, reason="fast_dry_run", details={"time_window": strategy_meta_item.get("time_window")})
+                    continue
+                if strategy_meta_item.get("paused") or getattr(strategy, "paused", False):
+                    print(f"Skipping [{strategy.name}] (paused).")
+                    skipped_this_cycle.append(f"{strategy.name}[paused]")
+                    db.log_decision(run_id, "cycle_skip", "skip", strategy=strategy.name, reason="paused")
+                    continue
+                if not should_run_in_cycle(strategy_meta_item.get("time_window", "unknown"), now_dt.hour):
+                    print(f"Skipping [{strategy.name}] this cycle ({strategy_meta_item.get('time_window')}).")
+                    skipped_this_cycle.append(f"{strategy.name}[{strategy_meta_item.get('time_window')}]")
+                    db.log_decision(run_id, "cycle_skip", "skip", strategy=strategy.name, reason="cadence", details={"time_window": strategy_meta_item.get("time_window"), "hour": now_dt.hour})
+                    continue
+
+                print(f"Running [{strategy.name}] ({strategy_meta_item.get('edge_type','other')}/{strategy_meta_item.get('time_window','?')})...")
+                db.log_event(run_id, "info", "strategy_started", strategy=strategy.name, payload={"edge_type": strategy_meta_item.get("edge_type"), "time_window": strategy_meta_item.get("time_window")})
+                try:
+                    signals = strategy.scan(markets)
+                except Exception as e:
+                    print(f"  Error in {strategy.name}.scan(): {e}")
+                    db.log_event(run_id, "error", f"strategy scan error: {e}", strategy=strategy.name)
+                    db.log_decision(run_id, "strategy_scan", "error", strategy=strategy.name, reason=str(e))
+                    continue
+
+                for sig in signals:
+                    sig_dict = _signal_to_dict(sig)
+                    db.log_signal(run_id, strategy.name, sig_dict, time_window=strategy_meta_item.get("time_window"), edge_type=strategy_meta_item.get("edge_type"), decision_status="generated")
+                    execution_snapshot = snapshot_for_signal(sig, strategy, market_index)
+                    db.log_signal_execution_check(run_id, execution_snapshot.as_dict())
+
+                    execution_decision = classify_strategy_execution(policy, strategy, strategy_meta_item)
+
+                    if execution_decision.action == "skip":
+                        db.log_decision(run_id, "environment", "skip", strategy=strategy.name, market_id=sig.market_id, reason=execution_decision.reason)
+                        continue
+
+                    if execution_decision.action == "alert":
+                        alert_signals.append(sig)
+                        print(f"  [{strategy.name}] ALERT {sig.outcome} {sig.market_title[:45]} | gap {sig.ev_pp:.0f}pp | {sig.confidence}")
+                        db.log_decision(
+                            run_id,
+                            "alert",
+                            "alert_only",
+                            strategy=strategy.name,
+                            market_id=sig.market_id,
+                            reason=execution_decision.reason,
+                            details={
+                                "ev_pp": sig.ev_pp,
+                                "confidence": sig.confidence,
+                                "alert_only": strategy_meta_item.get("alert_only", False),
+                                "promotable": strategy_meta_item.get("promotable", False),
+                                "live_ready": strategy_meta_item.get("live_ready", False),
+                            },
+                        )
+                        continue
+
+                    is_live = execution_decision.action == "live"
+                    active_broker = broker
+
+                    if active_broker.has_position(sig.market_id, strategy.name):
+                        print(f"  [{strategy.name}] skip duplicate: {sig.market_title[:45]}")
+                        db.log_decision(run_id, "duplicate_check", "skip", strategy=strategy.name, market_id=sig.market_id, reason="already_open")
+                        continue
+                    amount = strategy.size(sig)
+                    if amount < 1.0:
+                        print(f"  [{strategy.name}] skip tiny size (${amount}): {sig.market_title[:45]}")
+                        db.log_decision(run_id, "size_check", "skip", strategy=strategy.name, market_id=sig.market_id, reason="tiny_size", details={"amount": amount})
+                        continue
+                    allowed, reason = _can_open(amount, strategy.name, meta, exposure_by_strategy, exposure_by_window)
+                    if not allowed:
+                        print(f"  [{strategy.name}] skip capped: {sig.market_title[:45]} | {reason}")
+                        db.log_decision(run_id, "cap_check", "skip", strategy=strategy.name, market_id=sig.market_id, reason=reason, details={"amount": amount, "strategy_exposure": exposure_by_strategy.get(strategy.name, 0.0), "window_exposure": exposure_by_window.get(strategy_meta_item.get("time_window", "unknown"), 0.0)})
+                        continue
+
+                    if is_live:
+                        market_entry = market_index.get(sig.market_id, {})
+                        market_dict = market_entry.get("market") or (market_entry.get("event", {}).get("markets") or [None])[0]
+                        trade = active_broker.open_position(sig, amount, market=market_dict)
+                        track = trade is not None
+                    else:
+                        active_broker.open_position(sig, amount)
+                        track = True
+
+                    if track:
+                        exposure_by_strategy[strategy.name] = exposure_by_strategy.get(strategy.name, 0.0) + amount
+                        exposure_by_window[strategy_meta_item.get("time_window", "unknown")] = exposure_by_window.get(strategy_meta_item.get("time_window", "unknown"), 0.0) + amount
+                        new_trades.append((sig, amount))
+                        new_positions_count += 1
+                        mode_label = "LIVE" if is_live else ("WOULD OPEN" if dry_run else "OPEN")
+                        print(f"  [{strategy.name}] {mode_label} {sig.outcome} {sig.market_title[:45]} | EV +{sig.ev_pp:.0f}pp | ${amount} | {sig.confidence}")
+                        db.log_decision(run_id, "execution", "live_open" if is_live else ("dry_open" if dry_run else "open"), strategy=strategy.name, market_id=sig.market_id, reason=execution_decision.reason, details={"amount": amount, "ev_pp": sig.ev_pp, "confidence": sig.confidence, "mode": "live" if is_live else "paper", "environment": policy.name})
+
+                print()
+                _log_strategy_details(db, run_id, strategy)
+                db.log_event(run_id, "info", "strategy_finished", strategy=strategy.name, payload={"signals": len(signals)})
 
         stats = summary(broker)
         portfolio_snapshot = snapshot_open_positions(broker, market_index)
@@ -653,4 +753,11 @@ def run(environment: str = "paper", dry_run: bool = False, send: bool = True, fa
 
 
 if __name__ == "__main__":
-    run(environment=os.environ.get("FACTORY_ENV", "paper"))
+    parser = argparse.ArgumentParser(description="Polymarket Factory runner")
+    parser.add_argument("--phase", choices=["combined", "execute"], default="combined",
+                        help="combined (default): scan + execute; execute: read cached signals only")
+    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--no-send", action="store_true")
+    args = parser.parse_args()
+    run(environment=os.environ.get("FACTORY_ENV", "paper"),
+        dry_run=args.dry_run, send=not args.no_send, phase=args.phase)

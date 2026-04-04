@@ -30,6 +30,49 @@ def fetch_top(limit: int = 100, retries: int = FETCH_MAX_RETRIES) -> list[dict]:
     raise last_error
 
 
+def fetch_top_paginated(total: int = 200, page_size: int = 100, retries: int = FETCH_MAX_RETRIES) -> list[dict]:
+    """Fetch up to `total` events via paginated Gamma API calls, deduped by slug."""
+    all_events: list[dict] = []
+    seen_slugs: set[str] = set()
+    offset = 0
+
+    while len(all_events) < total:
+        params = {"limit": min(page_size, total - len(all_events)), "offset": offset,
+                  "active": "true", "closed": "false",
+                  "order": "volume24hr", "ascending": "false"}
+        last_error = None
+        page = None
+        for attempt in range(retries):
+            try:
+                resp = requests.get(f"{GAMMA_EVENTS}?{urllib.parse.urlencode(params)}", timeout=15)
+                resp.raise_for_status()
+                page = resp.json()
+                break
+            except (requests.RequestException, ValueError) as e:
+                last_error = e
+                if attempt < retries - 1:
+                    wait = FETCH_BACKOFF_BASE * (2 ** attempt)
+                    print(f"  [feed] fetch_top_paginated offset={offset} attempt {attempt + 1} failed: {e} — retrying in {wait}s")
+                    time.sleep(wait)
+        if page is None:
+            if all_events:
+                print(f"  [feed] pagination stopped at offset={offset} after error: {last_error} — returning {len(all_events)} events")
+                break
+            raise last_error
+
+        for ev in page:
+            slug = ev.get("slug", "")
+            if slug and slug not in seen_slugs:
+                seen_slugs.add(slug)
+                all_events.append(ev)
+
+        if len(page) < page_size:
+            break
+        offset += page_size
+
+    return all_events
+
+
 def fetch_by_tag(tag_slug: str, limit: int = 5) -> list[dict]:
     params = {"tag_slug": tag_slug, "limit": limit, "active": "true",
               "closed": "false", "order": "volume24hr", "ascending": "false"}
