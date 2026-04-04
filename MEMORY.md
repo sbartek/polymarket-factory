@@ -49,11 +49,12 @@ runner.py (every 2h, 12x/day via launchd)
 ### Active paper trading
 | Strategy | Edge | Window | Status |
 |----------|------|--------|--------|
-| `ev_news` | information | medium | Claude scans news → p̂ estimate. 15 open, 0 closed. LLM-heavy. |
-| `spread_arb` | structural | medium | Buy all legs when Σ(YES) < 0.93. 76 open, 3 closed. |
-| `stale_market` | information | short | Claude judges stale markets vs news. 3 open, 2 closed. |
-| `correlated_pairs` | logical_inconsistency | medium | Logically inconsistent pairs. Early eval. |
-| `celebrity_tabloid` | information | short | Tabloid corroboration. 0 signals — top-100 feed lacks celebrity markets. |
+| `ev_news` | information | medium | Claude scans news → p̂ estimate. 14 open, 1 closed (+77% ROI). LLM-heavy. |
+| `spread_arb` | structural | medium | Buy all legs when Σ(YES) < 0.93. 70 open, 9 closed (-36.9% ROI). Kill verdict. |
+| `stale_market` | information | short | Claude judges stale markets vs news. 3 open, 2 closed (-100% ROI). Watch. |
+| `correlated_pairs` | logical_inconsistency | medium | Logically inconsistent pairs. 0 trades. Early stage. |
+| `celebrity_tabloid` | information | short | Tabloid corroboration. 17 open, 0 closed. Tag-feed fix working (6 candidates/run). |
+| `polling_vs_market` | model_vs_market | medium | DDGS polls + LLM gap analysis. MIN_GAP_PP=10pp. Daily cadence. 0 trades. Added 2026-04-04. |
 
 ### Alert-only (needs graduation checklist before paper trading)
 | Strategy | Notes |
@@ -186,11 +187,22 @@ Full summary at 09:00 Madrid time; delta updates at other runs.
 - Keep `factory-aggressive.log` ignored in the repo; `.gitignore` includes it alongside `factory.log`
 - The wiki update path uses `factory/claude.py`, which calls Anthropic if `ANTHROPIC_API_KEY` is set and otherwise shells out to `claude --permission-mode bypassPermissions --print ...`; this can block unless external access is allowed
 
-## Current plan state (2026-04-03)
+## Current plan state (2026-04-04)
 
 Session 1: benchmark/control-loop stack — environment split, replay benchmark, generated retention gate, dashboard visibility, price-window labels, market observation history, raw snapshot archives, storage monitoring.
 
-Session 2: strategy fixes — celebrity_tabloid tag feed + filter fixes, live broker partial-fill safety, correlated_pairs multi-keyword pairing, Brier score infrastructure. 144 tests passing. Remaining: wiki cleanup, DB retention job, mutually_exclusive_oversum decision.
+Session 2: strategy fixes — celebrity_tabloid tag feed + filter fixes, live broker partial-fill safety, correlated_pairs multi-keyword pairing, Brier score infrastructure. 144 tests passing.
+
+Session 3 (2026-04-04): polling_vs_market integration + wiki cleanup.
+- `polling_vs_market` added by Codex on pplayouts: registered as active, daily scan_frequency, MIN_GAP_PP=10pp, max_position_usdc=10, DDGS news search + LLM gap analysis.
+- Added `polling_vs_market_checks` detail table + `log_polling_vs_market_check()` in db.py; runner.py hooked; queries.py getter + DETAIL_TABLE_GETTERS entry; strategy_checks.py column spec.
+- 13 new tests for polling_vs_market; 157 tests total passing.
+- `update_wiki.py` fixed: now seeds `by_strategy` for all ACTIVE_STRATEGIES with no trades, so carry_rewards/correlated_pairs/esport48/correlated_laggard/polling_vs_market get wiki pages.
+- Stale `wiki/overview.md` duplicate removed (canonical page is `wiki/meta/overview.md`).
+
+Remaining backlog:
+- DB retention cleanup job (730-day policy exists, no enforcement)
+- `mutually_exclusive_oversum` proposal (PR-20260403-002) — decision pending vs `spread_arb`
 
 ---
 
