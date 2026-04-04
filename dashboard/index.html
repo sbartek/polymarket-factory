@@ -28,6 +28,7 @@
         <a href="./experiments.html" data-nav="experiments">Experiments</a>
         <a href="./wiki.html" data-nav="wiki">Wiki</a>
         <a href="./reference.html" data-nav="reference">Reference</a>
+        <a href="./architecture.html" data-nav="architecture">Architecture</a>
       </nav>
 
       <section id="alerts-section" class="panel hidden section-gap">
@@ -66,6 +67,16 @@
         <article class="panel">
           <div class="panel-header"><h2>Current experiments</h2><span id="experiment-summary" class="muted"></span></div>
           <div id="experiments-list" class="stack"></div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-header"><h2>Pending strategy approvals</h2><span id="approval-summary" class="muted"></span></div>
+          <div id="approval-list" class="stack"></div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-header"><h2>Cleanup / non-strategy items</h2><span id="cleanup-summary" class="muted"></span></div>
+          <div id="cleanup-list" class="stack"></div>
         </article>
       </section>
     </div>
@@ -143,6 +154,14 @@
         const current = snapshot.experiments.filter((e) => ['active', 'review_due'].includes(e.status));
         document.getElementById('experiments-list').innerHTML = current.map((e) => `<article class="experiment-card"><div class="panel-header"><div><h3>${e.title}</h3><div class="muted code">${e.experiment_id}</div></div><span class="${Dashboard.pillClass(e.status)}">${e.status}</span></div><p>${Dashboard.cleanSummary(e.summary || e.hypothesis)}</p><div class="card-meta"><span class="pill pill-info">${e.scope_type}</span><span class="pill pill-neutral">${e.scope_label}</span></div></article>`).join('') || '<div class="muted">No current experiments.</div>';
         document.getElementById('experiment-summary').textContent = `${current.length} current threads`;
+
+        const pendingApprovals = (snapshot.approvals || []).filter((p) => p.proposal_category === 'strategy' && ['draft', 'under_review', 'pending_benchmark_review'].includes(p.status));
+        document.getElementById('approval-list').innerHTML = pendingApprovals.map((p) => `<article class="experiment-card"><div class="panel-header"><div><h3>${p.strategy_name}</h3><div class="muted code">${p.proposal_id}</div></div><span class="${Dashboard.pillClass(p.status === 'pending_benchmark_review' ? 'review_due' : p.status)}">${p.status}</span></div><p>${Dashboard.cleanSummary(p.plain_language_idea || p.thesis)}</p><div class="card-meta"><span class="pill pill-info">${p.edge_type || 'unknown edge'}</span><span class="pill pill-neutral">${p.time_window || 'unknown window'}</span></div><div class="muted section-gap"><strong>Why waiting:</strong> ${Dashboard.cleanSummary(p.approval_summary)}</div><div class="muted">${p.path}</div></article>`).join('') || '<div class="muted">No strategies currently waiting for approval.</div>';
+        document.getElementById('approval-summary').textContent = `${pendingApprovals.length} real strategy items awaiting final approval`;
+
+        const cleanupItems = (snapshot.approvals || []).filter((p) => p.proposal_category !== 'strategy');
+        document.getElementById('cleanup-list').innerHTML = cleanupItems.map((p) => `<article class="experiment-card"><div class="panel-header"><div><h3>${p.strategy_name}</h3><div class="muted code">${p.proposal_id}</div></div><span class="pill pill-neutral">${p.proposal_category === 'cleanup' ? 'cleanup' : 'non-strategy'}</span></div><p>${Dashboard.cleanSummary(p.plain_language_idea || p.thesis || 'Administrative item')}</p><div class="muted section-gap"><strong>Why here:</strong> ${p.proposal_category === 'cleanup' ? 'Stale or template-like proposal that should be cleaned up or clarified.' : 'Tracked file in proposals/, but not a real strategy approval candidate.'}</div><div class="muted">${p.path}</div></article>`).join('') || '<div class="muted">No cleanup or non-strategy items.</div>';
+        document.getElementById('cleanup-summary').textContent = `${cleanupItems.length} awkward leftovers that should not count as live approval candidates`;
       }).catch((err) => {
         document.body.innerHTML = `<div class="shell"><div class="panel"><h1>Dashboard failed to load</h1><p>${err.message}</p></div></div>`;
       });
