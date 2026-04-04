@@ -5,6 +5,22 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>PPLayouts Dashboard · Runs</title>
     <link rel="stylesheet" href="./styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+    <style>
+      .chart-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+      .chart-panel { background: var(--panel-2); border: 1px solid var(--border); padding: 16px; }
+      .chart-panel h3 { margin: 0 0 12px; font-size: 0.88rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-dim); }
+      .chart-panel canvas { max-height: 260px; }
+      .health-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; margin-bottom: 24px; }
+      .health-card { background: var(--panel-2); border: 1px solid var(--border); padding: 12px; text-align: center; }
+      .health-card .name { font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-dim); margin-bottom: 6px; }
+      .health-card .age { font-size: 1.1rem; font-weight: 600; }
+      .health-card .status { font-size: 0.76rem; margin-top: 4px; }
+      .health-ok { color: var(--ok); }
+      .health-warn { color: var(--warn); }
+      .health-error { color: var(--error); }
+      @media (max-width: 768px) { .chart-grid { grid-template-columns: 1fr; } }
+    </style>
   </head>
   <body>
     <div class="shell">
@@ -15,14 +31,232 @@
       <nav class="nav"><a href="./index.html" data-nav="overview">Overview</a><a href="./strategies.html" data-nav="strategies">Strategies</a><a href="./positions.html" data-nav="positions">Positions</a><a href="./runs.html" data-nav="runs">Runs</a><a href="./experiments.html" data-nav="experiments">Experiments</a><a href="./wiki.html" data-nav="wiki">Wiki</a><a href="./reference.html" data-nav="reference">Reference</a>
         <a href="./architecture.html" data-nav="architecture">Architecture</a></nav>
       <section id="alerts-section" class="panel hidden section-gap"><div class="panel-header"><h2>Alerts</h2></div><div id="alerts-list" class="stack"></div></section>
+
+      <!-- Pipeline Health Cards -->
+      <section id="health-section" class="section-gap">
+        <h2 style="font-size:0.9rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-dim);margin-bottom:12px">Pipeline Health</h2>
+        <div id="health-grid" class="health-grid"></div>
+      </section>
+
+      <!-- Charts -->
+      <section class="chart-grid section-gap">
+        <div class="chart-panel">
+          <h3>Daily runs by pipeline</h3>
+          <canvas id="chart-daily-runs"></canvas>
+        </div>
+        <div class="chart-panel">
+          <h3>Success rate by pipeline</h3>
+          <canvas id="chart-success-rate"></canvas>
+        </div>
+        <div class="chart-panel">
+          <h3>Run duration over time</h3>
+          <canvas id="chart-duration"></canvas>
+        </div>
+        <div class="chart-panel">
+          <h3>Positions opened / closed per run</h3>
+          <canvas id="chart-positions"></canvas>
+        </div>
+      </section>
+
+      <!-- Run list -->
       <section class="list-grid" id="runs-list"></section>
     </div>
     <script src="./dashboard.js"></script>
     <script>
+      const PIPELINE_COLORS = {
+        combined: '#4ade80',
+        scanner: '#60a5fa',
+        execute: '#a78bfa',
+        observer: '#fbbf24',
+        trade_fetcher: '#f472b6',
+        other: '#6b7280',
+      };
+
+      const chartDefaults = {
+        color: '#94a3b8',
+        borderColor: '#334155',
+        backgroundColor: 'transparent',
+      };
+
+      function configureChartDefaults() {
+        Chart.defaults.color = '#94a3b8';
+        Chart.defaults.borderColor = '#334155';
+        Chart.defaults.font.family = "'SF Mono', 'Fira Code', monospace";
+        Chart.defaults.font.size = 11;
+        Chart.defaults.plugins.legend.labels.boxWidth = 12;
+        Chart.defaults.plugins.legend.labels.padding = 10;
+      }
+
+      function renderHealthCards(health) {
+        const grid = document.getElementById('health-grid');
+        if (!health || !health.length) {
+          grid.innerHTML = '<div class="muted">No pipeline data available.</div>';
+          return;
+        }
+        grid.innerHTML = health.map(p => {
+          const cls = p.status === 'never_run' ? 'health-error' :
+                      p.overdue ? 'health-warn' : 'health-ok';
+          const ageText = p.age_minutes === null ? 'never' :
+                          p.age_minutes < 60 ? `${p.age_minutes}m ago` :
+                          `${Math.round(p.age_minutes / 60)}h ago`;
+          return `<div class="health-card">
+            <div class="name">${p.name}</div>
+            <div class="age ${cls}">${ageText}</div>
+            <div class="status ${cls}">${p.status}${p.overdue ? ' (overdue)' : ''}</div>
+          </div>`;
+        }).join('');
+      }
+
+      function renderDailyRunsChart(daily) {
+        const dates = Object.keys(daily).sort();
+        const pipelines = [...new Set(dates.flatMap(d => Object.keys(daily[d])))].sort();
+        const datasets = pipelines.map(p => ({
+          label: p,
+          data: dates.map(d => (daily[d][p] || {}).total || 0),
+          backgroundColor: PIPELINE_COLORS[p] || PIPELINE_COLORS.other,
+          borderWidth: 0,
+          borderRadius: 2,
+        }));
+        new Chart(document.getElementById('chart-daily-runs'), {
+          type: 'bar',
+          data: { labels: dates, datasets },
+          options: {
+            responsive: true,
+            scales: {
+              x: { stacked: true },
+              y: { stacked: true, beginAtZero: true, title: { display: true, text: 'Runs' } },
+            },
+            plugins: { legend: { position: 'bottom' } },
+          },
+        });
+      }
+
+      function renderSuccessRateChart(daily) {
+        const dates = Object.keys(daily).sort();
+        const pipelines = [...new Set(dates.flatMap(d => Object.keys(daily[d])))].sort();
+        const datasets = pipelines.map(p => ({
+          label: p,
+          data: dates.map(d => {
+            const entry = daily[d][p];
+            if (!entry || !entry.total) return null;
+            return Math.round((entry.success / entry.total) * 100);
+          }),
+          borderColor: PIPELINE_COLORS[p] || PIPELINE_COLORS.other,
+          backgroundColor: 'transparent',
+          tension: 0.3,
+          pointRadius: 3,
+          spanGaps: true,
+        }));
+        new Chart(document.getElementById('chart-success-rate'), {
+          type: 'line',
+          data: { labels: dates, datasets },
+          options: {
+            responsive: true,
+            scales: {
+              y: { beginAtZero: true, max: 105, title: { display: true, text: '% success' } },
+            },
+            plugins: { legend: { position: 'bottom' } },
+          },
+        });
+      }
+
+      function renderDurationChart(timeline) {
+        // Show last 100 runs with duration
+        const recent = timeline.filter(r => r.duration_seconds != null).slice(-100);
+        const labels = recent.map(r => {
+          const d = new Date(r.started_at);
+          return `${d.getMonth()+1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
+        });
+        const pipelineMap = {
+          paper: 'combined', paper_scan: 'scanner', paper_execute: 'execute',
+          paper_dry_run: 'combined', paper_fast_dry_run: 'combined',
+          observer: 'observer', trade_fetcher: 'trade_fetcher',
+        };
+        const pipelines = [...new Set(recent.map(r => pipelineMap[r.mode] || 'other'))];
+        const datasets = pipelines.map(p => ({
+          label: p,
+          data: recent.map((r, i) => (pipelineMap[r.mode] || 'other') === p ? r.duration_seconds : null),
+          borderColor: PIPELINE_COLORS[p] || PIPELINE_COLORS.other,
+          backgroundColor: (PIPELINE_COLORS[p] || PIPELINE_COLORS.other) + '40',
+          pointRadius: 2,
+          spanGaps: false,
+          showLine: false,
+        }));
+        new Chart(document.getElementById('chart-duration'), {
+          type: 'scatter',
+          data: {
+            labels,
+            datasets: datasets.map(ds => ({
+              ...ds,
+              data: ds.data.map((v, i) => v != null ? { x: i, y: v } : null).filter(Boolean),
+            })),
+          },
+          options: {
+            responsive: true,
+            scales: {
+              x: {
+                type: 'linear',
+                title: { display: true, text: 'Run #' },
+                ticks: { callback: (v) => labels[v] || '' },
+              },
+              y: { beginAtZero: true, title: { display: true, text: 'Seconds' } },
+            },
+            plugins: { legend: { position: 'bottom' } },
+          },
+        });
+      }
+
+      function renderPositionsChart(timeline) {
+        // Only combined/execute runs that touch positions
+        const relevant = timeline.filter(r =>
+          ['paper', 'paper_execute', 'paper_dry_run'].includes(r.mode) &&
+          (r.new_positions > 0 || r.closed > 0)
+        ).slice(-50);
+        if (!relevant.length) {
+          document.getElementById('chart-positions').parentElement.innerHTML =
+            '<h3>Positions opened / closed per run</h3><div class="muted">No position data yet.</div>';
+          return;
+        }
+        const labels = relevant.map(r => {
+          const d = new Date(r.started_at);
+          return `${d.getMonth()+1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
+        });
+        new Chart(document.getElementById('chart-positions'), {
+          type: 'bar',
+          data: {
+            labels,
+            datasets: [
+              { label: 'Opened', data: relevant.map(r => r.new_positions), backgroundColor: '#4ade80', borderRadius: 2 },
+              { label: 'Closed', data: relevant.map(r => r.closed), backgroundColor: '#f87171', borderRadius: 2 },
+            ],
+          },
+          options: {
+            responsive: true,
+            scales: { y: { beginAtZero: true, title: { display: true, text: 'Count' } } },
+            plugins: { legend: { position: 'bottom' } },
+          },
+        });
+      }
+
       Dashboard.renderNav('runs');
       Dashboard.loadSnapshot().then((snapshot) => {
         Dashboard.renderChrome(snapshot, 'Runs');
         Dashboard.renderAlerts(snapshot);
+
+        // Charts
+        configureChartDefaults();
+        const history = snapshot.runHistory;
+        if (history) {
+          renderHealthCards(history.health);
+          renderDailyRunsChart(history.daily);
+          renderSuccessRateChart(history.daily);
+          renderDurationChart(history.timeline);
+          renderPositionsChart(history.timeline);
+        } else {
+          document.getElementById('health-grid').innerHTML = '<div class="muted">No run history data. Re-export dashboard to generate.</div>';
+        }
+
+        // Run list
         document.getElementById('runs-list').innerHTML = snapshot.runs.map((r) => `<article class="run-card"><div class="panel-header"><div><h3>${Dashboard.fmtDate(r.started_at)}</h3><div class="muted code">${r.run_id}</div></div><span class="${Dashboard.pillClass(r.status)}">${r.status}</span></div><p>${r.summary}</p><div class="card-meta"><span class="pill pill-neutral">duration ${Dashboard.fmtDuration(r.duration_seconds)}</span><span class="pill pill-neutral">strategies ${Dashboard.fmtInt(r.strategies_checked)}</span><span class="pill pill-neutral">signals ${Dashboard.fmtInt(r.signals_generated)}</span><span class="pill pill-neutral">decisions ${Dashboard.fmtInt(r.decisions_logged)}</span></div></article>`).join('');
       }).catch((err) => {
         document.body.innerHTML = `<div class="shell"><div class="panel"><h1>Dashboard failed to load</h1><p>${err.message}</p></div></div>`;

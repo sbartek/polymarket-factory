@@ -908,6 +908,90 @@ def write_json(path: Path, data) -> None:
     path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
+def fetch_run_history(conn: sqlite3.Connection, days: int = 14) -> dict:
+    """Export run history for charting: per-pipeline daily counts + timeline."""
+    from datetime import timedelta
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+
+    # All runs in the window
+    rows = conn.execute(
+        "SELECT id, started_at, finished_at, mode, status, markets_fetched, new_positions_count, closed_count FROM runs WHERE started_at >= ? ORDER BY started_at",
+        (cutoff,),
+    ).fetchall()
+
+    # Timeline: every run as a point
+    timeline = []
+    for row in rows:
+        duration = seconds_between(row["started_at"], row["finished_at"])
+        timeline.append({
+            "started_at": row["started_at"],
+            "mode": row["mode"] or "unknown",
+            "status": normalize_status(row["status"]),
+            "duration_seconds": duration,
+            "markets_fetched": row["markets_fetched"] or 0,
+            "new_positions": row["new_positions_count"] or 0,
+            "closed": row["closed_count"] or 0,
+        })
+
+    # Daily aggregates by pipeline
+    daily: dict[str, dict[str, dict]] = {}  # date -> pipeline -> {success, failed, total}
+    pipeline_map = {
+        "paper": "combined", "paper_scan": "scanner", "paper_execute": "execute",
+        "paper_dry_run": "combined", "paper_fast_dry_run": "combined",
+        "observer": "observer", "trade_fetcher": "trade_fetcher",
+    }
+    for row in rows:
+        date_str = (row["started_at"] or "")[:10]
+        if not date_str:
+            continue
+        pipeline = pipeline_map.get(row["mode"] or "", "other")
+        if date_str not in daily:
+            daily[date_str] = {}
+        if pipeline not in daily[date_str]:
+            daily[date_str][pipeline] = {"success": 0, "failed": 0, "total": 0}
+        daily[date_str][pipeline]["total"] += 1
+        status = normalize_status(row["status"])
+        if status in ("ok", "completed"):
+            daily[date_str][pipeline]["success"] += 1
+        elif status == "error":
+            daily[date_str][pipeline]["failed"] += 1
+
+    # Pipeline health (current)
+    pipelines_config = [
+        {"name": "combined", "mode": "paper", "expected_min": 150},
+        {"name": "scanner", "mode": "paper_scan", "expected_min": 150},
+        {"name": "execute", "mode": "paper_execute", "expected_min": 150},
+        {"name": "observer", "mode": "observer", "expected_min": 45},
+        {"name": "trade_fetcher", "mode": "trade_fetcher", "expected_min": 45},
+    ]
+    health = []
+    for p in pipelines_config:
+        row = conn.execute(
+            "SELECT finished_at, status FROM runs WHERE mode = ? ORDER BY started_at DESC LIMIT 1",
+            (p["mode"],),
+        ).fetchone()
+        if not row or not row["finished_at"]:
+            health.append({"name": p["name"], "status": "never_run", "age_minutes": None, "overdue": True})
+        else:
+            finished = parse_iso(row["finished_at"])
+            age_min = int((datetime.now(timezone.utc) - finished).total_seconds() / 60) if finished else None
+            health.append({
+                "name": p["name"],
+                "status": normalize_status(row["status"]),
+                "last_run": row["finished_at"],
+                "age_minutes": age_min,
+                "overdue": age_min is not None and age_min > p["expected_min"],
+            })
+
+    return {
+        "timeline": timeline,
+        "daily": daily,
+        "health": health,
+        "days": days,
+        "generated_at": utc_now_iso(),
+    }
+
+
 def main() -> None:
     ensure_output_dir()
     sqlite_available = DB_PATH.exists()
@@ -946,10 +1030,14 @@ def main() -> None:
     write_json(OUTPUT_DIR / "benchmarks.json", benchmarks)
     write_json(OUTPUT_DIR / "storage.json", storage)
 
+    run_history = fetch_run_history(conn)
+    write_json(OUTPUT_DIR / "run-history.json", run_history)
+
     print("Exported dashboard snapshot:")
     print(f"- manifest.json ({manifest['warning_count']} warning(s))")
     print(f"- overview.json")
     print(f"- runs.json ({len(runs)} rows)")
+    print(f"- run-history.json ({len(run_history['timeline'])} runs, {len(run_history['daily'])} days)")
     print(f"- strategies.json ({len(strategies)} rows)")
     print(f"- execution-checks.json ({len(execution_checks)} rows)")
     print(f"- experiments.json ({len(experiments)} rows)")
