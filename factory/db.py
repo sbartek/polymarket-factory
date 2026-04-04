@@ -912,3 +912,43 @@ class FactoryDB:
         with self._connect() as conn:
             rows = conn.execute(query, params).fetchall()
         return [dict(r) for r in rows]
+
+    def get_loss_streaks(self, min_streak: int = 5) -> dict[str, dict]:
+        """Return strategies with N+ consecutive recent losses.
+
+        Returns {strategy: {"streak": int, "total_lost": float, "last_outcome": str}}
+        for each strategy where the most recent `min_streak` closed trades are all losses.
+        """
+        query = """
+            SELECT strategy, pnl_usdc, outcome, resolved_outcome, closed_at
+            FROM trades
+            WHERE status = 'closed'
+              AND mode = 'paper'
+              AND resolved_outcome IN ('YES', 'NO')
+            ORDER BY strategy, closed_at DESC
+        """
+        with self._connect() as conn:
+            rows = conn.execute(query).fetchall()
+
+        from itertools import groupby
+        results = {}
+        for strategy, group in groupby(rows, key=lambda r: r["strategy"]):
+            streak = 0
+            total_lost = 0.0
+            last_outcome = ""
+            for r in group:
+                won = r["resolved_outcome"].upper() == r["outcome"].upper()
+                if not won:
+                    streak += 1
+                    total_lost += abs(float(r["pnl_usdc"]))
+                    if streak == 1:
+                        last_outcome = r["outcome"]
+                else:
+                    break
+            if streak >= min_streak:
+                results[strategy] = {
+                    "streak": streak,
+                    "total_lost": round(total_lost, 2),
+                    "last_outcome": last_outcome,
+                }
+        return results

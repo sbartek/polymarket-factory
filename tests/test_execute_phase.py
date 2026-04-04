@@ -60,7 +60,8 @@ class TestExecutePhase:
     @patch("factory.runner.fetch_top", return_value=[])
     @patch("factory.runner.send_whatsapp", return_value=True)
     @patch("factory.runner.fetch_closed", return_value=[])
-    def test_consumes_fresh_signals(self, _fc, _wa, _ft):
+    def test_dry_run_does_not_consume_signals(self, _fc, _wa, _ft):
+        """Dry runs should NOT mark signals as consumed (so real execute can pick them up)."""
         db = _make_db()
         scan_run = db.start_run(mode="paper_scan")
         _insert_scan_signal(db, scan_run, market_id="m1")
@@ -68,6 +69,22 @@ class TestExecutePhase:
 
         with patch("factory.runner.FactoryDB", return_value=db):
             run(environment="paper", dry_run=True, send=False, phase="execute")
+
+        # Dry run: signals should remain unconsumed
+        remaining = db.get_unconsumed_signals()
+        assert len(remaining) == 2
+
+    @patch("factory.runner.fetch_top", return_value=[])
+    @patch("factory.runner.send_whatsapp", return_value=True)
+    @patch("factory.runner.fetch_closed", return_value=[])
+    def test_consumes_fresh_signals(self, _fc, _wa, _ft):
+        db = _make_db()
+        scan_run = db.start_run(mode="paper_scan")
+        _insert_scan_signal(db, scan_run, market_id="m1")
+        _insert_scan_signal(db, scan_run, market_id="m2")
+
+        with patch("factory.runner.FactoryDB", return_value=db):
+            run(environment="paper", dry_run=False, send=False, phase="execute")
 
         # Signals should be marked as consumed
         remaining = db.get_unconsumed_signals()
@@ -84,7 +101,7 @@ class TestExecutePhase:
         _insert_scan_signal(db, scan_run, market_id="fresh")
 
         with patch("factory.runner.FactoryDB", return_value=db):
-            run(environment="paper", dry_run=True, send=False, phase="execute")
+            run(environment="paper", dry_run=False, send=False, phase="execute")
 
         # Only fresh signal consumed, stale one stays unconsumed but not returned
         # (it's filtered by TTL in get_unconsumed_signals)

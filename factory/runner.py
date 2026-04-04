@@ -348,7 +348,7 @@ def _extract_market_observations(events: list[dict]) -> list[dict]:
     return rows
 
 
-def format_wa_summary(new_trades: list[tuple], closed_trades: list[dict], alert_signals: list[Signal], closed_count: int, stats: dict, now: str, skipped: list[str] | None = None, hour: int = 9, dry_run: bool = False, fast_dry_run: bool = False, hourly_delta: str | None = None) -> str:
+def format_wa_summary(new_trades: list[tuple], closed_trades: list[dict], alert_signals: list[Signal], closed_count: int, stats: dict, now: str, skipped: list[str] | None = None, hour: int = 9, dry_run: bool = False, fast_dry_run: bool = False, hourly_delta: str | None = None, loss_streaks: dict | None = None) -> str:
     if not isinstance(stats, dict) and isinstance(closed_count, dict):
         old_alert_signals = closed_trades
         old_closed_count = alert_signals if isinstance(alert_signals, int) else 0
@@ -387,6 +387,10 @@ def format_wa_summary(new_trades: list[tuple], closed_trades: list[dict], alert_
                 lines.append(f"- [{sig.strategy}] {sig.outcome} {sig.market_title[:55]} | gap {sig.ev_pp:.0f}pp")
         if skipped:
             lines.append("\nSkipped this cycle: " + ", ".join(skipped))
+        if loss_streaks:
+            lines.append("\n⚠ *REVIEW NEEDED:*")
+            for strat, info in loss_streaks.items():
+                lines.append(f"- {strat}: {info['streak']} consecutive losses (${info['total_lost']:.2f}) — betting {info['last_outcome']}, consider flipping?")
         lines.append("\n_/details <strategy> for trade breakdown_")
         return "\n".join(lines)
 
@@ -422,6 +426,12 @@ def format_wa_summary(new_trades: list[tuple], closed_trades: list[dict], alert_
         lines.append(f"*Alerts this run:* {len(alert_signals)}")
         for sig in alert_signals[:3]:
             lines.append(f"- [{sig.strategy}] {sig.outcome} {sig.market_title[:55]} | gap {sig.ev_pp:.0f}pp")
+
+    if loss_streaks:
+        lines.append("")
+        lines.append("⚠ *REVIEW NEEDED:*")
+        for strat, info in loss_streaks.items():
+            lines.append(f"- {strat}: {info['streak']} consecutive losses (${info['total_lost']:.2f}) — betting {info['last_outcome']}, consider flipping?")
 
     return "\n".join(lines)
 
@@ -712,6 +722,13 @@ def run(environment: str = "paper", dry_run: bool = False, send: bool = True, fa
                 _log_strategy_details(db, run_id, strategy)
                 db.log_event(run_id, "info", "strategy_finished", strategy=strategy.name, payload={"signals": len(signals)})
 
+        # Check for loss streaks — flag strategies that need review
+        loss_streaks = db.get_loss_streaks(min_streak=10)
+        if loss_streaks:
+            for strat, info in loss_streaks.items():
+                print(f"  ⚠ REVIEW {strat}: {info['streak']} consecutive losses (${info['total_lost']:.2f} lost, last side: {info['last_outcome']})")
+                db.log_decision(run_id, "review", "loss_streak", strategy=strat, reason=f"{info['streak']} consecutive losses", details=info)
+
         stats = summary(broker)
         portfolio_snapshot = snapshot_open_positions(broker, market_index)
         previous_snapshot = db.get_latest_portfolio_snapshot_before((now_dt - timedelta(hours=1)).isoformat(timespec="seconds"))
@@ -720,7 +737,7 @@ def run(environment: str = "paper", dry_run: bool = False, send: bool = True, fa
             db.log_portfolio_snapshot(run_id, portfolio_snapshot)
             db.log_event(run_id, "info", "portfolio_snapshot", payload=portfolio_snapshot)
         print(format_summary(stats))
-        wa_msg = format_wa_summary(new_trades, closed_trades, alert_signals, closed_count, stats, now, skipped_this_cycle, now_dt.hour, dry_run=dry_run, fast_dry_run=fast_dry_run, hourly_delta=hourly_delta)
+        wa_msg = format_wa_summary(new_trades, closed_trades, alert_signals, closed_count, stats, now, skipped_this_cycle, now_dt.hour, dry_run=dry_run, fast_dry_run=fast_dry_run, hourly_delta=hourly_delta, loss_streaks=loss_streaks)
         if dry_run or not send:
             print("\n--- WHATSAPP PREVIEW ---")
             print(wa_msg)
