@@ -1,5 +1,7 @@
 from .base import Strategy
+from .base_rate_anchor import BaseRateAnchorStrategy
 from .carry_rewards import CarryRewardsStrategy
+from .conditional_probability_mispricing import ConditionalProbabilityMispricingStrategy
 from .celebrity_tabloid import CelebrityTabloidStrategy
 from .correlated_laggard import CorrelatedLaggardStrategy
 from .correlated_pairs import CorrelatedPairsStrategy
@@ -10,6 +12,7 @@ from .mutually_exclusive_oversum import MutuallyExclusiveOversumStrategy
 from .polling_vs_market import PollingVsMarketStrategy
 from .resolution_hunter_v2 import ResolutionHunterV2Strategy
 from .spread_arb import SpreadArbStrategy
+from .spread_arb_v2 import SpreadArbV2Strategy
 from .stale_market import StaleMarketStrategy
 from .weather_edge_v2 import WeatherEdgeV2Strategy
 from .price_move_fade import PriceMoveFadeStrategy
@@ -46,14 +49,17 @@ def _load_generated_strategies():
 
 # Registry — add new strategies here
 STRATEGIES = [
+    BaseRateAnchorStrategy(),
     EvNewsStrategy(),
     SpreadArbStrategy(),
+    SpreadArbV2Strategy(),
     StaleMarketStrategy(),
     CorrelatedPairsStrategy(),
     CorrelatedLaggardStrategy(),
     Esport48Strategy(),
     CelebrityTabloidStrategy(),
     CarryRewardsStrategy(),
+    ConditionalProbabilityMispricingStrategy(),
     PollingVsMarketStrategy(),
     MutuallyExclusiveOversumStrategy(),
     FadeCertaintyV2Strategy(),

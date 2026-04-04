@@ -3,8 +3,8 @@
     - **proposal_id:** PR-20260404-002
     - **date:** 2026-04-04
     - **proposed_by:** aggressive_strategy_cycle
-    - **status:** deferred
-    - **deferred_reason:** Needs hand-built base rate reference table (research project). Interesting for elections/Fed decisions. Revisit when current strategies have enough closed trades to evaluate.
+    - **status:** approved
+    - **approval_note:** Unblocked by using TF-IDF kNN over resolved market titles instead of hand-built table. Backfill from Gamma API provides thousands of resolved markets as training data.
 
     ## Plain-language idea
 

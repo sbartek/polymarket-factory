@@ -293,6 +293,7 @@
               <li><strong>portfolio_snapshots</strong> &mdash; periodic mark-to-market</li>
               <li><strong>market_observations</strong> &mdash; price snapshots every 30 min (1000 markets)</li>
               <li><strong>market_trades</strong> &mdash; CLOB trade data (deduped by tx_hash)</li>
+              <li><strong>base_rate_index.pkl</strong> &mdash; TF-IDF kNN index of ~3k resolved markets (scikit-learn)</li>
             </ul>
           </div>
           <div class="arch-card">
@@ -305,6 +306,7 @@
               <li><strong>factory/strategies/</strong> &mdash; one file per strategy</li>
               <li><strong>factory/db.py</strong> &mdash; SQLite ORM + migrations</li>
               <li><strong>factory/broker.py</strong> &mdash; Paper + Live broker</li>
+              <li><strong>factory/base_rate_index.py</strong> &mdash; TF-IDF kNN for base rate estimation</li>
               <li><strong>factory/feed.py</strong> &mdash; Gamma API + paginated fetch</li>
               <li><strong>factory/notify.py</strong> &mdash; WhatsApp via OpenClaw</li>
             </ul>
