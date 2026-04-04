@@ -62,9 +62,9 @@ class TestParseQuestion:
 
 
 class TestStrategy:
-    def test_is_alert_only(self):
+    def test_is_promoted(self):
         s = WeatherEdgeV2Strategy()
-        assert s.alert_only is True
+        assert s.alert_only is False
         assert s.promotable is True
         assert s.min_ev_pp == 18.0
 

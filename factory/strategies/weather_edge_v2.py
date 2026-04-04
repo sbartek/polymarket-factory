@@ -177,7 +177,7 @@ class WeatherEdgeV2Strategy(Strategy):
     max_position_usdc = 10.0
     min_ev_pp = 18.0      # v1 was 12 — be pickier
     # No min_position_usdc — let Kelly size naturally
-    alert_only = True
+    alert_only = False
     promotable = True
     promotion_criteria = "30 alerts with >55% NO-side accuracy"
     last_check_details: list[dict] = []

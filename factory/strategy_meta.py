@@ -44,7 +44,7 @@ STRATEGY_EXPOSURE_CAPS = {
     "mutually_exclusive_oversum": 0.0,
     "fade_certainty_v2": 0.0,
     "resolution_hunter_v2": 0.0,
-    "weather_edge_v2": 0.0,
+    "weather_edge_v2": 20.0,
 }
 
 ACTIVE_STRATEGIES = {"ev_news", "spread_arb", "stale_market", "correlated_pairs", "correlated_laggard", "esport48", "celebrity_tabloid", "carry_rewards", "polling_vs_market", "mutually_exclusive_oversum", "fade_certainty_v2", "resolution_hunter_v2", "weather_edge_v2"}
