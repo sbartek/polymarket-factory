@@ -50,7 +50,7 @@ runner.py (every 2h, 12x/day via launchd)
 | Strategy | Edge | Window | Status |
 |----------|------|--------|--------|
 | `ev_news` | information | medium | Claude scans news → p̂ estimate. 14 open, 1 closed (+77% ROI). LLM-heavy. |
-| `spread_arb` | structural | medium | Buy all legs when Σ(YES) < 0.93. 70 open, 9 closed (-36.9% ROI). Kill verdict. |
+| `spread_arb` | structural | medium | Buy all legs when Σ(YES) < 0.90. 30 open, 49 closed (-89.1% ROI). Kill verdict. Bug fixed (incomplete baskets). MAX_DAYS 30. |
 | `stale_market` | information | short | Claude judges stale markets vs news. 3 open, 2 closed (-100% ROI). Watch. |
 | `correlated_pairs` | logical_inconsistency | medium | Logically inconsistent pairs. 0 trades. Early stage. |
 | `celebrity_tabloid` | information | short | Tabloid corroboration. 17 open, 0 closed. Tag-feed fix working (6 candidates/run). |
@@ -193,16 +193,22 @@ Session 1: benchmark/control-loop stack — environment split, replay benchmark,
 
 Session 2: strategy fixes — celebrity_tabloid tag feed + filter fixes, live broker partial-fill safety, correlated_pairs multi-keyword pairing, Brier score infrastructure. 144 tests passing.
 
-Session 3 (2026-04-04): polling_vs_market integration + wiki cleanup.
+Session 3 (2026-04-04): polling_vs_market integration + wiki cleanup + spread_arb diagnosis + fix.
 - `polling_vs_market` added by Codex on pplayouts: registered as active, daily scan_frequency, MIN_GAP_PP=10pp, max_position_usdc=10, DDGS news search + LLM gap analysis.
 - Added `polling_vs_market_checks` detail table + `log_polling_vs_market_check()` in db.py; runner.py hooked; queries.py getter + DETAIL_TABLE_GETTERS entry; strategy_checks.py column spec.
-- 13 new tests for polling_vs_market; 157 tests total passing.
-- `update_wiki.py` fixed: now seeds `by_strategy` for all ACTIVE_STRATEGIES with no trades, so carry_rewards/correlated_pairs/esport48/correlated_laggard/polling_vs_market get wiki pages.
+- 13 new tests for polling_vs_market; 168 tests total passing.
+- `update_wiki.py` fixed: now seeds `by_strategy` for all ACTIVE_STRATEGIES with no trades.
 - Stale `wiki/overview.md` duplicate removed (canonical page is `wiki/meta/overview.md`).
+- **spread_arb root cause diagnosed**: `_looks_suspicious()` had inverted logic — passed incomplete tournament baskets (4 of 30 NBA teams etc.) as valid arbs. Fix: reject "winner/champion/election/award/next to/who will be" markets without a catch-all "Field/Other" leg. Also tightened `MAX_DAYS_TO_CLOSE` 90→30 days. 11 new tests.
+- **spread_arb force-close**: 40 doomed trades ($87.82 paper) across 14 incomplete tournament/long-dated baskets closed as NO via `scripts/force_close_incomplete_baskets.py`. Real stats: 49 closed, 2% WR, -89.1% ROI. 30 viable positions remain.
+- Portfolio: 132 → 92 open positions, $275 → $188 exposure.
+- Dashboard reference.html: fixed sc-params value overflow (label col 55%→48%, smaller font, value col white-space:nowrap).
+- `mutually_exclusive_oversum` shelved: spread_arb diagnosis came first; proposal deferred until spread_arb root cause is better understood.
 
 Remaining backlog:
 - DB retention cleanup job (730-day policy exists, no enforcement)
-- `mutually_exclusive_oversum` proposal (PR-20260403-002) — decision pending vs `spread_arb`
+- `mutually_exclusive_oversum` proposal (PR-20260403-002) — shelved pending spread_arb learnings
+- spread_arb still in ACTIVE_STRATEGIES with kill verdict; consider removing from active set
 
 ---
 
