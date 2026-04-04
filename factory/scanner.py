@@ -1,7 +1,7 @@
 """
 Phase 1 scanner — fetch markets (paginated), run all strategies, cache signals to DB.
 
-Run independently: `python -m factory.scanner [--limit 200] [--env paper]`
+Run independently: `python -m factory.scanner [--limit 400] [--env paper]`
 Designed to run ~30min before the execute phase so that slow LLM/news calls
 don't block position execution.
 """
@@ -18,7 +18,7 @@ from .strategies import STRATEGIES
 from .strategy_meta import strategy_metadata, should_run_in_cycle
 
 
-def scan(environment: str = "paper", market_limit: int = 200):
+def scan(environment: str = "paper", market_limit: int = 400):
     """Phase 1: fetch markets, run strategies, cache signals to DB."""
     now_dt = datetime.now()
     now = now_dt.strftime("%Y-%m-%d %H:%M")
@@ -119,6 +119,6 @@ def scan(environment: str = "paper", market_limit: int = 200):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Phase 1: scan markets and cache signals")
     parser.add_argument("--env", default=os.environ.get("FACTORY_ENV", "paper"))
-    parser.add_argument("--limit", type=int, default=200)
+    parser.add_argument("--limit", type=int, default=400)
     args = parser.parse_args()
     scan(environment=args.env, market_limit=args.limit)

@@ -38,7 +38,7 @@ class EvNewsStrategy(Strategy):
     n_topics = 3
     min_volume = 10_000
     min_days_to_close = 7
-    max_days_to_close = 60
+    max_days_to_close = 30
     max_trades_per_run = 3
     fast_dry_run_topics = 1
 
