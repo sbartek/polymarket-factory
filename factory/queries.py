@@ -139,6 +139,12 @@ def get_celebrity_tabloid_checks(
     return _query_detail_table(db, "celebrity_tabloid_checks", run_id, limit)
 
 
+def get_polling_vs_market_checks(
+    db: FactoryDB, run_id: str | None = None, limit: int = 50
+) -> list[dict]:
+    return _query_detail_table(db, "polling_vs_market_checks", run_id, limit)
+
+
 def get_signal_execution_checks(
     db: FactoryDB, run_id: str | None = None, strategy: str | None = None, limit: int = 50
 ) -> list[dict]:
@@ -168,6 +174,7 @@ DETAIL_TABLE_GETTERS = {
     "correlated_laggard": get_correlated_laggard_checks,
     "esport48": get_esport48_checks,
     "celebrity_tabloid": get_celebrity_tabloid_checks,
+    "polling_vs_market": get_polling_vs_market_checks,
 }
 
 

@@ -114,6 +114,27 @@ def _load_all_data(db: FactoryDB) -> dict:
                FROM signals ORDER BY ev_pp DESC LIMIT 20"""
         ).fetchall()]
 
+    # Ensure all active strategies appear even if they have no trades yet
+    for name in ACTIVE_STRATEGIES:
+        if name not in by_strategy:
+            s_meta = meta.get(name, {})
+            by_strategy[name] = {
+                "name": name,
+                "lifecycle": "active",
+                "edge_type": s_meta.get("edge_type", "other"),
+                "time_window": s_meta.get("time_window", "unknown"),
+                "open_positions": 0,
+                "open_exposure_usdc": 0.0,
+                "closed_trades": 0,
+                "wins": 0,
+                "win_rate": None,
+                "total_staked": 0.0,
+                "pnl_usdc": 0.0,
+                "roi": None,
+                "recent_closed": [],
+                "recent_signals": [],
+            }
+
     return {
         "as_of": TODAY,
         "total_open": len(open_),
@@ -133,7 +154,7 @@ def _load_all_data(db: FactoryDB) -> dict:
 
 def _update_strategy_page(name: str, data: dict, dry_run: bool = False):
     s = data["by_strategy"].get(name)
-    if not s:
+    if s is None:
         return
 
     prompt = f"""You are maintaining a living wiki page for the Polymarket trading strategy "{name}".

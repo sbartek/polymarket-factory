@@ -273,6 +273,17 @@ CREATE TABLE IF NOT EXISTS celebrity_tabloid_checks (
     FOREIGN KEY(run_id) REFERENCES runs(id)
 );
 
+CREATE TABLE IF NOT EXISTS polling_vs_market_checks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id TEXT NOT NULL,
+    market_slug TEXT,
+    title TEXT,
+    decision TEXT,
+    reason TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(run_id) REFERENCES runs(id)
+);
+
 CREATE TABLE IF NOT EXISTS signal_execution_checks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     run_id TEXT NOT NULL,
@@ -701,6 +712,21 @@ class FactoryDB:
                     row.get("candidate_score"),
                     row.get("news_hits"),
                     row.get("corroboration_score"),
+                    row.get("decision"),
+                    row.get("reason"),
+                    utcnow(),
+                ),
+            )
+            conn.commit()
+
+    def log_polling_vs_market_check(self, run_id: str, row: dict):
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT INTO polling_vs_market_checks (run_id, market_slug, title, decision, reason, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    run_id,
+                    row.get("market_slug"),
+                    row.get("title"),
                     row.get("decision"),
                     row.get("reason"),
                     utcnow(),

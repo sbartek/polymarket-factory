@@ -77,6 +77,12 @@ _COLUMNS: dict[str, list[tuple[str, str, int]]] = {
         ("subject_names", "subjects", 24),
         ("title", "title", 36),
     ],
+    "polling_vs_market": [
+        ("created_at", "time", 19),
+        ("decision", "decision", 10),
+        ("reason", "reason", 40),
+        ("title", "title", 60),
+    ],
 }
 
 

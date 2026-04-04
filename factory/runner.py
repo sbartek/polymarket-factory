@@ -136,6 +136,9 @@ def _log_strategy_details(db: FactoryDB, run_id: str, strategy):
     elif strategy.name == "celebrity_tabloid":
         for row in getattr(strategy, "last_check_details", []):
             db.log_celebrity_tabloid_check(run_id, row)
+    elif strategy.name == "polling_vs_market":
+        for row in getattr(strategy, "last_check_details", []):
+            db.log_polling_vs_market_check(run_id, row)
 
 
 def resolve_open_positions(broker, dry_run: bool = False, db: FactoryDB | None = None, run_id: str | None = None):
