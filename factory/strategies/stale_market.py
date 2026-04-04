@@ -17,7 +17,7 @@ from ..models import Signal
 from .base import Strategy
 
 MIN_DAYS = 3
-MAX_DAYS = 45
+MAX_DAYS = 21
 MIN_VOLUME = 8_000
 MIN_PRICE = 0.10
 MAX_PRICE = 0.85

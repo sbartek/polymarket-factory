@@ -597,6 +597,33 @@ class FactoryDB:
             )
             conn.commit()
 
+    def get_recent_price_moves(self, min_move: float = 0.15, max_hours: float = 6.0) -> list[dict]:
+        """Find markets where yes_price moved significantly between the two most recent observations."""
+        cutoff = (datetime.now(UTC) - timedelta(hours=max_hours)).isoformat(timespec="seconds")
+        query = """
+            WITH ranked AS (
+                SELECT market_id, market_slug, market_title, yes_price, volume, volume_24hr,
+                       close_time, created_at,
+                       ROW_NUMBER() OVER (PARTITION BY market_id ORDER BY created_at DESC) as rn
+                FROM market_observations
+                WHERE yes_price IS NOT NULL AND created_at >= ?
+            )
+            SELECT
+                cur.market_id, cur.market_slug, cur.market_title,
+                cur.yes_price AS cur_price, prev.yes_price AS prev_price,
+                cur.yes_price - prev.yes_price AS price_move,
+                cur.volume, cur.volume_24hr, cur.close_time,
+                cur.created_at AS cur_time, prev.created_at AS prev_time
+            FROM ranked cur
+            JOIN ranked prev ON cur.market_id = prev.market_id AND prev.rn = 2
+            WHERE cur.rn = 1
+              AND ABS(cur.yes_price - prev.yes_price) >= ?
+            ORDER BY ABS(cur.yes_price - prev.yes_price) DESC
+        """
+        with self._connect() as conn:
+            rows = conn.execute(query, (cutoff, min_move)).fetchall()
+        return [dict(r) for r in rows]
+
     def log_decision(self, run_id: str, decision_type: str, decision: str, strategy: str | None = None, market_id: str | None = None, reason: str | None = None, details: dict | None = None):
         with self._connect() as conn:
             conn.execute("INSERT INTO decisions (run_id, strategy, market_id, decision_type, decision, reason, details_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", (run_id, strategy, market_id, decision_type, decision, reason, json.dumps(details or {}, ensure_ascii=False), utcnow()))

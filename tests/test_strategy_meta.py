@@ -4,19 +4,21 @@ from factory.strategy_meta import strategy_metadata
 def test_alert_only_promotion_metadata_is_exposed_for_candidates():
     meta = strategy_metadata()
 
+    # correlated_laggard and esport48 promoted to paper trading
     correlated_laggard = meta["correlated_laggard"]
-    assert correlated_laggard["alert_only"] is True
-    assert correlated_laggard["trading_enabled"] is False
-    assert correlated_laggard["promotable"] is True
-    assert correlated_laggard["live_ready"] is False
-    assert correlated_laggard["promotion_candidate"] is True
+    assert correlated_laggard["alert_only"] is False
+    assert correlated_laggard["trading_enabled"] is True
 
     esport48 = meta["esport48"]
-    assert esport48["alert_only"] is True
-    assert esport48["trading_enabled"] is False
-    assert esport48["promotable"] is True
-    assert esport48["live_ready"] is False
-    assert esport48["promotion_candidate"] is True
+    assert esport48["alert_only"] is False
+    assert esport48["trading_enabled"] is True
+
+    # price_move_fade is alert-only and promotable
+    price_move_fade = meta["price_move_fade"]
+    assert price_move_fade["alert_only"] is True
+    assert price_move_fade["trading_enabled"] is False
+    assert price_move_fade["promotable"] is True
+    assert price_move_fade["promotion_candidate"] is True
 
     celebrity_tabloid = meta["celebrity_tabloid"]
     assert celebrity_tabloid["alert_only"] is False

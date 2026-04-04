@@ -50,8 +50,8 @@ def _tokenize(title: str) -> set[str]:
 
 class CorrelatedLaggardStrategy(Strategy):
     name = "correlated_laggard"
-    alert_only = True
-    trading_enabled = False
+    alert_only = False
+    trading_enabled = True
     promotable = True
     live_ready = False
     promotion_criteria = "docs/alert_only_graduation.md#promotion-criteria"

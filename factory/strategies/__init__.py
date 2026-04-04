@@ -12,6 +12,7 @@ from .resolution_hunter_v2 import ResolutionHunterV2Strategy
 from .spread_arb import SpreadArbStrategy
 from .stale_market import StaleMarketStrategy
 from .weather_edge_v2 import WeatherEdgeV2Strategy
+from .price_move_fade import PriceMoveFadeStrategy
 
 
 def _load_generated_strategies():
@@ -58,4 +59,5 @@ STRATEGIES = [
     FadeCertaintyV2Strategy(),
     ResolutionHunterV2Strategy(),
     WeatherEdgeV2Strategy(),
+    PriceMoveFadeStrategy(),
 ] + _load_generated_strategies()
