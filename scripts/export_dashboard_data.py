@@ -196,7 +196,7 @@ def normalize_proposal_status(raw: str | None) -> str:
     if not raw:
         return "unknown"
     value = raw.strip().lower()
-    if value in {"draft", "under_review", "approved", "rejected", "parked", "pending_benchmark_review"}:
+    if value in {"draft", "under_review", "approved", "rejected", "parked", "pending_benchmark_review", "deferred"}:
         return value
     return "unknown"
 
@@ -216,12 +216,14 @@ def load_proposals() -> list[dict]:
         open_questions = extract_section(text, "Open questions for review")
         approval_note = extract_section(text, "Approval note")
         category = classify_proposal_category(path, proposal_id, proposed_name, status, thesis, validation_plan)
+        deferred_reason = extract_field(text, "deferred_reason") or None
         rows.append({
             "proposal_id": proposal_id,
             "date": extract_field(text, "date") or None,
             "proposed_by": extract_field(text, "proposed_by") or None,
             "strategy_name": proposed_name,
             "status": status,
+            "deferred_reason": deferred_reason,
             "proposal_category": category,
             "plain_language_idea": extract_section(text, "Plain-language idea"),
             "thesis": thesis,
@@ -255,6 +257,8 @@ def classify_proposal_category(path: Path, proposal_id: str, proposed_name: str,
 
 
 def summarize_proposal_approval(status: str, validation_plan: str, failure_modes: str, open_questions: str, approval_note: str) -> str:
+    if status == "deferred":
+        return "Deferred — revisit when conditions are met. Not rejected."
     if status == "pending_benchmark_review":
         if validation_plan:
             return "Validation in progress — evidence is being collected now before final approval. " + " ".join(validation_plan.split())[:240]

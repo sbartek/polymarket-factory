@@ -45,16 +45,6 @@
         </article>
 
         <article class="panel">
-          <div class="panel-header"><h2>Replay benchmark</h2><span id="benchmark-meta" class="muted"></span></div>
-          <div id="benchmark-panel" class="stack muted">No benchmark snapshot yet.</div>
-        </article>
-
-        <article class="panel">
-          <div class="panel-header"><h2>Storage</h2><span id="storage-meta" class="muted"></span></div>
-          <div id="storage-panel" class="stack muted">No storage snapshot yet.</div>
-        </article>
-
-        <article class="panel">
           <div class="panel-header"><h2>Strategy snapshot</h2><span id="strategy-summary" class="muted"></span></div>
           <div class="table-wrap">
             <table>
@@ -62,6 +52,16 @@
               <tbody id="strategies-body"></tbody>
             </table>
           </div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-header"><h2>Replay benchmark</h2><span id="benchmark-meta" class="muted"></span></div>
+          <div id="benchmark-panel" class="stack muted">No benchmark snapshot yet.</div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-header"><h2>Storage</h2><span id="storage-meta" class="muted"></span></div>
+          <div id="storage-panel" class="stack muted">No storage snapshot yet.</div>
         </article>
 
         <article class="panel">
@@ -155,9 +155,15 @@
         document.getElementById('experiments-list').innerHTML = current.map((e) => `<article class="experiment-card"><div class="panel-header"><div><h3>${e.title}</h3><div class="muted code">${e.experiment_id}</div></div><span class="${Dashboard.pillClass(e.status)}">${e.status}</span></div><p>${Dashboard.cleanSummary(e.summary || e.hypothesis)}</p><div class="card-meta"><span class="pill pill-info">${e.scope_type}</span><span class="pill pill-neutral">${e.scope_label}</span></div></article>`).join('') || '<div class="muted">No current experiments.</div>';
         document.getElementById('experiment-summary').textContent = `${current.length} current threads`;
 
-        const pendingApprovals = (snapshot.approvals || []).filter((p) => p.proposal_category === 'strategy' && ['draft', 'under_review', 'pending_benchmark_review'].includes(p.status));
-        document.getElementById('approval-list').innerHTML = pendingApprovals.map((p) => `<article class="experiment-card"><div class="panel-header"><div><h3>${p.strategy_name}</h3><div class="muted code">${p.proposal_id}</div></div><span class="${Dashboard.pillClass(p.status === 'pending_benchmark_review' ? 'review_due' : p.status)}">${p.status}</span></div><p>${Dashboard.cleanSummary(p.plain_language_idea || p.thesis)}</p><div class="card-meta"><span class="pill pill-info">${p.edge_type || 'unknown edge'}</span><span class="pill pill-neutral">${p.time_window || 'unknown window'}</span></div><div class="muted section-gap"><strong>Why waiting:</strong> ${Dashboard.cleanSummary(p.approval_summary)}</div><div class="muted">${p.path}</div></article>`).join('') || '<div class="muted">No strategies currently waiting for approval.</div>';
-        document.getElementById('approval-summary').textContent = `${pendingApprovals.length} real strategy items awaiting final approval`;
+        const pendingApprovals = (snapshot.approvals || []).filter((p) => p.proposal_category === 'strategy' && ['draft', 'under_review', 'pending_benchmark_review', 'deferred'].includes(p.status));
+        document.getElementById('approval-list').innerHTML = pendingApprovals.map((p) => {
+          const statusCls = p.status === 'deferred' ? 'paused' : (p.status === 'pending_benchmark_review' ? 'review_due' : p.status);
+          const reason = p.status === 'deferred' && p.deferred_reason ? `<div class="muted section-gap"><strong>Deferred:</strong> ${Dashboard.cleanSummary(p.deferred_reason)}</div>` : `<div class="muted section-gap"><strong>Why waiting:</strong> ${Dashboard.cleanSummary(p.approval_summary)}</div>`;
+          return `<article class="experiment-card"><div class="panel-header"><div><h3>${p.strategy_name}</h3><div class="muted code">${p.proposal_id}</div></div><span class="${Dashboard.pillClass(statusCls)}">${p.status}</span></div><p>${Dashboard.cleanSummary(p.plain_language_idea || p.thesis)}</p><div class="card-meta"><span class="pill pill-info">${p.edge_type || 'unknown edge'}</span><span class="pill pill-neutral">${p.time_window || 'unknown window'}</span></div>${reason}<div class="muted">${p.path}</div></article>`;
+        }).join('') || '<div class="muted">No strategies currently waiting for approval.</div>';
+        const deferredCount = pendingApprovals.filter(p => p.status === 'deferred').length;
+        const pendingCount = pendingApprovals.length - deferredCount;
+        document.getElementById('approval-summary').textContent = `${pendingCount} pending · ${deferredCount} deferred`;
 
         const cleanupItems = (snapshot.approvals || []).filter((p) => p.proposal_category !== 'strategy');
         document.getElementById('cleanup-list').innerHTML = cleanupItems.map((p) => `<article class="experiment-card"><div class="panel-header"><div><h3>${p.strategy_name}</h3><div class="muted code">${p.proposal_id}</div></div><span class="pill pill-neutral">${p.proposal_category === 'cleanup' ? 'cleanup' : 'non-strategy'}</span></div><p>${Dashboard.cleanSummary(p.plain_language_idea || p.thesis || 'Administrative item')}</p><div class="muted section-gap"><strong>Why here:</strong> ${p.proposal_category === 'cleanup' ? 'Stale or template-like proposal that should be cleaned up or clarified.' : 'Tracked file in proposals/, but not a real strategy approval candidate.'}</div><div class="muted">${p.path}</div></article>`).join('') || '<div class="muted">No cleanup or non-strategy items.</div>';
