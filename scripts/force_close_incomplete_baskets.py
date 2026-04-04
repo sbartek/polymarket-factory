@@ -23,6 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from factory.db import DB_PATH, FactoryDB
 
 DOOMED_SLUGS = {
+    # Round 1: incomplete tournament/long-dated fields
     "augusta-national-invitational-winner",
     "2026-nhl-stanley-cup-champion",
     "2026-nba-champion",
@@ -37,6 +38,17 @@ DOOMED_SLUGS = {
     "next-french-presidential-election",
     "presidential-election-winner-2028",
     "democratic-presidential-nominee-2028",
+    # Round 2: remaining pre-fix positions (full clean slate for retest 2026-04-04)
+    "when-will-the-dhs-shutdown-end-521",
+    "virginia-republican-senate-primary-winner",
+    "will-reza-pahlavi-enter-iran-by-june-30",
+    "where-will-trump-and-putin-meet-next-584",
+    "netanyahu-out-before-2027",
+    "next-leader-out-of-power-before-2027-795",
+    "iran-leader-end-of-2026",
+    "how-many-different-countries-will-israel-strike-in-2026",
+    "venezuela-leader-end-of-2026",
+    "standx-fdv-above-one-day-after-launch",
 }
 
 RUN_ID = "manual-force-close-20260404"
