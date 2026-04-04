@@ -273,6 +273,21 @@ CREATE TABLE IF NOT EXISTS celebrity_tabloid_checks (
     FOREIGN KEY(run_id) REFERENCES runs(id)
 );
 
+CREATE TABLE IF NOT EXISTS mutually_exclusive_oversum_checks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id TEXT NOT NULL,
+    market_slug TEXT,
+    title TEXT,
+    oversum_pp REAL,
+    leg_count INTEGER,
+    chosen_leg TEXT,
+    chosen_yes_price REAL,
+    decision TEXT,
+    reason TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(run_id) REFERENCES runs(id)
+);
+
 CREATE TABLE IF NOT EXISTS polling_vs_market_checks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     run_id TEXT NOT NULL,
@@ -712,6 +727,25 @@ class FactoryDB:
                     row.get("candidate_score"),
                     row.get("news_hits"),
                     row.get("corroboration_score"),
+                    row.get("decision"),
+                    row.get("reason"),
+                    utcnow(),
+                ),
+            )
+            conn.commit()
+
+    def log_mutually_exclusive_oversum_check(self, run_id: str, row: dict):
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT INTO mutually_exclusive_oversum_checks (run_id, market_slug, title, oversum_pp, leg_count, chosen_leg, chosen_yes_price, decision, reason, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    run_id,
+                    row.get("market_slug"),
+                    row.get("title"),
+                    row.get("oversum_pp"),
+                    row.get("leg_count"),
+                    row.get("chosen_leg"),
+                    row.get("chosen_yes_price"),
                     row.get("decision"),
                     row.get("reason"),
                     utcnow(),

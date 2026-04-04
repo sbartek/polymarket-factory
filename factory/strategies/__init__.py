@@ -6,6 +6,7 @@ from .correlated_pairs import CorrelatedPairsStrategy
 from .esport48 import Esport48Strategy
 from .ev_news import EvNewsStrategy
 from .fade_certainty import FadeCertaintyStrategy
+from .mutually_exclusive_oversum import MutuallyExclusiveOversumStrategy
 from .polling_vs_market import PollingVsMarketStrategy
 from .resolution_hunter import ResolutionHunterStrategy
 from .spread_arb import SpreadArbStrategy
@@ -57,4 +58,5 @@ STRATEGIES = [
     CelebrityTabloidStrategy(),
     CarryRewardsStrategy(),
     PollingVsMarketStrategy(),
+    MutuallyExclusiveOversumStrategy(),
 ] + _load_generated_strategies()

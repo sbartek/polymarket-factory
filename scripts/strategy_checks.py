@@ -83,6 +83,15 @@ _COLUMNS: dict[str, list[tuple[str, str, int]]] = {
         ("reason", "reason", 40),
         ("title", "title", 60),
     ],
+    "mutually_exclusive_oversum": [
+        ("created_at", "time", 19),
+        ("decision", "decision", 10),
+        ("oversum_pp", "oversum_pp", 9),
+        ("leg_count", "legs", 4),
+        ("chosen_yes_price", "yes_px", 6),
+        ("chosen_leg", "chosen", 35),
+        ("title", "title", 40),
+    ],
 }
 
 
