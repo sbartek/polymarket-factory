@@ -1,12 +1,74 @@
 {
-  "generated_at": "2026-04-04T10:31:31",
+  "generated_at": "2026-04-04T22:31:09",
   "scope": "generated",
   "min_signals": 5,
   "min_labeled": 3,
-  "strategy_count": 0,
-  "signal_count": 0,
-  "strategies": [],
-  "slice_count": 0,
-  "strategy_slices": [],
-  "strategy_metadata": {}
+  "strategy_count": 1,
+  "signal_count": 4,
+  "strategies": [
+    {
+      "strategy": "mutually_exclusive_oversum",
+      "signals": 4,
+      "observed_signals": 0,
+      "no_forward_observation_signals": 4,
+      "flat_observation_signals": 0,
+      "labeled_signals": 0,
+      "correct_signals": 0,
+      "observation_coverage": 0.0,
+      "label_coverage": 0.0,
+      "correctness_rate": 0.5,
+      "directional_score": 0.5,
+      "avg_ev_after_slippage_10_pp": 37.745,
+      "avg_ev_after_slippage_25_pp": 37.735,
+      "slippage_score": 1.0,
+      "avg_max_size_positive_ev": 250.0,
+      "avg_max_size_above_min_edge": 250.0,
+      "avg_source_confidence_score": 0.7,
+      "capacity_score": 0.85,
+      "duplicate_rate": 0.0,
+      "uniqueness_score": 1.0,
+      "coverage_score": 0.8,
+      "benchmark_score": 0.7425,
+      "label_sources": []
+    }
+  ],
+  "slice_count": 1,
+  "strategy_slices": [
+    {
+      "strategy": "mutually_exclusive_oversum",
+      "signals": 4,
+      "observed_signals": 0,
+      "no_forward_observation_signals": 4,
+      "flat_observation_signals": 0,
+      "labeled_signals": 0,
+      "correct_signals": 0,
+      "observation_coverage": 0.0,
+      "label_coverage": 0.0,
+      "correctness_rate": 0.5,
+      "directional_score": 0.5,
+      "avg_ev_after_slippage_10_pp": 37.745,
+      "avg_ev_after_slippage_25_pp": 37.735,
+      "slippage_score": 1.0,
+      "avg_max_size_positive_ev": 250.0,
+      "avg_max_size_above_min_edge": 250.0,
+      "avg_source_confidence_score": 0.7,
+      "capacity_score": 0.85,
+      "duplicate_rate": 0.0,
+      "uniqueness_score": 1.0,
+      "coverage_score": 0.8,
+      "benchmark_score": 0.7425,
+      "label_sources": [],
+      "time_window": "short",
+      "edge_type": "logical_inconsistency",
+      "slice_key": "logical_inconsistency::short"
+    }
+  ],
+  "strategy_metadata": {
+    "mutually_exclusive_oversum": {
+      "edge_type": "logical_inconsistency",
+      "time_window": "short",
+      "alert_only": true,
+      "promotable": false
+    }
+  }
 }
