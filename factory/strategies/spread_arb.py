@@ -22,6 +22,11 @@ MAX_LEG_PRICE = 0.97
 MIN_ACTIONABLE_SIZE = 1.0
 MAX_TINY_LEGS_PER_BASKET = 2
 SUSPICIOUS_OUTCOME_KEYWORDS = ["other", "none of the above", "the field", "field", "all others"]
+# Title keywords that suggest a large open field where we can't enumerate all outcomes
+MANY_OUTCOMES_KEYWORDS = [
+    "winner", "nominee", "election", "award",
+    "champion", "championship", "next to", "who will be",
+]
 
 
 @dataclass
@@ -64,11 +69,15 @@ class SpreadArbStrategy(Strategy):
 
     def _looks_suspicious(self, event_title: str, active: list[dict]) -> bool:
         lower_title = event_title.lower()
-        likely_many_outcomes = any(k in lower_title for k in ["winner", "nominee", "election", "award"])
+        likely_many_outcomes = any(k in lower_title for k in MANY_OUTCOMES_KEYWORDS)
         if not likely_many_outcomes:
             return False
-        has_catch_all = any(any(keyword in leg["question"].lower() for keyword in SUSPICIOUS_OUTCOME_KEYWORDS) for leg in active)
-        return len(active) <= 5 and not has_catch_all
+        has_catch_all = any(
+            any(keyword in leg["question"].lower() for keyword in SUSPICIOUS_OUTCOME_KEYWORDS)
+            for leg in active
+        )
+        # Suspicious if no catch-all leg — we're holding a partial basket from a large field
+        return not has_catch_all
 
     def _estimated_leg_size(self, yes_price: float) -> float:
         return round(min(self.max_position_usdc * yes_price * 1.35, self.max_position_usdc), 2)
