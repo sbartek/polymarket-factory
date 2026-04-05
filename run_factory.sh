@@ -1,24 +1,22 @@
 #!/bin/bash
-# Entry point for launchd — sources .env and runs the factory runner.
+# Entry point for launchd — sources env and runs the factory runner.
 
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-ENV_FILE="$SCRIPT_DIR/.env"
-
-if [[ -f "$ENV_FILE" ]]; then
-    set -a
-    source "$ENV_FILE"
-    set +a
+if [[ -f "$SCRIPT_DIR/vm_env.sh" ]]; then
+    source "$SCRIPT_DIR/vm_env.sh"
+else
+    if [[ -f "$SCRIPT_DIR/.env" ]]; then set -a; source "$SCRIPT_DIR/.env"; set +a; fi
+    export PATH="/Users/barteks/.local/bin:$PATH"
 fi
-
-export PATH="/Users/barteks/.local/bin:/Users/barteks/.local/share/fnm/node-versions/v24.14.0/installation/bin:$PATH"
 export FACTORY_ENV="${FACTORY_ENV:-paper}"
 
 cd "$SCRIPT_DIR"
 uv run python -m factory.runner
 
+DASHBOARD_REPO="${DASHBOARD_REPO:-$HOME/workai/projects/pplayouts-dashboard}"
 echo "[dashboard] publishing snapshot..."
-uv run python -m scripts.publish_dashboard ~/workai/projects/pplayouts-dashboard --commit --push \
+uv run python -m scripts.publish_dashboard "$DASHBOARD_REPO" --commit --push \
   --message "dashboard: auto-update after factory run" \
   || echo "[dashboard] publish failed (non-fatal)"

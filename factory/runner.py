@@ -396,8 +396,13 @@ def format_wa_summary(new_trades: list[tuple], closed_trades: list[dict], alert_
             if overdue:
                 lines.append("\n⚠ *PIPELINE ALERTS:*")
                 for p in overdue:
-                    age = f"{p['age_minutes']}m ago" if p["age_minutes"] is not None else "never run"
-                    lines.append(f"- {p['name']}: {p['status']} ({age})")
+                    if p["age_minutes"] is None:
+                        lines.append(f"- {p['name']}: never run")
+                    else:
+                        hours = p["age_minutes"] // 60
+                        mins = p["age_minutes"] % 60
+                        age = f"{hours}h{mins:02d}m" if hours else f"{mins}m"
+                        lines.append(f"- {p['name']}: overdue ({age} since last run)")
             else:
                 lines.append("\nPipelines: all OK")
         lines.append("\n_/details <strategy> for trade breakdown_")
@@ -448,8 +453,13 @@ def format_wa_summary(new_trades: list[tuple], closed_trades: list[dict], alert_
             lines.append("")
             lines.append("⚠ *PIPELINE ALERTS:*")
             for p in overdue:
-                age = f"{p['age_minutes']}m ago" if p["age_minutes"] is not None else "never run"
-                lines.append(f"- {p['name']}: {p['status']} ({age})")
+                if p["age_minutes"] is None:
+                    lines.append(f"- {p['name']}: never run")
+                else:
+                    hours = p["age_minutes"] // 60
+                    mins = p["age_minutes"] % 60
+                    age = f"{hours}h{mins:02d}m" if hours else f"{mins}m"
+                    lines.append(f"- {p['name']}: overdue ({age} since last run)")
 
     return "\n".join(lines)
 
