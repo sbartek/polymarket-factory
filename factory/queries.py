@@ -214,8 +214,11 @@ def get_open_positions(
 
 def get_legacy_open_positions(db: FactoryDB, strategy: str | None = None) -> list[dict]:
     """Return open legacy trades, oldest first."""
-    clauses = ["status = 'open'", "(lifecycle_group = 'legacy' OR strategy NOT IN (?, ?, ?, ?, ?, ?, ?, ?))"]
-    params: list = ["ev_news", "spread_arb", "resolution_hunter", "stale_market", "correlated_pairs", "correlated_laggard", "esport48", "celebrity_tabloid"]
+    from .strategy_meta import ACTIVE_STRATEGIES
+    active = sorted(ACTIVE_STRATEGIES)
+    placeholders = ", ".join("?" for _ in active)
+    clauses = ["status = 'open'", f"(lifecycle_group = 'legacy' OR strategy NOT IN ({placeholders}))"]
+    params: list = list(active)
     if strategy:
         clauses.append("strategy = ?")
         params.append(strategy)
