@@ -855,10 +855,12 @@ def fetch_execution_checks(conn: sqlite3.Connection, limit: int = 250) -> list[d
 
 
 def build_manifest(warnings: list[str], sqlite_available: bool, improvement_available: bool) -> dict:
+    import socket
     return {
         "generated_at": utc_now_iso(),
         "export_version": "v1",
         "git_commit": get_git_commit(),
+        "hostname": socket.gethostname(),
         "warning_count": len(warnings),
         "warnings": warnings,
         "source_summary": {

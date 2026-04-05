@@ -90,7 +90,7 @@ async function loadSnapshot() {
 
 function renderChrome(snapshot, pageTitle) {
   document.getElementById('page-title').textContent = pageTitle;
-  document.getElementById('snapshot-meta').textContent = `Snapshot generated ${fmtDate(snapshot.manifest.generated_at)} · commit ${snapshot.manifest.git_commit || 'unknown'}`;
+  document.getElementById('snapshot-meta').textContent = `Snapshot generated ${fmtDate(snapshot.manifest.generated_at)} · commit ${snapshot.manifest.git_commit || 'unknown'} · host ${snapshot.manifest.hostname || 'unknown'}`;
   const age = ageLabel(snapshot.manifest.generated_at);
   const ageEl = document.getElementById('snapshot-age');
   ageEl.className = age.cls;
