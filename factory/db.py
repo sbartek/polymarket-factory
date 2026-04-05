@@ -463,7 +463,7 @@ class FactoryDB:
         with self._connect() as conn:
             if mode == "paper":
                 rows = conn.execute(
-                    "SELECT * FROM trades WHERE COALESCE(mode, 'paper') = 'paper' ORDER BY opened_at, id"
+                    "SELECT * FROM trades WHERE COALESCE(NULLIF(mode, ''), 'paper') = 'paper' ORDER BY opened_at, id"
                 ).fetchall()
             elif mode:
                 rows = conn.execute(
@@ -478,7 +478,7 @@ class FactoryDB:
         with self._connect() as conn:
             if mode == "paper":
                 return conn.execute(
-                    "SELECT 1 FROM trades WHERE market_id = ? AND strategy = ? AND status = 'open' AND COALESCE(mode, 'paper') = 'paper' LIMIT 1",
+                    "SELECT 1 FROM trades WHERE market_id = ? AND strategy = ? AND status = 'open' AND COALESCE(NULLIF(mode, ''), 'paper') = 'paper' LIMIT 1",
                     (market_id, strategy),
                 ).fetchone() is not None
             if mode:

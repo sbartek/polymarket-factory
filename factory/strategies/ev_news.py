@@ -29,16 +29,16 @@ def _days_to_close(end_date: str | None) -> int | None:
 class EvNewsStrategy(Strategy):
     name = "ev_news"
     edge_type = "information"
-    time_window = "medium"
-    target_hold_min_days = 7
-    target_hold_max_days = 30
+    time_window = "short"
+    target_hold_min_days = 1
+    target_hold_max_days = 14
     scan_frequency = "3x/day"
     max_position_usdc = 15.0
     min_ev_pp = 10.0
     n_topics = 3
     min_volume = 10_000
-    min_days_to_close = 7
-    max_days_to_close = 30
+    min_days_to_close = 1
+    max_days_to_close = 14
     max_trades_per_run = 3
     fast_dry_run_topics = 1
 
@@ -174,6 +174,9 @@ Only include markets where |ev_pp| >= {self.min_ev_pp}. Return <signals>[]</sign
             if days is None or not (self.min_days_to_close <= days <= self.max_days_to_close):
                 continue
             filtered_markets.append(m)
+
+        # Prioritize near-term markets (closer closing date first)
+        filtered_markets.sort(key=lambda m: _days_to_close(m.get("endDate")) or 999)
 
         print(f"  [{self.name}] {len(filtered_markets)} filtered markets → picking topics...", end=" ", flush=True)
         topics = self._pick_topics(filtered_markets or markets)
