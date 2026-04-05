@@ -21,5 +21,5 @@ uv run python -m factory.runner --phase execute
 
 echo "[dashboard] publishing snapshot..."
 uv run python -m scripts.publish_dashboard ~/workai/projects/pplayouts-dashboard --commit --push \
-  --message "dashboard: auto-update after execute phase" \
+  --message "dashboard: auto-update after execute phase (mac)" \
   || echo "[dashboard] publish failed (non-fatal)"
