@@ -28,7 +28,7 @@ from .models import Signal
 from .notify import send_notification, send_whatsapp
 from .portfolio import summary, format_summary, format_wa_table, snapshot_open_positions
 from .strategies import STRATEGIES
-from .strategy_meta import strategy_metadata, should_run_in_cycle
+from .strategy_meta import ACTIVE_STRATEGIES, strategy_metadata, should_run_in_cycle
 
 
 class DryRunBroker:
@@ -754,8 +754,9 @@ def run(environment: str = "paper", dry_run: bool = False, send: bool = True, fa
                 _log_strategy_details(db, run_id, strategy)
                 db.log_event(run_id, "info", "strategy_finished", strategy=strategy.name, payload={"signals": len(signals)})
 
-        # Check for loss streaks — flag strategies that need review
+        # Check for loss streaks — flag strategies that need review (skip killed ones)
         loss_streaks = db.get_loss_streaks(min_streak=10)
+        loss_streaks = {s: info for s, info in loss_streaks.items() if s in ACTIVE_STRATEGIES} if loss_streaks else {}
         if loss_streaks:
             for strat, info in loss_streaks.items():
                 print(f"  ⚠ REVIEW {strat}: {info['streak']} consecutive losses (${info['total_lost']:.2f} lost, last side: {info['last_outcome']})")
