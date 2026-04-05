@@ -31,7 +31,9 @@ WEATHER_KEYWORDS = [
 MAX_DAYS_TO_CLOSE = 7     # v1 was 10 — tighter window for better forecasts
 MIN_DAYS_TO_CLOSE = 0
 MAX_ENSEMBLE_PROB = 0.05  # only signal when ensemble says <5% for this bin
+MIN_ENSEMBLE_FLOOR = 0.10 # never treat any bin as less than 10% — ensemble is overconfident
 MIN_MARKET_PRICE = 0.15   # market must price the bin at >15% (otherwise no edge)
+ENSEMBLE_WIDEN_C = 1.5    # widen bin check by ±1.5°C (or °F) to account for ensemble bias
 MAX_ALERTS_PER_RUN = 5
 
 
@@ -149,22 +151,28 @@ def _parse_submarket_question(question: str) -> dict | None:
 
 
 def _prob_from_values(values: list[float], parsed: dict) -> float | None:
-    """Compute ensemble probability. Uses exclusive upper bound for ranges (v1 bug fix)."""
+    """Compute ensemble probability with widened bins to counter ensemble overconfidence.
+
+    The ECMWF ensemble spread is too narrow — real temps often land 1-2° outside
+    the ensemble range. We widen bins by ENSEMBLE_WIDEN_C in each direction and
+    apply a floor of MIN_ENSEMBLE_FLOOR (never assume <10% probability).
+    """
     n = len(values)
     if not n:
         return None
+    w = ENSEMBLE_WIDEN_C
     direction = parsed["direction"]
     if direction == "above":
-        satisfied = sum(1 for v in values if v >= parsed["threshold"])
+        satisfied = sum(1 for v in values if v >= parsed["threshold"] - w)
     elif direction == "below":
-        satisfied = sum(1 for v in values if v <= parsed["threshold"])
+        satisfied = sum(1 for v in values if v <= parsed["threshold"] + w)
     elif direction == "range":
         lo, hi = parsed["threshold_low"], parsed["threshold_high"]
-        # v2 fix: exclusive upper bound — "between 60-61°F" means [60, 61)
-        satisfied = sum(1 for v in values if lo <= v < hi)
+        satisfied = sum(1 for v in values if lo - w <= v < hi + w)
     else:
         return None
-    return round(satisfied / n, 4)
+    raw_prob = round(satisfied / n, 4)
+    return max(raw_prob, MIN_ENSEMBLE_FLOOR)
 
 
 class WeatherEdgeV2Strategy(Strategy):
