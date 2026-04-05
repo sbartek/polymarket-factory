@@ -25,7 +25,7 @@ from .live_broker import LiveBroker
 from .execution import build_market_index, snapshot_for_signal
 from .feed import fetch_top, fetch_top_paginated, fetch_closed, get_market_winner, get_submarket_outcome
 from .models import Signal
-from .notify import send_whatsapp
+from .notify import send_notification, send_whatsapp
 from .portfolio import summary, format_summary, format_wa_table, snapshot_open_positions
 from .strategies import STRATEGIES
 from .strategy_meta import strategy_metadata, should_run_in_cycle
@@ -778,10 +778,10 @@ def run(environment: str = "paper", dry_run: bool = False, send: bool = True, fa
             sent = True
             db.log_decision(run_id, "notify", "preview_only", reason="dry_or_nosend")
         else:
-            sent = send_whatsapp(wa_msg)
-            db.log_decision(run_id, "notify", "sent" if sent else "failed", reason="whatsapp_send")
+            sent = send_notification(wa_msg)
+            db.log_decision(run_id, "notify", "sent" if sent else "failed", reason="notification_send")
 
-        print(f"\n{'Dry run preview generated' if dry_run or not send else 'WhatsApp notification sent'} ✓" if sent else "\nWhatsApp notification FAILED — check openclaw.")
+        print(f"\n{'Dry run preview generated' if dry_run or not send else 'Notification sent'} ✓" if sent else "\nNotification FAILED — check notify channels.")
 
         if not dry_run:
             cleanup = db.cleanup_old_snapshots()

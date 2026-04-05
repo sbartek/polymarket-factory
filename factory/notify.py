@@ -1,7 +1,9 @@
-"""WhatsApp notifications via OpenClaw CLI."""
+"""Notifications via WhatsApp (OpenClaw CLI) and Slack (webhook)."""
+import json
 import os
 import shutil
 import subprocess
+import urllib.request
 from pathlib import Path
 
 
@@ -72,3 +74,29 @@ def send_whatsapp(text: str) -> bool:
     except Exception as e:
         print(f"  [notify] send_whatsapp failed: {e}")
         return False
+
+
+def send_slack(text: str) -> bool:
+    """Send a Slack message via incoming webhook. Returns True on success."""
+    webhook_url = os.environ.get("SLACK_WEBHOOK_URL")
+    if not webhook_url:
+        return False
+    try:
+        data = json.dumps({"text": text}).encode()
+        req = urllib.request.Request(
+            webhook_url, data=data,
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return resp.status == 200
+    except Exception as e:
+        print(f"  [notify] send_slack failed: {e}")
+        return False
+
+
+def send_notification(text: str) -> bool:
+    """Send via all available channels. Returns True if any succeeded."""
+    results = []
+    results.append(send_whatsapp(text))
+    results.append(send_slack(text))
+    return any(results)
