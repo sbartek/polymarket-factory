@@ -15,10 +15,10 @@ from ..models import Signal
 from .base import Strategy
 
 ARB_THRESHOLD = 0.90
-MIN_OUTCOMES = 3
-MIN_VOLUME = 15_000
+MIN_OUTCOMES = 2
+MIN_VOLUME = 5_000
 MIN_DAYS_TO_CLOSE = 3
-MAX_DAYS_TO_CLOSE = 90
+MAX_DAYS_TO_CLOSE = 30
 MAX_NEW_BASKETS_PER_RUN = 3
 MIN_LEG_YES_PRICE = 0.10  # only bet NO on legs where YES > 10c
 MAX_LEG_YES_PRICE = 0.70  # avoid legs that are likely winners
