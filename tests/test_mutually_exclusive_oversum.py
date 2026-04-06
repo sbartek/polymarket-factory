@@ -175,7 +175,8 @@ def test_scan_rejects_extreme_oversum():
     assert signals == []
 
 
-def test_strategy_is_alert_only():
+def test_strategy_is_paper_trading():
     s = MutuallyExclusiveOversumStrategy()
-    assert s.alert_only is True
+    assert s.alert_only is False
+    assert s.trading_enabled is True
     assert s.promotable is True

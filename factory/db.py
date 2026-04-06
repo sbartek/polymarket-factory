@@ -551,7 +551,8 @@ class FactoryDB:
             shares = float(t["shares"])
             amount = float(t["amount_usdc"])
             # FULL_SET positions always resolve to the full set value; rewards tracked off-chain
-            if t.get("outcome") == "FULL_SET":
+            # CANCELLED markets refund — no P&L
+            if t.get("outcome") == "FULL_SET" or outcome == "CANCELLED":
                 pnl = 0.0
             else:
                 pnl = shares * 1.0 - amount if outcome == t["outcome"] else -amount

@@ -630,9 +630,10 @@ def fetch_strategy_rows(conn: sqlite3.Connection) -> list[dict]:
             strategy,
             SUM(CASE WHEN status='open' THEN amount_usdc ELSE 0 END) AS open_exposure,
             SUM(CASE WHEN status='open' THEN 1 ELSE 0 END) AS open_positions,
-            SUM(CASE WHEN closed_at >= datetime('now', '-30 day') THEN pnl_usdc ELSE 0 END) AS realized_pnl_30d,
-            SUM(CASE WHEN status='closed' THEN pnl_usdc ELSE 0 END) AS realized_pnl_all_time,
-            COUNT(*) AS trade_count
+            SUM(CASE WHEN closed_at >= datetime('now', '-30 day') AND COALESCE(resolved_outcome, '') != 'CANCELLED' THEN pnl_usdc ELSE 0 END) AS realized_pnl_30d,
+            SUM(CASE WHEN status='closed' AND COALESCE(resolved_outcome, '') != 'CANCELLED' THEN pnl_usdc ELSE 0 END) AS realized_pnl_all_time,
+            SUM(CASE WHEN COALESCE(resolved_outcome, '') != 'CANCELLED' THEN 1 ELSE 0 END) AS trade_count,
+            SUM(CASE WHEN resolved_outcome = 'CANCELLED' THEN 1 ELSE 0 END) AS cancelled_count
         FROM trades
         GROUP BY strategy
         ORDER BY strategy

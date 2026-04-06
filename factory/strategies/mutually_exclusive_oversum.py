@@ -82,7 +82,8 @@ class MutuallyExclusiveOversumStrategy(Strategy):
     max_position_usdc = 10.0
     min_position_usdc = 2.0
     min_ev_pp = 8.0
-    alert_only = True           # promote to paper after 20 validated alerts
+    alert_only = False          # promoted 2026-04-06 after 58 alerts (threshold was 20)
+    trading_enabled = True
     promotable = True
     promotion_criteria = "20 alerts logged with >60% showing revert within 7 days"
     last_check_details: list[dict] = []

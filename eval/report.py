@@ -55,7 +55,7 @@ def evaluate():
         return
 
     meta = strategy_metadata()
-    closed = [t for t in trades if t["status"] == "closed"]
+    closed = [t for t in trades if t["status"] == "closed" and t.get("resolved_outcome") != "CANCELLED"]
     open_ = [t for t in trades if t["status"] == "open"]
 
     by_strategy: dict[str, list] = defaultdict(list)
