@@ -3,12 +3,12 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.polymarket.factory.aggressive</string>
+    <string>com.polymarket.factory.strategy-factory</string>
 
     <key>ProgramArguments</key>
     <array>
         <string>/bin/bash</string>
-        <string>/Users/barteks/workai/projects/polymarket-factory/run_aggressive_cycle.sh</string>
+        <string>/Users/barteks/workai/projects/polymarket-factory/run_strategy_factory.sh</string>
     </array>
 
     <key>WorkingDirectory</key>
@@ -27,9 +27,9 @@
     </array>
 
     <key>StandardOutPath</key>
-    <string>/Users/barteks/workai/projects/polymarket-factory/factory-aggressive.log</string>
+    <string>/Users/barteks/workai/projects/polymarket-factory/factory-strategy-factory.log</string>
     <key>StandardErrorPath</key>
-    <string>/Users/barteks/workai/projects/polymarket-factory/factory-aggressive.log</string>
+    <string>/Users/barteks/workai/projects/polymarket-factory/factory-strategy-factory.log</string>
 
     <key>RunAtLoad</key>
     <false/>

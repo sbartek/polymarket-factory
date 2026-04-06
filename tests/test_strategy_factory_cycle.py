@@ -5,11 +5,11 @@ import json
 from pathlib import Path
 
 
-MODULE_PATH = Path(__file__).resolve().parents[1] / "scripts" / "aggressive_strategy_cycle.py"
-SPEC = importlib.util.spec_from_file_location("aggressive_strategy_cycle", MODULE_PATH)
+MODULE_PATH = Path(__file__).resolve().parents[1] / "scripts" / "strategy_factory_cycle.py"
+SPEC = importlib.util.spec_from_file_location("strategy_factory_cycle", MODULE_PATH)
 assert SPEC is not None and SPEC.loader is not None
-aggressive_strategy_cycle = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(aggressive_strategy_cycle)
+strategy_factory_cycle = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(strategy_factory_cycle)
 
 
 def test_apply_generated_retention_gate_archives_old_unbenchmarked_module(tmp_path, monkeypatch):
@@ -31,13 +31,13 @@ def test_apply_generated_retention_gate_archives_old_unbenchmarked_module(tmp_pa
     import os
     os.utime(module, (old_ts, old_ts))
 
-    monkeypatch.setattr(aggressive_strategy_cycle, "GENERATED_DIR", generated_dir)
-    monkeypatch.setattr(aggressive_strategy_cycle, "GENERATED_ARCHIVE_DIR", archive_dir)
-    monkeypatch.setattr(aggressive_strategy_cycle, "PROPOSALS_DIR", proposals_dir)
-    monkeypatch.setattr(aggressive_strategy_cycle, "BENCHMARK_DIR", benchmark_dir)
-    monkeypatch.setattr(aggressive_strategy_cycle, "GENERATED_RETENTION_GRACE_DAYS", 0)
+    monkeypatch.setattr(strategy_factory_cycle, "GENERATED_DIR", generated_dir)
+    monkeypatch.setattr(strategy_factory_cycle, "GENERATED_ARCHIVE_DIR", archive_dir)
+    monkeypatch.setattr(strategy_factory_cycle, "PROPOSALS_DIR", proposals_dir)
+    monkeypatch.setattr(strategy_factory_cycle, "BENCHMARK_DIR", benchmark_dir)
+    monkeypatch.setattr(strategy_factory_cycle, "GENERATED_RETENTION_GRACE_DAYS", 0)
 
-    archived = aggressive_strategy_cycle.apply_generated_retention_gate()
+    archived = strategy_factory_cycle.apply_generated_retention_gate()
 
     assert len(archived) == 1
     assert archived[0]["strategy_name"] == "old_strategy"
@@ -67,18 +67,18 @@ def test_apply_generated_retention_gate_archives_low_scoring_benchmarked_module(
         }]
     }), encoding="utf-8")
 
-    monkeypatch.setattr(aggressive_strategy_cycle, "GENERATED_DIR", generated_dir)
-    monkeypatch.setattr(aggressive_strategy_cycle, "GENERATED_ARCHIVE_DIR", archive_dir)
-    monkeypatch.setattr(aggressive_strategy_cycle, "PROPOSALS_DIR", proposals_dir)
-    monkeypatch.setattr(aggressive_strategy_cycle, "BENCHMARK_DIR", benchmark_dir)
-    monkeypatch.setattr(aggressive_strategy_cycle, "GENERATED_RETENTION_GRACE_DAYS", 30)
-    monkeypatch.setattr(aggressive_strategy_cycle, "GENERATED_MIN_SIGNALS_FOR_GATE", 5)
-    monkeypatch.setattr(aggressive_strategy_cycle, "GENERATED_MIN_LABELED_FOR_GATE", 3)
-    monkeypatch.setattr(aggressive_strategy_cycle, "GENERATED_MIN_OBSERVED_SIGNALS_FOR_GATE", 3)
-    monkeypatch.setattr(aggressive_strategy_cycle, "GENERATED_MIN_OBSERVATION_COVERAGE", 0.30)
-    monkeypatch.setattr(aggressive_strategy_cycle, "GENERATED_MIN_BENCHMARK_SCORE", 0.60)
+    monkeypatch.setattr(strategy_factory_cycle, "GENERATED_DIR", generated_dir)
+    monkeypatch.setattr(strategy_factory_cycle, "GENERATED_ARCHIVE_DIR", archive_dir)
+    monkeypatch.setattr(strategy_factory_cycle, "PROPOSALS_DIR", proposals_dir)
+    monkeypatch.setattr(strategy_factory_cycle, "BENCHMARK_DIR", benchmark_dir)
+    monkeypatch.setattr(strategy_factory_cycle, "GENERATED_RETENTION_GRACE_DAYS", 30)
+    monkeypatch.setattr(strategy_factory_cycle, "GENERATED_MIN_SIGNALS_FOR_GATE", 5)
+    monkeypatch.setattr(strategy_factory_cycle, "GENERATED_MIN_LABELED_FOR_GATE", 3)
+    monkeypatch.setattr(strategy_factory_cycle, "GENERATED_MIN_OBSERVED_SIGNALS_FOR_GATE", 3)
+    monkeypatch.setattr(strategy_factory_cycle, "GENERATED_MIN_OBSERVATION_COVERAGE", 0.30)
+    monkeypatch.setattr(strategy_factory_cycle, "GENERATED_MIN_BENCHMARK_SCORE", 0.60)
 
-    archived = aggressive_strategy_cycle.apply_generated_retention_gate()
+    archived = strategy_factory_cycle.apply_generated_retention_gate()
 
     assert len(archived) == 1
     assert archived[0]["strategy_name"] == "bad_edge"
@@ -108,18 +108,18 @@ def test_apply_generated_retention_gate_keeps_low_scoring_module_pending_when_co
         }]
     }), encoding="utf-8")
 
-    monkeypatch.setattr(aggressive_strategy_cycle, "GENERATED_DIR", generated_dir)
-    monkeypatch.setattr(aggressive_strategy_cycle, "GENERATED_ARCHIVE_DIR", archive_dir)
-    monkeypatch.setattr(aggressive_strategy_cycle, "PROPOSALS_DIR", proposals_dir)
-    monkeypatch.setattr(aggressive_strategy_cycle, "BENCHMARK_DIR", benchmark_dir)
-    monkeypatch.setattr(aggressive_strategy_cycle, "GENERATED_RETENTION_GRACE_DAYS", 30)
-    monkeypatch.setattr(aggressive_strategy_cycle, "GENERATED_MIN_SIGNALS_FOR_GATE", 5)
-    monkeypatch.setattr(aggressive_strategy_cycle, "GENERATED_MIN_LABELED_FOR_GATE", 3)
-    monkeypatch.setattr(aggressive_strategy_cycle, "GENERATED_MIN_OBSERVED_SIGNALS_FOR_GATE", 3)
-    monkeypatch.setattr(aggressive_strategy_cycle, "GENERATED_MIN_OBSERVATION_COVERAGE", 0.30)
-    monkeypatch.setattr(aggressive_strategy_cycle, "GENERATED_MIN_BENCHMARK_SCORE", 0.60)
+    monkeypatch.setattr(strategy_factory_cycle, "GENERATED_DIR", generated_dir)
+    monkeypatch.setattr(strategy_factory_cycle, "GENERATED_ARCHIVE_DIR", archive_dir)
+    monkeypatch.setattr(strategy_factory_cycle, "PROPOSALS_DIR", proposals_dir)
+    monkeypatch.setattr(strategy_factory_cycle, "BENCHMARK_DIR", benchmark_dir)
+    monkeypatch.setattr(strategy_factory_cycle, "GENERATED_RETENTION_GRACE_DAYS", 30)
+    monkeypatch.setattr(strategy_factory_cycle, "GENERATED_MIN_SIGNALS_FOR_GATE", 5)
+    monkeypatch.setattr(strategy_factory_cycle, "GENERATED_MIN_LABELED_FOR_GATE", 3)
+    monkeypatch.setattr(strategy_factory_cycle, "GENERATED_MIN_OBSERVED_SIGNALS_FOR_GATE", 3)
+    monkeypatch.setattr(strategy_factory_cycle, "GENERATED_MIN_OBSERVATION_COVERAGE", 0.30)
+    monkeypatch.setattr(strategy_factory_cycle, "GENERATED_MIN_BENCHMARK_SCORE", 0.60)
 
-    archived = aggressive_strategy_cycle.apply_generated_retention_gate()
+    archived = strategy_factory_cycle.apply_generated_retention_gate()
 
     assert archived == []
     assert module.exists()

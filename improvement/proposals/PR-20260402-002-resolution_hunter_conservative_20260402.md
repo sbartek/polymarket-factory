@@ -3,7 +3,7 @@
     - **proposal_id:** PR-20260402-002
     - **date:** 2026-04-02
     - **proposed_by:** aggressive_strategy_cycle
-    - **status:** approved
+    - **status:** archived
 
     ## Plain-language idea
 
@@ -49,3 +49,7 @@
     ## Approval note
 
     Auto-approved under the one-month aggressive strategy experiment.
+
+## Benchmark gate note
+
+Archived by benchmark gate: no generated benchmark evidence after 3 days
