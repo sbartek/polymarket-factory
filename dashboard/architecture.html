@@ -243,13 +243,17 @@
 
         <div class="arch-grid">
           <div class="arch-card">
-            <h3>Launchd Schedule</h3>
-            <div class="schedule-row"><span class="schedule-time">:30</span><span class="schedule-label">Scan phase &mdash; fetch 500 markets, run all strategies, cache signals</span></div>
+            <h3>Cron Schedule (VM) / Launchd (Mac)</h3>
+            <div class="schedule-row"><span class="schedule-time">:30</span><span class="schedule-label">Scan phase &mdash; fetch 1000 markets, run all strategies, cache signals (LLM)</span></div>
             <div class="schedule-row"><span class="schedule-time">:00</span><span class="schedule-label">Execute phase &mdash; read cached signals, size, trade, resolve, notify</span></div>
+            <div class="schedule-row"><span class="schedule-time">:20 / :50</span><span class="schedule-label">Observer &mdash; price snapshots for 1000 markets (no LLM)</span></div>
+            <div class="schedule-row"><span class="schedule-time">:25 / :55</span><span class="schedule-label">Trade fetcher &mdash; CLOB trade data from Polymarket Data API</span></div>
+            <div class="schedule-row"><span class="schedule-time">07:30</span><span class="schedule-label">Research &mdash; scan-only run, no trades</span></div>
             <div class="schedule-row"><span class="schedule-time">09:00</span><span class="schedule-label">Full WhatsApp summary (all strategies, portfolio stats)</span></div>
-            <div class="schedule-row"><span class="schedule-time">every 2h</span><span class="schedule-label">Combined run: fast pass (1000 mkts observations) + slow pass (500 mkts strategies)</span></div>
-            <div class="schedule-row"><span class="schedule-time">every 30m</span><span class="schedule-label">Observer &mdash; price snapshots for 1000 markets (no LLM)</span></div>
-            <div class="schedule-row"><span class="schedule-time">every 30m</span><span class="schedule-label">Trade fetcher &mdash; CLOB trade data from Polymarket Data API (no auth)</span></div>
+            <div class="schedule-row"><span class="schedule-time">10:40 / 22:40</span><span class="schedule-label">Strategy factory &mdash; evaluation + auto-generate strategy proposals</span></div>
+            <div class="schedule-row"><span class="schedule-time">19:30</span><span class="schedule-label">Live run &mdash; carry_rewards (real money)</span></div>
+            <div class="schedule-row"><span class="schedule-time">03:45</span><span class="schedule-label">DB backup &mdash; local + GCS (30-day retention)</span></div>
+            <div class="schedule-row"><span class="schedule-time">04:15</span><span class="schedule-label">Retention cleanup &mdash; prune rows older than 730 days</span></div>
           </div>
 
           <div class="arch-card">
