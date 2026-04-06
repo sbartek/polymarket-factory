@@ -704,7 +704,7 @@ uv run python scripts/backup_db.py --keep 14</div>
             <tbody>
               <tr><td>com.polymarket.factory</td><td>Every 2 hours at :00 (paper environment)</td></tr>
               <tr><td>com.polymarket.factory.live</td><td>19:30 daily (live environment)</td></tr>
-              <tr><td>com.polymarket.factory.aggressive</td><td>10:30 / 22:30 daily</td></tr>
+              <tr><td>com.polymarket.factory.strategy-factory</td><td>10:30 / 22:30 daily</td></tr>
               <tr><td>com.polymarket.factory.backup</td><td>03:45 daily</td></tr>
             </tbody>
           </table>
@@ -759,7 +759,7 @@ uv run python scripts/publish_dashboard.py ~/path/to/dashboard-repo --commit --p
               <tr><td>CLOB</td><td>Central Limit Order Book — Polymarket's on-chain order book, used for execution checks</td></tr>
               <tr><td>DDGS</td><td>DuckDuckGo Search — used by news-based strategies to fetch recent headlines</td></tr>
               <tr><td>OpenClaw</td><td>Internal tool for WhatsApp messaging via the runner summary dispatch</td></tr>
-              <tr><td>launchd</td><td>macOS daemon scheduler — runs the paper, live, aggressive, and backup jobs on their configured calendars</td></tr>
+              <tr><td>launchd</td><td>macOS daemon scheduler — runs the paper, live, strategy-factory, and backup jobs on their configured calendars</td></tr>
               <tr><td>Karpathy pattern</td><td>Auto-generating living documentation from DB data via LLM — used by update_wiki.py</td></tr>
             </tbody>
           </table>

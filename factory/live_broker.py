@@ -5,6 +5,7 @@ from datetime import datetime
 from . import clob as clob_api
 from .db import FactoryDB, TRADE_FIELDS
 from .models import Signal, Trade
+from .notify import send_notification
 from .strategy_meta import ACTIVE_STRATEGIES, strategy_metadata
 
 LIVE_EXPOSURE_CAP_USDC = 100.0
@@ -82,10 +83,16 @@ class LiveBroker:
                     strategy=signal.strategy,
                     payload={"yes_order_id": yes_order_id, "yes_size": yes_size, "market_id": signal.market_id},
                 )
-            return self._record_trade(
+            trade = self._record_trade(
                 signal, amount_usdc, p_yes, outcome="PARTIAL_YES_UNHEDGED",
                 notes=f"UNHEDGED:yes_only,clob_id={yes_order_id},no_failed",
             )
+            send_notification(
+                f"\U0001f6a8 UNHEDGED POSITION: YES leg filled (order {yes_order_id}) "
+                f"but NO leg failed for {signal.market_title}. "
+                f"Amount: ${amount_usdc:.2f}. Manual intervention may be needed."
+            )
+            return trade
 
         clob_ids = f"{yes_resp.get('orderID', '?')},{no_resp.get('orderID', '?')}"
         fill_price = round(p_yes + p_no, 4)  # cost per full set
@@ -171,6 +178,11 @@ class LiveBroker:
             print(f"  [live_broker] failed to sell YES for unhedged {trade['id']}")
             if self.db and self.run_id:
                 self.db.log_event(self.run_id, "error", "unhedged_sell_failed", strategy=trade.get("strategy"), payload={"trade_id": trade["id"]})
+            send_notification(
+                f"\U0001f6a8 FAILED TO CLOSE UNHEDGED: Could not sell YES tokens "
+                f"for {trade.get('market_title', trade.get('market_id', '?'))}. "
+                f"Position remains open. Trade ID: {trade['id']}."
+            )
             return False
 
         sell_order_id = resp.get("orderID", "?")

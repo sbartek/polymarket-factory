@@ -9,7 +9,10 @@ from factory.strategies.price_move_fade import PriceMoveFadeStrategy, _days_to_c
 
 
 def _make_db():
-    return FactoryDB(path=Path(tempfile.mktemp(suffix=".db")))
+    db = FactoryDB(path=Path(tempfile.mktemp(suffix=".db")))
+    # Create a valid run for FK constraints
+    db._test_run_id = db.start_run("paper")
+    return db
 
 
 def _insert_observation(db, market_id, yes_price, volume, close_time, created_at, title="Test market"):
@@ -20,7 +23,7 @@ def _insert_observation(db, market_id, yes_price, volume, close_time, created_at
                 yes_price, best_bid, best_ask, spread, liquidity, volume, volume_24hr,
                 close_time, created_at)
                VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, ?, NULL, ?, ?)""",
-            ("run1", market_id, market_id, market_id, title,
+            (db._test_run_id, market_id, market_id, market_id, title,
              yes_price, volume, close_time, created_at),
         )
         conn.commit()

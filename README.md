@@ -300,7 +300,7 @@ uv run python scripts/publish_dashboard.py ~/workai/projects/pplayouts-dashboard
 Operational notes:
 - `scripts/publish_dashboard.py` runs `scripts.update_wiki.py` before export/build unless `--skip-export` is passed.
 - `scripts.update_wiki.py` calls Claude/Codex tooling, so the publish flow may require external access and can take longer than a plain file sync.
-- `run_aggressive_cycle.sh` writes its scheduled launchd output to `factory-aggressive.log`; that file is a disposable local log and is gitignored.
+- `run_strategy_factory.sh` writes its scheduled launchd output to `factory-strategy-factory.log`; that file is a disposable local log and is gitignored.
 
 Local preview:
 
@@ -389,7 +389,7 @@ else               → Mac mode (sources .env, hardcoded Mac PATH)
 | Trade fetcher | every 30 min (+5 offset) | `run_trade_fetcher.sh` |
 | Research | daily 07:30 | `run_factory_research.sh` |
 | Live | daily 19:30 | `run_factory_live.sh` |
-| Aggressive cycle | daily 10:30 + 22:30 | `run_aggressive_cycle.sh` |
+| Strategy factory | daily 10:30 + 22:30 | `run_strategy_factory.sh` |
 | Retention cleanup | daily 04:15 | `run_retention_cleanup.sh` |
 | DB backup | daily 03:45 | `run_backup.sh` |
 

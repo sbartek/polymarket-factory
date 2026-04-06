@@ -31,6 +31,9 @@ from .strategies import STRATEGIES
 from .strategy_meta import ACTIVE_STRATEGIES, strategy_metadata, should_run_in_cycle
 
 
+SIGNAL_PRICE_DRIFT_THRESHOLD = 0.10
+
+
 class DryRunBroker:
     """Read-only wrapper around a broker-like object for safe manual passes."""
 
@@ -464,6 +467,31 @@ def format_wa_summary(new_trades: list[tuple], closed_trades: list[dict], alert_
     return "\n".join(lines)
 
 
+def _current_yes_price(market_index: dict, market_id: str) -> float | None:
+    """Look up the current YES price for a market from the fresh market index."""
+    entry = market_index.get(market_id)
+    if not entry:
+        return None
+    market = entry.get("market")
+    if not market:
+        # event-level entry: try first active market
+        event = entry.get("event", {})
+        active = [m for m in (event.get("markets") or []) if not m.get("closed")]
+        market = active[0] if active else ((event.get("markets") or [None])[0])
+    if not market:
+        return None
+    prices = market.get("outcomePrices")
+    if isinstance(prices, str):
+        try:
+            parsed = json.loads(prices)
+            return _safe_float(parsed[0] if parsed else None)
+        except Exception:
+            return None
+    elif isinstance(prices, list):
+        return _safe_float(prices[0] if prices else None)
+    return None
+
+
 def _reconstruct_signal(row: dict) -> Signal:
     """Rebuild a Signal dataclass from a DB signals row."""
     return Signal(
@@ -624,6 +652,15 @@ def run(environment: str = "paper", dry_run: bool = False, send: bool = True, fa
                     print(f"  [{sig.strategy}] skip cooldown: {sig.market_title[:45]}")
                     db.log_decision(run_id, "cooldown_check", "skip", strategy=sig.strategy, market_id=sig.market_id, reason="signal_within_24h")
                     continue
+                current_price = _current_yes_price(market_index, sig.market_id)
+                if current_price is not None:
+                    drift = abs(current_price - sig.market_price)
+                    if drift > SIGNAL_PRICE_DRIFT_THRESHOLD:
+                        print(f"  [{sig.strategy}] skip price_drift: {sig.market_title[:45]} | scan {sig.market_price:.2f} → now {current_price:.2f} ({drift:.2f})")
+                        db.log_decision(run_id, "price_drift", "skip", strategy=sig.strategy, market_id=sig.market_id,
+                                        reason=f"price moved {drift:.2f} (scan {sig.market_price:.2f} → now {current_price:.2f})",
+                                        details={"scan_price": sig.market_price, "current_price": current_price, "drift": round(drift, 4), "threshold": SIGNAL_PRICE_DRIFT_THRESHOLD})
+                        continue
                 amount = strategy.size(sig)
                 if amount < 1.0:
                     db.log_decision(run_id, "size_check", "skip", strategy=sig.strategy, market_id=sig.market_id, reason="tiny_size", details={"amount": amount})

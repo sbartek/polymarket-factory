@@ -35,8 +35,8 @@ def _log_prompt(request_id: str, prompt: str, method: str) -> None:
         }
         with open(PROMPT_LOG, "a") as f:
             f.write(json.dumps(entry) + "\n")
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"  [claude] WARNING: failed to log prompt: {e}")
 
 
 def _log_response(request_id: str, response: str, method: str, status: str, elapsed_ms: int) -> None:
@@ -52,8 +52,8 @@ def _log_response(request_id: str, response: str, method: str, status: str, elap
         }
         with open(RESPONSE_LOG, "a") as f:
             f.write(json.dumps(entry) + "\n")
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"  [claude] WARNING: failed to log response: {e}")
 
 
 def reset_circuit_breaker():

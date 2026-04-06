@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import subprocess
 from collections import Counter, defaultdict
@@ -31,8 +32,7 @@ GENERATED_ARCHIVE_DIR = GENERATED_DIR / "archive"
 ACTIVE_STRATEGIES = _CANONICAL_ACTIVE
 TIME_WINDOWS = ["super_short", "intraday", "short", "medium", "long", "unknown"]
 RAW_SNAPSHOT_RETENTION_DAYS = 365 * 2
-PROJECT_STORAGE_SOFT_LIMIT_BYTES = 90 * 1024 * 1024 * 1024
-PROJECT_STORAGE_HARD_LIMIT_BYTES = 100 * 1024 * 1024 * 1024
+DISK_FREE_ALERT_THRESHOLD = 0.20  # alert when less than 20% of disk is free
 PROJECT_STORAGE_EXCLUDED_DIRS = {".git", ".venv", "node_modules", "__pycache__", ".pytest_cache"}
 
 
@@ -441,19 +441,24 @@ def fetch_storage(conn: sqlite3.Connection) -> dict:
     benchmark_bytes = dir_size_bytes(BENCHMARK_DIR)
     dashboard_bytes = dir_size_bytes(OUTPUT_DIR)
     project_bytes = dir_size_bytes(PROJECT_ROOT, excluded_dirs=PROJECT_STORAGE_EXCLUDED_DIRS)
+    disk_stat = os.statvfs(str(PROJECT_ROOT))
+    disk_total = disk_stat.f_frsize * disk_stat.f_blocks
+    disk_free = disk_stat.f_frsize * disk_stat.f_bavail
+    disk_free_pct = disk_free / disk_total if disk_total else 1.0
     return {
         "generated_at": utc_now_iso(),
         "database_bytes": db_bytes,
         "benchmark_data_bytes": benchmark_bytes,
         "dashboard_data_bytes": dashboard_bytes,
         "project_storage_bytes": project_bytes,
+        "disk_total_bytes": disk_total,
+        "disk_free_bytes": disk_free,
+        "disk_free_pct": round(disk_free_pct, 4),
+        "disk_free_alert": disk_free_pct < DISK_FREE_ALERT_THRESHOLD,
         "raw_snapshot_archive_bytes": int(archive_total_bytes or 0),
         "raw_snapshot_archive_runs": int(archive_run_count or 0),
         "market_observation_rows": int(observation_row_count or 0),
         "raw_snapshot_retention_days": RAW_SNAPSHOT_RETENTION_DAYS,
-        "project_storage_soft_limit_bytes": PROJECT_STORAGE_SOFT_LIMIT_BYTES,
-        "project_storage_hard_limit_bytes": PROJECT_STORAGE_HARD_LIMIT_BYTES,
-        "project_storage_alert": project_bytes >= PROJECT_STORAGE_SOFT_LIMIT_BYTES,
         "recent_snapshot_archives": [
             {
                 "run_id": row["run_id"],
@@ -580,14 +585,12 @@ def fetch_overview(conn: sqlite3.Connection, experiments: list[dict], warnings: 
         alerts.append({"level": "warning", "message": f"Latest run status is {normalize_status(latest['status'])}."})
     if execution["checks_30d"] == 0:
         alerts.append({"level": "warning", "message": "No Phase A execution checks recorded in the last 30 days."})
-    if storage and storage.get("project_storage_alert"):
-        project_gb = float(storage.get("project_storage_bytes") or 0) / (1024 ** 3)
+    if storage and storage.get("disk_free_alert"):
+        disk_free_gb = float(storage.get("disk_free_bytes") or 0) / (1024 ** 3)
+        disk_free_pct = float(storage.get("disk_free_pct") or 0) * 100
         alerts.append({
             "level": "warning",
-            "message": (
-                f"Project storage is {project_gb:.1f} GB, near the 100 GB limit. "
-                f"Raw snapshot retention policy is {RAW_SNAPSHOT_RETENTION_DAYS} days."
-            ),
+            "message": f"Disk space low: {disk_free_gb:.1f} GB free ({disk_free_pct:.0f}%). Threshold is {DISK_FREE_ALERT_THRESHOLD * 100:.0f}%.",
         })
     for warning in warnings[:5]:
         alerts.append({"level": "warning", "message": warning})

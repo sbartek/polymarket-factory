@@ -70,11 +70,12 @@ def _insert_signal(db, run_id: str, created_at: str):
 
 class TestRetentionCleanup:
     def test_deletes_old_archives(self, db):
-        run_id = db.start_run("paper")
+        old_run_id = db.start_run("paper")
+        recent_run_id = db.start_run("paper")
         old = (datetime.now(UTC) - timedelta(days=800)).isoformat(timespec="seconds")
         recent = datetime.now(UTC).isoformat(timespec="seconds")
-        _insert_archive(db, "old-run", old)
-        _insert_archive(db, run_id, recent)
+        _insert_archive(db, old_run_id, old)
+        _insert_archive(db, recent_run_id, recent)
 
         result = db.cleanup_old_snapshots(retention_days=730)
 
@@ -85,7 +86,8 @@ class TestRetentionCleanup:
         run_id = db.start_run("paper")
         old = (datetime.now(UTC) - timedelta(days=800)).isoformat(timespec="seconds")
         recent = datetime.now(UTC).isoformat(timespec="seconds")
-        _insert_observation(db, "old-run", old)
+        old_run_id = db.start_run("paper")
+        _insert_observation(db, old_run_id, old)
         _insert_observation(db, run_id, recent)
 
         result = db.cleanup_old_snapshots(retention_days=730)

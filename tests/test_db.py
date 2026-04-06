@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import csv
+import sqlite3
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -47,6 +49,59 @@ class TestRunLock:
     def test_independent_lock_names_do_not_interfere(self, db):
         db.acquire_run_lock("main", "run1")
         assert db.acquire_run_lock("secondary", "run2") is True
+
+    def test_acquire_returns_false_when_database_locked(self, db):
+        """BEGIN EXCLUSIVE failure (db locked by another process) returns False."""
+        real_connect = db._connect
+
+        def _connect_that_fails_on_begin():
+            conn = real_connect()
+            conn = _WrapConn(conn)
+            conn.fail_on_begin_exclusive = True
+            return conn
+
+        with patch.object(db, "_connect", side_effect=_connect_that_fails_on_begin):
+            assert db.acquire_run_lock("main", "run1") is False
+
+    def test_acquire_uses_exclusive_transaction(self, db):
+        """Verify BEGIN EXCLUSIVE is issued (atomic check+write)."""
+        real_connect = db._connect
+        executed_stmts: list[str] = []
+
+        def _tracking_connect():
+            conn = real_connect()
+            conn = _WrapConn(conn, log=executed_stmts)
+            return conn
+
+        with patch.object(db, "_connect", side_effect=_tracking_connect):
+            db.acquire_run_lock("main", "run1")
+
+        assert "BEGIN EXCLUSIVE" in executed_stmts
+
+
+class _WrapConn:
+    """Thin wrapper around sqlite3.Connection for test instrumentation."""
+
+    def __init__(self, conn: sqlite3.Connection, *, log: list[str] | None = None):
+        self._conn = conn
+        self._log = log
+        self.fail_on_begin_exclusive = False
+
+    def execute(self, sql, *args, **kwargs):
+        if self._log is not None:
+            self._log.append(sql)
+        if self.fail_on_begin_exclusive and sql == "BEGIN EXCLUSIVE":
+            raise sqlite3.OperationalError("database is locked")
+        return self._conn.execute(sql, *args, **kwargs)
+
+    def commit(self):
+        return self._conn.commit()
+
+    def rollback(self):
+        return self._conn.rollback()
+
+    def close(self):
+        return self._conn.close()
 
 
 # ---------------------------------------------------------------------------

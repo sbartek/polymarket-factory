@@ -240,5 +240,8 @@ def test_fetch_storage_reports_sizes_and_recent_archives(tmp_path, monkeypatch):
     assert storage["raw_snapshot_archive_runs"] == 1
     assert storage["market_observation_rows"] == 1
     assert storage["raw_snapshot_retention_days"] == 730
-    assert storage["project_storage_hard_limit_bytes"] > storage["project_storage_soft_limit_bytes"]
+    assert storage["disk_total_bytes"] > 0
+    assert storage["disk_free_bytes"] > 0
+    assert 0 <= storage["disk_free_pct"] <= 1.0
+    assert isinstance(storage["disk_free_alert"], bool)
     assert len(storage["recent_snapshot_archives"]) == 1

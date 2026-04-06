@@ -74,8 +74,8 @@ def test_place_with_retry_returns_none_after_two_failures(tmp_path, monkeypatch)
 
 def test_open_full_set_records_partial_when_no_leg_fails(tmp_path, monkeypatch):
     db = FactoryDB(path=tmp_path / "test.sqlite3")
-    db.start_run(mode="paper")  # ensure run_logs table exists
-    broker = LiveBroker(db=db, run_id="run1")
+    run_id = db.start_run(mode="live")
+    broker = LiveBroker(db=db, run_id=run_id)
 
     call_count = {"n": 0}
     def side_effect(token_id, size):
@@ -129,7 +129,8 @@ def test_open_full_set_logs_error_event_when_no_leg_fails(tmp_path, monkeypatch)
 
 def test_open_full_set_returns_none_when_yes_leg_fails(tmp_path, monkeypatch):
     db = FactoryDB(path=tmp_path / "test.sqlite3")
-    broker = LiveBroker(db=db, run_id="run1")
+    run_id = db.start_run(mode="live")
+    broker = LiveBroker(db=db, run_id=run_id)
 
     monkeypatch.setattr(clob_module, "place_market_order", lambda *_: (_ for _ in ()).throw(RuntimeError("YES fail")))
 
@@ -141,7 +142,8 @@ def test_open_full_set_returns_none_when_yes_leg_fails(tmp_path, monkeypatch):
 
 def test_open_full_set_records_full_set_when_both_legs_succeed(tmp_path, monkeypatch):
     db = FactoryDB(path=tmp_path / "test.sqlite3")
-    broker = LiveBroker(db=db, run_id="run1")
+    run_id = db.start_run(mode="live")
+    broker = LiveBroker(db=db, run_id=run_id)
 
     call_count = {"n": 0}
     def succeed(token_id, size):

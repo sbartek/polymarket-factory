@@ -100,7 +100,7 @@ Run: `uv run eval/report.py`
 |-----|----------|
 | `com.polymarket.factory` | Every 2h at :00 (00:00, 02:00 … 22:00) · paper env |
 | `com.polymarket.factory.live` | 19:30 daily · live env |
-| `com.polymarket.factory.aggressive` | 10:30 / 22:30 daily |
+| `com.polymarket.factory.strategy-factory` | 10:30 / 22:30 daily |
 | `com.polymarket.factory.research` | 07:30 daily |
 | `com.polymarket.factory.backup` | 03:45 daily |
 
@@ -179,13 +179,13 @@ Full summary at 09:00 Madrid time; delta updates at other runs.
 - `factory/runner.py` now also stores the raw fetched Gamma snapshot per run in `market_snapshot_archives`, so future runs are reconstructible from original payloads instead of only derived observations
 - Historical backfill is not feasible from current local artifacts; the repo has SQLite state and `trades.csv`, but no stored raw market snapshot history before `market_snapshot_archives`, and `run_logs` do not contain enough payload detail to reconstruct old market states
 - The dashboard now exports `storage.json` and shows a Storage panel on Overview with current project size, DB size, raw snapshot archive size, observation row count, and recent raw snapshot payload sizes
-- Current storage policy is raw snapshot retention for 730 days, with a soft alert near 90 GB and a hard reference limit of 100 GB for project storage
+- Current storage policy is raw snapshot retention for 730 days, with a disk-free alert when less than 20% of disk space remains
 - `dashboard/reference.html` was refreshed to document the replay benchmark, the explicit `research / paper / live` split, the current launchd schedules, and the live-only `carry_rewards` path
 - There is now a dedicated research entrypoint in `run_factory_research.sh` plus `launchd/com.polymarket.factory.research.plist`, installed into `~/Library/LaunchAgents` and loaded in `launchd` under `gui/501` for 07:30 daily, logging to `factory-research.log`
 - There is now a dedicated live launchd path: `run_factory_live.sh` plus `launchd/com.polymarket.factory.live.plist`, scheduled for 19:30 and writing to `factory-live.log` (gitignored)
-- `com.polymarket.factory`, `com.polymarket.factory.aggressive`, and `com.polymarket.factory.live` all exist in `launchd` under `gui/501`; `launchctl print gui/501/<label>` is the reliable check because `launchctl list` may show nothing while idle for calendar agents
-- `factory-aggressive.log` is not an input file; it is the stdout/stderr sink for `launchd/com.polymarket.factory.aggressive.plist`, can be deleted safely, and will be recreated by the next aggressive cycle run
-- Keep `factory-aggressive.log` ignored in the repo; `.gitignore` includes it alongside `factory.log`
+- `com.polymarket.factory`, `com.polymarket.factory.strategy-factory`, and `com.polymarket.factory.live` all exist in `launchd` under `gui/501`; `launchctl print gui/501/<label>` is the reliable check because `launchctl list` may show nothing while idle for calendar agents
+- `factory-strategy-factory.log` is the stdout/stderr sink for `launchd/com.polymarket.factory.strategy-factory.plist`, can be deleted safely, and will be recreated by the next strategy factory run
+- Keep `factory-strategy-factory.log` ignored in the repo; `.gitignore` includes it alongside `factory.log`
 - The wiki update path uses `factory/claude.py`, which calls Anthropic if `ANTHROPIC_API_KEY` is set and otherwise shells out to `claude --permission-mode bypassPermissions --print ...`; this can block unless external access is allowed
 
 ## Current plan state (2026-04-04)
@@ -207,9 +207,28 @@ Session 3 (2026-04-04): polling_vs_market integration + wiki cleanup + spread_ar
 - `mutually_exclusive_oversum` built and deployed as alert-only: Σ(YES) > 1.08 → NO on most overpriced leg. Filters: incomplete open fields, price-target non-exclusive legs (hit/reach/dip keywords), MAX_OVERSUM=1.50. 15 tests. Promote to paper after 20 validated alerts showing >60% revert within 7 days.
 
 Remaining backlog:
-- DB retention cleanup job (730-day policy exists, no enforcement)
 - `mutually_exclusive_oversum` alert-only — accumulating signals, promote after 20 validated alerts
 - `spread_arb` retest — 0 open positions as of 2026-04-04, eval after 10+ closed trades
+- verify Slack notifications on the GCloud VM after pulling the latest main; local review found the VM alias (`pplayouts`) but SSH auth from this environment failed, so in-machine verification is still pending
+
+## Operational updates (2026-04-06)
+
+- Multiple cleanup / hardening / hygiene commits were completed and pushed to `origin/main`:
+  - `2ada71c` — align tests with current strategy contracts
+  - `4e9f0e8` — improve notification delivery reporting
+  - `2e20e6f` — add generated strategy proposals and repo hygiene
+  - `1cbc6eb` — refresh replay benchmark artifacts
+  - `dec5ceb` — add retention cleanup job and harden notifications
+- A real retention cleanup path now exists:
+  - `scripts/retention_cleanup.py`
+  - `run_retention_cleanup.sh`
+  - `launchd/com.polymarket.factory.retention_cleanup.plist`
+  - plus test coverage for both DB cleanup behavior and the script entrypoint
+- Notification hardening phase 2 is now in place:
+  - per-channel retries/backoff
+  - per-channel attempt counts in delivery reports
+  - runner output now distinguishes cases like `sent_after_2_attempts`, `failed_after_3_attempts`, and `unconfigured`
+- Full suite passed after the retention + notification work: `uv run pytest -q` → `300 passed`.
 
 ## Test alignment notes (2026-04-06)
 

@@ -408,6 +408,7 @@ class FactoryDB:
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.path)
+        conn.execute("PRAGMA foreign_keys = ON")
         conn.row_factory = sqlite3.Row
         return conn
 
@@ -435,9 +436,12 @@ class FactoryDB:
     def acquire_run_lock(self, name: str, owner_run_id: str, ttl_seconds: int = 7200) -> bool:
         now = utcnow()
         expires = utcnow_plus_seconds(ttl_seconds)
-        with self._connect() as conn:
+        conn = self._connect()
+        try:
+            conn.execute("BEGIN EXCLUSIVE")
             row = conn.execute("SELECT owner_run_id, expires_at FROM run_locks WHERE name = ?", (name,)).fetchone()
             if row and row["expires_at"] and row["expires_at"] > now and row["owner_run_id"] != owner_run_id:
+                conn.rollback()
                 return False
             conn.execute(
                 "INSERT INTO run_locks (name, owner_run_id, acquired_at, expires_at) VALUES (?, ?, ?, ?) "
@@ -446,6 +450,15 @@ class FactoryDB:
             )
             conn.commit()
             return True
+        except sqlite3.OperationalError:
+            # Database locked by another process — cannot acquire
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            return False
+        finally:
+            conn.close()
 
     def release_run_lock(self, name: str, owner_run_id: str):
         with self._connect() as conn:
@@ -767,7 +780,8 @@ class FactoryDB:
                     )
                     if conn.total_changes:
                         inserted += 1
-                except Exception:
+                except Exception as e:
+                    print(f"  [db] WARNING: failed to insert market trade: {e}")
                     continue
             conn.commit()
         return inserted
@@ -872,7 +886,8 @@ class FactoryDB:
                         f"SELECT COUNT(*) FROM {table} WHERE {col} < ?",
                         (cutoff,),
                     ).fetchone()[0]
-                except Exception:
+                except Exception as e:
+                    print(f"  [db] WARNING: get_retention_cleanup_counts failed for {table}: {e}")
                     count = 0  # table may not exist yet
                 result[f"{table}_deleted"] = int(count or 0)
         result["archives_deleted"] = result.get("market_snapshot_archives_deleted", 0)
@@ -890,7 +905,8 @@ class FactoryDB:
                     deleted = conn.execute(
                         f"DELETE FROM {table} WHERE {col} < ?", (cutoff,)
                     ).rowcount
-                except Exception:
+                except Exception as e:
+                    print(f"  [db] WARNING: cleanup_old_snapshots failed for {table}: {e}")
                     deleted = 0  # table may not exist yet
                 result[f"{table}_deleted"] = deleted
             conn.commit()

@@ -9,7 +9,7 @@ data/*.sqlite3-shm
 backups/*.sqlite3
 backups/*.csv
 factory.log
-factory-aggressive.log
+factory-strategy-factory.log
 factory-live.log
 factory-research.log
 factory_observer.log

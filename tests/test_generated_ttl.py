@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from pathlib import Path
 
-import scripts.aggressive_strategy_cycle as aggressive_strategy_cycle
+import scripts.strategy_factory_cycle as strategy_factory_cycle
 
 
 def test_hard_ttl_archives_old_insufficient_evidence_module(tmp_path, monkeypatch):
@@ -21,14 +21,14 @@ def test_hard_ttl_archives_old_insufficient_evidence_module(tmp_path, monkeypatc
     import os
     os.utime(module_file, (old_time, old_time))
 
-    monkeypatch.setattr(aggressive_strategy_cycle, "GENERATED_DIR", gen_dir)
-    monkeypatch.setattr(aggressive_strategy_cycle, "GENERATED_ARCHIVE_DIR", archive_dir)
-    monkeypatch.setattr(aggressive_strategy_cycle, "GENERATED_MAX_TTL_DAYS", 14)
-    monkeypatch.setattr(aggressive_strategy_cycle, "GENERATED_RETENTION_GRACE_DAYS", 3)
+    monkeypatch.setattr(strategy_factory_cycle, "GENERATED_DIR", gen_dir)
+    monkeypatch.setattr(strategy_factory_cycle, "GENERATED_ARCHIVE_DIR", archive_dir)
+    monkeypatch.setattr(strategy_factory_cycle, "GENERATED_MAX_TTL_DAYS", 14)
+    monkeypatch.setattr(strategy_factory_cycle, "GENERATED_RETENTION_GRACE_DAYS", 3)
 
     # Return a benchmark with insufficient evidence
     monkeypatch.setattr(
-        aggressive_strategy_cycle,
+        strategy_factory_cycle,
         "benchmark_lookup",
         lambda scope: {
             "old_strat": {
@@ -42,7 +42,7 @@ def test_hard_ttl_archives_old_insufficient_evidence_module(tmp_path, monkeypatc
     )
 
     monkeypatch.setattr(
-        aggressive_strategy_cycle,
+        strategy_factory_cycle,
         "generated_module_rows",
         lambda: [
             {
@@ -54,10 +54,10 @@ def test_hard_ttl_archives_old_insufficient_evidence_module(tmp_path, monkeypatc
         ],
     )
 
-    monkeypatch.setattr(aggressive_strategy_cycle, "proposal_paths_for_strategy", lambda name: [])
-    monkeypatch.setattr(aggressive_strategy_cycle, "rewrite_proposal_status", lambda paths, status, note: None)
+    monkeypatch.setattr(strategy_factory_cycle, "proposal_paths_for_strategy", lambda name: [])
+    monkeypatch.setattr(strategy_factory_cycle, "rewrite_proposal_status", lambda paths, status, note: None)
 
-    archived = aggressive_strategy_cycle.apply_generated_retention_gate()
+    archived = strategy_factory_cycle.apply_generated_retention_gate()
 
     assert len(archived) == 1
     assert "hard TTL" in archived[0]["reason"]
@@ -72,13 +72,13 @@ def test_ttl_does_not_archive_young_insufficient_evidence_module(tmp_path, monke
     module_file = gen_dir / "young_strat.py"
     module_file.write_text("# strategy\nname = 'young_strat'\n")
 
-    monkeypatch.setattr(aggressive_strategy_cycle, "GENERATED_DIR", gen_dir)
-    monkeypatch.setattr(aggressive_strategy_cycle, "GENERATED_ARCHIVE_DIR", archive_dir)
-    monkeypatch.setattr(aggressive_strategy_cycle, "GENERATED_MAX_TTL_DAYS", 14)
-    monkeypatch.setattr(aggressive_strategy_cycle, "GENERATED_RETENTION_GRACE_DAYS", 30)
+    monkeypatch.setattr(strategy_factory_cycle, "GENERATED_DIR", gen_dir)
+    monkeypatch.setattr(strategy_factory_cycle, "GENERATED_ARCHIVE_DIR", archive_dir)
+    monkeypatch.setattr(strategy_factory_cycle, "GENERATED_MAX_TTL_DAYS", 14)
+    monkeypatch.setattr(strategy_factory_cycle, "GENERATED_RETENTION_GRACE_DAYS", 30)
 
     monkeypatch.setattr(
-        aggressive_strategy_cycle,
+        strategy_factory_cycle,
         "benchmark_lookup",
         lambda scope: {
             "young_strat": {
@@ -93,13 +93,13 @@ def test_ttl_does_not_archive_young_insufficient_evidence_module(tmp_path, monke
 
     pending_calls = []
     monkeypatch.setattr(
-        aggressive_strategy_cycle,
+        strategy_factory_cycle,
         "mark_generated_pending_review",
         lambda row, note: pending_calls.append(row["strategy_name"]),
     )
 
     monkeypatch.setattr(
-        aggressive_strategy_cycle,
+        strategy_factory_cycle,
         "generated_module_rows",
         lambda: [
             {
@@ -111,7 +111,7 @@ def test_ttl_does_not_archive_young_insufficient_evidence_module(tmp_path, monke
         ],
     )
 
-    archived = aggressive_strategy_cycle.apply_generated_retention_gate()
+    archived = strategy_factory_cycle.apply_generated_retention_gate()
 
     assert len(archived) == 0
     assert "young_strat" in pending_calls
