@@ -184,9 +184,14 @@ def call_gemini(prompt: str, max_tokens: int = 2048, timeout: int | None = None)
         response = client.models.generate_content(
             model=GEMINI_MODEL,
             contents=prompt,
-            config=types.GenerateContentConfig(max_output_tokens=max_tokens),
+            config=types.GenerateContentConfig(
+                max_output_tokens=max_tokens,
+                thinking_config=types.ThinkingConfig(thinking_budget=0),
+            ),
         )
-        result_text = response.text
+        result_text = response.text or ""
+        if not result_text:
+            raise ValueError(f"Empty response (finish_reason={response.candidates[0].finish_reason if response.candidates else 'unknown'})")
         elapsed = int((time.monotonic() - t0) * 1000)
         _record_success()
         _log_response(request_id, result_text, "gemini", "success", elapsed)
