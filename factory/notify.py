@@ -7,6 +7,22 @@ import urllib.request
 from pathlib import Path
 
 
+def configured_channels() -> dict[str, dict]:
+    """Return lightweight per-channel configuration status for operator visibility."""
+    group_id = os.environ.get("WHATSAPP_GROUP_ID")
+    webhook_url = os.environ.get("SLACK_WEBHOOK_URL")
+    return {
+        "whatsapp": {
+            "configured": bool(group_id),
+            "target": group_id or None,
+        },
+        "slack": {
+            "configured": bool(webhook_url),
+            "target": "webhook" if webhook_url else None,
+        },
+    }
+
+
 def _load_dotenv():
     """Load .env from project root if env vars not already set."""
     env_file = Path(__file__).parents[1] / ".env"
@@ -94,9 +110,16 @@ def send_slack(text: str) -> bool:
         return False
 
 
-def send_notification(text: str) -> bool:
-    """Send via all available channels. Returns True if any succeeded."""
-    results = []
-    results.append(send_whatsapp(text))
-    results.append(send_slack(text))
-    return any(results)
+def send_notification(text: str) -> dict:
+    """Send via all available channels and return a per-channel delivery report."""
+    cfg = configured_channels()
+    whatsapp_sent = send_whatsapp(text)
+    slack_sent = send_slack(text)
+    return {
+        "any_sent": any((whatsapp_sent, slack_sent)),
+        "channels": {
+            "whatsapp": {"sent": whatsapp_sent},
+            "slack": {"sent": slack_sent},
+        },
+        "configured": cfg,
+    }

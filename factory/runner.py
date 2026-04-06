@@ -789,8 +789,26 @@ def run(environment: str = "paper", dry_run: bool = False, send: bool = True, fa
             sent = True
             db.log_decision(run_id, "notify", "preview_only", reason="dry_or_nosend")
         else:
-            sent = send_notification(wa_msg)
-            db.log_decision(run_id, "notify", "sent" if sent else "failed", reason="notification_send")
+            notify_report = send_notification(wa_msg)
+            sent = bool(notify_report.get("any_sent"))
+            db.log_decision(
+                run_id,
+                "notify",
+                "sent" if sent else "failed",
+                reason="notification_send",
+                details=notify_report,
+            )
+            channel_bits = []
+            for name, status in notify_report.get("channels", {}).items():
+                configured = notify_report.get("configured", {}).get(name, {}).get("configured", False)
+                if status.get("sent"):
+                    channel_bits.append(f"{name}:sent")
+                elif configured:
+                    channel_bits.append(f"{name}:failed")
+                else:
+                    channel_bits.append(f"{name}:unconfigured")
+            if channel_bits:
+                print("Notification detail: " + ", ".join(channel_bits))
 
         print(f"\n{'Dry run preview generated' if dry_run or not send else 'Notification sent'} ✓" if sent else "\nNotification FAILED — check notify channels.")
 
