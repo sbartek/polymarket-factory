@@ -92,7 +92,7 @@ class TestBackfillTradeMetadata:
         assert updated == 1
         row = db.load_trades()[0]
         assert row["lifecycle_group"] == "active"
-        assert row["time_window"] == "medium"
+        assert row["time_window"] == "short"
         assert row["edge_type"] == "information"
 
     def test_preserves_existing_trade_metadata(self, db):

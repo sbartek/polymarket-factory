@@ -211,6 +211,13 @@ Remaining backlog:
 - `mutually_exclusive_oversum` alert-only — accumulating signals, promote after 20 validated alerts
 - `spread_arb` retest — 0 open positions as of 2026-04-04, eval after 10+ closed trades
 
+## Test alignment notes (2026-04-06)
+
+- `weather_edge_v2` tests were updated to match the current v2 contract: widened-bin probability logic, probability floor behavior, and NO-only signaling. The strategy header/comment was also updated so it no longer falsely describes strict `[lo, hi)` bin semantics.
+- `celebrity_tabloid` tag-feed scan test was updated to use a short-window fixture (`days=20`) consistent with the current strategy horizon (`MAX_DAYS = 30`), instead of the stale long-window fixture.
+- `ev_news` is now canonically a `short` time-window strategy; the DB metadata backfill test was updated accordingly.
+- After those test-alignment changes, the full suite passed locally: `uv run pytest -q` → `290 passed`.
+
 ---
 
 ## Context files

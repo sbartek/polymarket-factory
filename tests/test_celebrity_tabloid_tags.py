@@ -119,7 +119,7 @@ def test_scan_finds_candidates_from_celebrity_tagged_market(monkeypatch):
         price=0.45,
         volume=500,
         tags=[{"slug": "celebrities", "label": "Celebrities"}],
-        days=200,
+        days=20,
     )
 
     strat = CelebrityTabloidStrategy()

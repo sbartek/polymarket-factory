@@ -3,12 +3,12 @@ Strategy: weather_edge_v2
 Hypothesis: Polymarket temperature bin markets can be mispriced vs ECMWF ensemble forecasts.
 Fixes over v1:
   - ONLY bet NO on specific bins (v1 YES bets had 8% WR — catastrophic)
-  - Fix range boundary: use lo <= v < hi (exclusive upper) to match market convention
+  - Use widened bin matching in `_prob_from_values()` to offset ensemble under-dispersion
   - Remove min_position_usdc floor — let Kelly size naturally for low-probability events
   - Raise min_ev_pp to 18 (be pickier)
-  - Only signal when ensemble probability is very low (<5%) and market prices >15%
+  - Only signal when adjusted ensemble probability is very low (<5%) and market prices >15%
 Method: No LLM. Regex-parses sub-market questions → geocode → ECMWF ensemble probability.
-Status: ALERT-ONLY — accumulate 30 signals before enabling paper trading.
+Status: promotable paper strategy; current implementation emits NO-only signals.
 """
 import json
 import re
