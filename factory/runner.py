@@ -801,10 +801,17 @@ def run(environment: str = "paper", dry_run: bool = False, send: bool = True, fa
             channel_bits = []
             for name, status in notify_report.get("channels", {}).items():
                 configured = notify_report.get("configured", {}).get(name, {}).get("configured", False)
+                attempts = int(status.get("attempts") or 0)
                 if status.get("sent"):
-                    channel_bits.append(f"{name}:sent")
+                    if attempts > 1:
+                        channel_bits.append(f"{name}:sent_after_{attempts}_attempts")
+                    else:
+                        channel_bits.append(f"{name}:sent")
                 elif configured:
-                    channel_bits.append(f"{name}:failed")
+                    label = f"{name}:failed"
+                    if attempts:
+                        label += f"_after_{attempts}_attempts"
+                    channel_bits.append(label)
                 else:
                     channel_bits.append(f"{name}:unconfigured")
             if channel_bits:

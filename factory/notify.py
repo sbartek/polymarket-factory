@@ -3,6 +3,7 @@ import json
 import os
 import shutil
 import subprocess
+import time
 import urllib.request
 from pathlib import Path
 
@@ -37,6 +38,19 @@ def _load_dotenv():
 
 
 _load_dotenv()
+
+
+def _retry_settings() -> tuple[int, float]:
+    """Return notification retry settings with safe defaults."""
+    try:
+        max_attempts = int(os.environ.get("NOTIFY_MAX_ATTEMPTS", "3"))
+    except ValueError:
+        max_attempts = 3
+    try:
+        backoff_seconds = float(os.environ.get("NOTIFY_RETRY_BACKOFF_SECONDS", "1.0"))
+    except ValueError:
+        backoff_seconds = 1.0
+    return max(1, max_attempts), max(0.0, backoff_seconds)
 
 
 def _find_openclaw() -> str | None:
@@ -110,16 +124,49 @@ def send_slack(text: str) -> bool:
         return False
 
 
+def _send_with_retry(name: str, sender, text: str, configured: bool) -> dict:
+    """Retry configured channels with exponential backoff and per-channel reporting."""
+    report = {"sent": False, "attempts": 0}
+    if not configured:
+        return report
+
+    max_attempts, backoff_seconds = _retry_settings()
+    for attempt in range(1, max_attempts + 1):
+        report["attempts"] = attempt
+        try:
+            if sender(text):
+                report["sent"] = True
+                return report
+        except Exception as e:
+            print(f"  [notify] {name} send raised unexpectedly on attempt {attempt}: {e}")
+        if attempt < max_attempts:
+            delay = backoff_seconds * (2 ** (attempt - 1))
+            print(f"  [notify] {name} delivery failed on attempt {attempt}/{max_attempts}; retrying in {delay:.1f}s")
+            if delay > 0:
+                time.sleep(delay)
+    return report
+
+
 def send_notification(text: str) -> dict:
     """Send via all available channels and return a per-channel delivery report."""
     cfg = configured_channels()
-    whatsapp_sent = send_whatsapp(text)
-    slack_sent = send_slack(text)
+    whatsapp_report = _send_with_retry(
+        "whatsapp",
+        send_whatsapp,
+        text,
+        configured=cfg["whatsapp"]["configured"],
+    )
+    slack_report = _send_with_retry(
+        "slack",
+        send_slack,
+        text,
+        configured=cfg["slack"]["configured"],
+    )
     return {
-        "any_sent": any((whatsapp_sent, slack_sent)),
+        "any_sent": any((whatsapp_report["sent"], slack_report["sent"])),
         "channels": {
-            "whatsapp": {"sent": whatsapp_sent},
-            "slack": {"sent": slack_sent},
+            "whatsapp": whatsapp_report,
+            "slack": slack_report,
         },
         "configured": cfg,
     }

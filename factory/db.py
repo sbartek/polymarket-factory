@@ -17,6 +17,26 @@ TRADE_FIELDS = [
     "amount_usdc", "entry_price", "shares", "opened_at", "closes", "url",
     "status", "exit_price", "closed_at", "pnl_usdc", "resolved_outcome", "notes", "mode",
 ]
+RETENTION_CLEANUP_TABLES = [
+    "market_snapshot_archives",
+    "market_observations",
+    "signals",
+    "decisions",
+    "run_logs",
+    "portfolio_snapshots",
+    "spread_arb_baskets",
+    "resolution_hunter_checks",
+    "stale_market_checks",
+    "correlated_pairs_checks",
+    "correlated_laggard_checks",
+    "esport48_checks",
+    "celebrity_tabloid_checks",
+    "mutually_exclusive_oversum_checks",
+    "polling_vs_market_checks",
+    "signal_execution_checks",
+    "market_trades",
+]
+RETENTION_TIMESTAMP_COLS = {"market_trades": "fetched_at"}
 
 
 def utcnow() -> str:
@@ -840,34 +860,32 @@ class FactoryDB:
             )
             conn.commit()
 
+    def get_retention_cleanup_counts(self, retention_days: int = 730) -> dict[str, int]:
+        """Count rows eligible for retention cleanup without deleting them."""
+        cutoff = (datetime.now(UTC) - timedelta(days=retention_days)).isoformat(timespec="seconds")
+        result = {}
+        with self._connect() as conn:
+            for table in RETENTION_CLEANUP_TABLES:
+                col = RETENTION_TIMESTAMP_COLS.get(table, "created_at")
+                try:
+                    count = conn.execute(
+                        f"SELECT COUNT(*) FROM {table} WHERE {col} < ?",
+                        (cutoff,),
+                    ).fetchone()[0]
+                except Exception:
+                    count = 0  # table may not exist yet
+                result[f"{table}_deleted"] = int(count or 0)
+        result["archives_deleted"] = result.get("market_snapshot_archives_deleted", 0)
+        result["observations_deleted"] = result.get("market_observations_deleted", 0)
+        return result
+
     def cleanup_old_snapshots(self, retention_days: int = 730) -> dict[str, int]:
         """Delete old rows from all unbounded tables (except trades which are permanent)."""
         cutoff = (datetime.now(UTC) - timedelta(days=retention_days)).isoformat(timespec="seconds")
-        tables_with_created_at = [
-            "market_snapshot_archives",
-            "market_observations",
-            "signals",
-            "decisions",
-            "run_logs",
-            "portfolio_snapshots",
-            "spread_arb_baskets",
-            "resolution_hunter_checks",
-            "stale_market_checks",
-            "correlated_pairs_checks",
-            "correlated_laggard_checks",
-            "esport48_checks",
-            "celebrity_tabloid_checks",
-            "mutually_exclusive_oversum_checks",
-            "polling_vs_market_checks",
-            "signal_execution_checks",
-            "market_trades",
-        ]
-        # Tables where the timestamp column is not created_at
-        timestamp_col = {"market_trades": "fetched_at"}
         result = {}
         with self._connect() as conn:
-            for table in tables_with_created_at:
-                col = timestamp_col.get(table, "created_at")
+            for table in RETENTION_CLEANUP_TABLES:
+                col = RETENTION_TIMESTAMP_COLS.get(table, "created_at")
                 try:
                     deleted = conn.execute(
                         f"DELETE FROM {table} WHERE {col} < ?", (cutoff,)

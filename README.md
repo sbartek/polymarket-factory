@@ -204,6 +204,12 @@ FACTORY_ENV=live uv run python -m factory.runner
 # Dedicated live entrypoint used by launchd
 ./run_factory_live.sh
 
+# Preview DB retention cleanup without deleting anything
+uv run python scripts/retention_cleanup.py --dry-run
+
+# Dedicated retention cleanup entrypoint used by schedulers
+./run_retention_cleanup.sh
+
 # Safe manual dry run (no writes, no closes, no sends)
 uv run python -c "from factory.runner import run; run(environment='paper', dry_run=True)"
 
@@ -326,9 +332,23 @@ Create local daily snapshots with retention cleanup:
 uv run python scripts/backup_db.py --keep 14
 ```
 
+Preview or run DB retention cleanup:
+
+```bash
+uv run python scripts/retention_cleanup.py --dry-run
+uv run python scripts/retention_cleanup.py --retention-days 730
+```
+
 This currently backs up:
 - `data/factory.sqlite3` → `backups/factory-YYYY-MM-DD.sqlite3`
 - `data/trades.csv` → `backups/trades-YYYY-MM-DD.csv` (when present)
+
+The retention cleanup job removes rows older than 730 days from unbounded operational tables such as:
+- `market_snapshot_archives`
+- `market_observations`
+- `signals`
+- `decisions`
+- `run_logs`
 
 The live DB and local backups are gitignored.
 
@@ -346,7 +366,7 @@ else               → Mac mode (sources .env, hardcoded Mac PATH)
 ### GCP VM (`factory-vm`)
 
 - **Machine:** e2-micro (1 GB RAM + 1 GB swap), Debian 12, us-central1-a
-- **Scheduler:** cron (8 jobs)
+- **Scheduler:** cron (9 jobs)
 - **Notifications:** Slack webhook (SLACK_WEBHOOK_URL in .env)
 - **LLM:** Anthropic API (ANTHROPIC_API_KEY in .env)
 - **Dashboard publish:** pushes to `$DASHBOARD_REPO` (set in vm_env.sh)
@@ -354,7 +374,7 @@ else               → Mac mode (sources .env, hardcoded Mac PATH)
 
 ### Mac (legacy)
 
-- **Scheduler:** launchd (9 plist jobs)
+- **Scheduler:** launchd (10 plist jobs)
 - **Notifications:** WhatsApp via OpenClaw + Slack webhook
 - **LLM:** Claude CLI / Codex (local) + Anthropic API fallback
 - **Dashboard publish:** pushes to `~/workai/projects/pplayouts-dashboard`
@@ -370,6 +390,7 @@ else               → Mac mode (sources .env, hardcoded Mac PATH)
 | Research | daily 07:30 | `run_factory_research.sh` |
 | Live | daily 19:30 | `run_factory_live.sh` |
 | Aggressive cycle | daily 10:30 + 22:30 | `run_aggressive_cycle.sh` |
+| Retention cleanup | daily 04:15 | `run_retention_cleanup.sh` |
 | DB backup | daily 03:45 | `run_backup.sh` |
 
 ### `.env` (not committed)
