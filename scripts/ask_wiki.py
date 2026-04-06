@@ -19,7 +19,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from factory.claude import call_claude
+from factory.claude import call_gemini as call_llm
 
 WIKI_DIR = Path(__file__).resolve().parents[1] / "wiki"
 TODAY = datetime.now(UTC).strftime("%Y-%m-%d")
@@ -53,7 +53,7 @@ Answer concisely and specifically. Reference specific strategies, numbers, or wi
 If the wiki doesn't have enough data to answer confidently, say so and suggest what data would help.
 """
 
-    answer = call_claude(prompt, max_tokens=1000)
+    answer = call_llm(prompt, max_tokens=1000)
 
     print(f"\nQ: {question}")
     print(f"\nA: {answer}")

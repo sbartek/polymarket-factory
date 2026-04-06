@@ -23,7 +23,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from factory.claude import call_claude
+from factory.claude import call_gemini as call_llm
 from factory.db import FactoryDB
 from factory.strategy_meta import ACTIVE_STRATEGIES, strategy_metadata
 
@@ -183,7 +183,7 @@ OUTPUT ONLY THE MARKDOWN. No preamble, no commentary, no "here is the page" intr
         return
 
     print(f"  Updating wiki/strategies/{name}.md...")
-    content = call_claude(prompt, max_tokens=1500)
+    content = call_llm(prompt, max_tokens=1500)
     path = WIKI_DIR / "strategies" / f"{name}.md"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content)
@@ -227,7 +227,7 @@ OUTPUT ONLY THE MARKDOWN. No preamble, no commentary, no "here is the page" intr
         return
 
     print("  Updating wiki/patterns/cross_strategy.md...")
-    content = call_claude(prompt, max_tokens=1500)
+    content = call_llm(prompt, max_tokens=1500)
     path = WIKI_DIR / "patterns" / "cross_strategy.md"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content)
@@ -278,7 +278,7 @@ OUTPUT ONLY THE MARKDOWN. No preamble, no commentary, no "here is the page" intr
         return
 
     print("  Updating wiki/meta/overview.md...")
-    content = call_claude(prompt, max_tokens=1500)
+    content = call_llm(prompt, max_tokens=1500)
     path = WIKI_DIR / "meta" / "overview.md"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content)

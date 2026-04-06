@@ -1,4 +1,7 @@
-"""Claude API wrapper — uses API key if set, falls back to local CLI, then Codex.
+"""LLM wrapper — Claude (Anthropic API) and Gemini (Vertex AI).
+
+Claude: used for trading strategies (ev_news, stale_market, etc.) where reasoning quality matters.
+Gemini Flash: used for bulk/template work (wiki generation) where cost and speed matter.
 
 Includes a per-process circuit breaker: after CIRCUIT_BREAKER_THRESHOLD consecutive
 failures, all subsequent calls in the same process return an error string immediately.
@@ -153,3 +156,44 @@ def call_claude(prompt: str, max_tokens: int = 2048, timeout: int | None = None)
         msg = f"[LLM call failed: {e}]"
         _log_response(request_id, msg, "cli", "error", elapsed)
         return msg
+
+
+GEMINI_MODEL = "gemini-2.0-flash"
+GEMINI_PROJECT = "pplayouts-factory"
+GEMINI_LOCATION = "us-central1"
+
+
+def call_gemini(prompt: str, max_tokens: int = 2048, timeout: int | None = None) -> str:
+    """Call Gemini via Vertex AI. Falls back to call_claude() on failure."""
+    timeout = timeout or CALL_TIMEOUT_SECONDS
+    request_id = uuid.uuid4().hex[:12]
+
+    if is_circuit_open():
+        msg = f"[LLM circuit breaker open after {_consecutive_failures} consecutive failures]"
+        _log_prompt(request_id, prompt, "gemini_circuit_breaker")
+        _log_response(request_id, msg, "gemini_circuit_breaker", "blocked", 0)
+        return msg
+
+    _log_prompt(request_id, prompt, "gemini")
+    t0 = time.monotonic()
+    try:
+        from google import genai
+        from google.genai import types
+
+        client = genai.Client(vertexai=True, project=GEMINI_PROJECT, location=GEMINI_LOCATION)
+        response = client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=prompt,
+            config=types.GenerateContentConfig(max_output_tokens=max_tokens),
+        )
+        result_text = response.text
+        elapsed = int((time.monotonic() - t0) * 1000)
+        _record_success()
+        _log_response(request_id, result_text, "gemini", "success", elapsed)
+        return result_text
+    except Exception as e:
+        elapsed = int((time.monotonic() - t0) * 1000)
+        _record_failure()
+        _log_response(request_id, str(e), "gemini", "error", elapsed)
+        print(f"  [gemini] Failed ({e}), falling back to Claude")
+        return call_claude(prompt, max_tokens=max_tokens, timeout=timeout)
