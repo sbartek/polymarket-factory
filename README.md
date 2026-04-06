@@ -13,14 +13,20 @@ Project memory lives in `MEMORY.md`. Keep durable project context there; `CLAUDE
 ```
 You (idea) → new file in factory/strategies/ → add to STRATEGIES registry → runs automatically
                                                                                 ↓
-                                                              runner.py (every 2h via launchd)
-                                                                ├── fetch 100 top markets (Gamma API)
-                                                                ├── each strategy: scan → signal → env policy → size → open/skip
-                                                                ├── check open positions → close resolved ones
-                                                                └── WhatsApp summary → Polymarket Signals group
+                                                Two-phase run (every 2h via cron/launchd):
+                                                  Phase 1 — SCAN (:30)
+                                                    ├── fetch 1000 markets (Gamma API, paginated)
+                                                    ├── each strategy: scan → signals → cache to DB
+                                                    └── LLM + news calls happen here (slow)
+                                                  Phase 2 — EXECUTE (:00)
+                                                    ├── read cached signals from scan phase
+                                                    ├── env policy → dedup → size → open/skip
+                                                    ├── check open positions → close resolved ones
+                                                    └── notifications (Slack + WhatsApp) → dashboard publish
 ```
 
-**Stack:** Python 3.11+ · uv · Gamma API · DDGS news · Claude API · OpenClaw WhatsApp
+**Stack:** Python 3.12 · uv · Gamma API · DDGS news · Anthropic Claude API · Slack + WhatsApp
+**Hosts:** GCP VM (primary) + Mac (legacy) — portable shell scripts, same codebase
 
 ---
 
@@ -128,13 +134,13 @@ Generated strategies are blocked from `live` by environment policy.
 
 ### Active (paper trading)
 
-- [x] **`ev_news`** — Claude scans top markets + news headlines, picks topics, estimates p̂ per market from news.
+- [x] **`ev_news`** — Claude scans top markets + news headlines, picks topics, estimates p̂ per market from news. Current taxonomy window: `short`.
 - [x] **`spread_arb`** — Multi-outcome markets where sum of YES prices is materially below 1.0, with stricter practical filtering.
 - [x] **`stale_market`** — Looks for liquid near/medium-term markets whose prices appear stale versus recent news.
 - [x] **`correlated_pairs`** — MVP for logically inconsistent market pairs (prerequisite vs downstream, broader vs narrower).
 - [x] **`correlated_laggard`** — Alert-only MVP for liquid leader / laggard divergences across obviously related markets.
 - [x] **`esport48`** — Alert-only screener for esport markets expiring within 48 hours, using deterministic liquidity/price filters and subtype tagging.
-- [x] **`celebrity_tabloid`** — Paper-trading celebrity-event screener. **Note:** 0 signals so far — top-100 Gamma feed doesn't surface celebrity markets. Feed coverage is the active blocker.
+- [x] **`celebrity_tabloid`** — Paper-trading celebrity-event screener. Tag-feed augmentation is live (`celebrities` / `pop-culture` / `reality-tv` / `music`), producing candidates beyond the base Gamma top-market feed.
 
 Current graduation status:
 - `correlated_laggard`: alert-only, `promotable=True`, `trading_enabled=False`
@@ -326,22 +332,57 @@ This currently backs up:
 
 The live DB and local backups are gitignored.
 
-## Launchd
+## Deployment
 
-Main factory job:
-- `com.polymarket.factory` — every 2 hours at :00 (00:00, 02:00 … 22:00)
+The factory runs on **two hosts in parallel** — a GCP VM (primary) and a Mac (legacy/backup).
 
-Backup template included in repo:
-- `launchd/com.polymarket.factory.backup.plist`
-- default schedule: `03:45` daily
+All `run_*.sh` scripts are **portable**: they detect `vm_env.sh` at runtime and source it on the VM, falling back to Mac paths otherwise. No host-specific forks needed.
 
-Logs:
-- runner: `factory.log`
-- backup job: `factory-backup.log`
+```
+if vm_env.sh exists → VM mode  (sources vm_env.sh: PATH, .env, git pull, DASHBOARD_REPO)
+else               → Mac mode (sources .env, hardcoded Mac PATH)
+```
 
-`.env` (not committed):
+### GCP VM (`factory-vm`)
+
+- **Machine:** e2-micro (1 GB RAM + 1 GB swap), Debian 12, us-central1-a
+- **Scheduler:** cron (8 jobs)
+- **Notifications:** Slack webhook (SLACK_WEBHOOK_URL in .env)
+- **LLM:** Anthropic API (ANTHROPIC_API_KEY in .env)
+- **Dashboard publish:** pushes to `$DASHBOARD_REPO` (set in vm_env.sh)
+- **Config:** `vm_env.sh` (untracked, VM-only) sets PATH, sources .env, auto-pulls code
+
+### Mac (legacy)
+
+- **Scheduler:** launchd (9 plist jobs)
+- **Notifications:** WhatsApp via OpenClaw + Slack webhook
+- **LLM:** Claude CLI / Codex (local) + Anthropic API fallback
+- **Dashboard publish:** pushes to `~/workai/projects/pplayouts-dashboard`
+
+### Cron schedule (VM)
+
+| Job | Schedule | Script |
+|-----|----------|--------|
+| Scan | every 2h at :30 | `run_scan.sh` |
+| Execute | every 2h at :00 | `run_execute.sh` |
+| Observer | every 30 min | `run_observer.sh` |
+| Trade fetcher | every 30 min (+5 offset) | `run_trade_fetcher.sh` |
+| Research | daily 07:30 | `run_factory_research.sh` |
+| Live | daily 19:30 | `run_factory_live.sh` |
+| Aggressive cycle | daily 10:30 + 22:30 | `run_aggressive_cycle.sh` |
+| DB backup | daily 03:45 | `run_backup.sh` |
+
+### `.env` (not committed)
+
+Required on both hosts:
 ```env
-WHATSAPP_GROUP_ID=120363425524943226@g.us
+POLYMARKET_WALLET_PRIVATE_KEY=...
+POLYMARKET_API_KEY=...
+POLYMARKET_API_SECRET=...
+POLYMARKET_API_PASSPHRASE=...
+WHATSAPP_GROUP_ID=...
+SLACK_WEBHOOK_URL=...
+ANTHROPIC_API_KEY=...
 ```
 
 ---

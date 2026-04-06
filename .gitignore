@@ -12,6 +12,9 @@ factory.log
 factory-aggressive.log
 factory-live.log
 factory-research.log
+factory_observer.log
+factory_scan.log
+factory_trade_fetcher.log
 dashboard-dist/
 dashboard-data/
 node_modules/
