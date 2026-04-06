@@ -17,12 +17,9 @@ cd "$SCRIPT_DIR"
 uv run python -m factory.scanner --limit 1000
 EXIT_CODE=$?
 
-# Healthcheck ping
-PING_KEY="${HEALTHCHECKS_PING_KEY:-}"
-if [[ -n "$PING_KEY" ]]; then
-    if [[ $EXIT_CODE -eq 0 ]]; then
-        curl -fsS -m 10 --retry 3 "https://hc-ping.com/$PING_KEY/scan" > /dev/null 2>&1 || true
-    else
-        curl -fsS -m 10 --retry 3 "https://hc-ping.com/$PING_KEY/scan/fail" > /dev/null 2>&1 || true
-    fi
+# Heartbeat ping
+if [[ $EXIT_CODE -eq 0 ]]; then
+    uv run python -c "from factory.healthcheck import ping; ping('scan')" 2>/dev/null || true
+else
+    uv run python -c "from factory.healthcheck import ping; ping('scan', success=False)" 2>/dev/null || true
 fi

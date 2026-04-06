@@ -13,3 +13,11 @@ fi
 
 cd "$SCRIPT_DIR"
 uv run python -m factory.trade_fetcher --limit 5000
+EXIT_CODE=$?
+
+# Heartbeat ping
+if [[ $EXIT_CODE -eq 0 ]]; then
+    uv run python -c "from factory.healthcheck import ping; ping('trade-fetcher')" 2>/dev/null || true
+else
+    uv run python -c "from factory.healthcheck import ping; ping('trade-fetcher', success=False)" 2>/dev/null || true
+fi

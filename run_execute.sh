@@ -23,12 +23,9 @@ uv run python -m scripts.publish_dashboard "$DASHBOARD_REPO" --commit --push \
   --message "dashboard: auto-update after execute phase" \
   || echo "[dashboard] publish failed (non-fatal)"
 
-# Healthcheck ping (based on main command exit code, not dashboard publish)
-PING_KEY="${HEALTHCHECKS_PING_KEY:-}"
-if [[ -n "$PING_KEY" ]]; then
-    if [[ $EXIT_CODE -eq 0 ]]; then
-        curl -fsS -m 10 --retry 3 "https://hc-ping.com/$PING_KEY/execute" > /dev/null 2>&1 || true
-    else
-        curl -fsS -m 10 --retry 3 "https://hc-ping.com/$PING_KEY/execute/fail" > /dev/null 2>&1 || true
-    fi
+# Heartbeat ping (based on main command exit code, not dashboard publish)
+if [[ $EXIT_CODE -eq 0 ]]; then
+    uv run python -c "from factory.healthcheck import ping; ping('execute')" 2>/dev/null || true
+else
+    uv run python -c "from factory.healthcheck import ping; ping('execute', success=False)" 2>/dev/null || true
 fi

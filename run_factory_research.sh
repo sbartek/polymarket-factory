@@ -14,9 +14,17 @@ export FACTORY_ENV="research"
 
 cd "$SCRIPT_DIR"
 uv run python -m factory.runner
+EXIT_CODE=$?
 
 DASHBOARD_REPO="${DASHBOARD_REPO:-$HOME/workai/projects/pplayouts-dashboard}"
 echo "[dashboard] publishing snapshot after research run..."
 uv run python -m scripts.publish_dashboard "$DASHBOARD_REPO" --commit --push \
   --message "dashboard: auto-update after research factory run" \
   || echo "[dashboard] publish failed (non-fatal)"
+
+# Heartbeat ping
+if [[ $EXIT_CODE -eq 0 ]]; then
+    uv run python -c "from factory.healthcheck import ping; ping('research')" 2>/dev/null || true
+else
+    uv run python -c "from factory.healthcheck import ping; ping('research', success=False)" 2>/dev/null || true
+fi

@@ -32,7 +32,7 @@ def _fake_market(slug: str, title: str) -> dict:
 
 
 def _seed_signal(db: FactoryDB, market_id: str):
-    """Insert a recent signal into the DB so has_recent_signal returns True."""
+    """Insert a recent consumed signal into the DB so has_recent_signal returns True."""
     run_id = db.start_run(mode="paper", notes="seed")
     db.log_signal(
         run_id=run_id,
@@ -49,7 +49,13 @@ def _seed_signal(db: FactoryDB, market_id: str):
             "url": "https://polymarket.com/event/test",
             "rationale": "test",
         },
+        phase="scan",
     )
+    # Mark as consumed so has_recent_signal (which only checks consumed signals) finds it
+    rows = db.get_unconsumed_signals()
+    if rows:
+        exec_run = db.start_run(mode="paper", notes="exec")
+        db.mark_signals_consumed([rows[0]["id"]], exec_run)
 
 
 class TestAnalyzeTopicDedup:

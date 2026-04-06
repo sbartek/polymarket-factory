@@ -62,7 +62,7 @@ def test_duplicate_position_skipped(broker):
 # ---------- b) recent signal cooldown ----------
 
 def test_recent_signal_cooldown(db):
-    """A signal logged now triggers the 24h cooldown for its (strategy, market) pair only."""
+    """A consumed signal triggers the 24h cooldown; an unconsumed one does not."""
     run_id = db.start_run(mode="paper", notes="cooldown test")
 
     db.log_signal(
@@ -80,9 +80,18 @@ def test_recent_signal_cooldown(db):
             "url": "https://polymarket.com/event/test",
             "rationale": "test",
         },
+        phase="scan",
     )
 
-    # Same strategy + market => blocked
+    # Unconsumed signal should NOT trigger cooldown (scan→execute pipeline)
+    assert db.has_recent_signal("ev_news", "market-abc", hours=24.0) is False
+
+    # Mark it consumed (simulating execute phase trading on it)
+    rows = db.get_unconsumed_signals()
+    exec_run = db.start_run(mode="paper", notes="exec run")
+    db.mark_signals_consumed([rows[0]["id"]], exec_run)
+
+    # Now consumed => cooldown triggered
     assert db.has_recent_signal("ev_news", "market-abc", hours=24.0) is True
 
     # Same strategy, different market => not blocked
@@ -95,10 +104,11 @@ def test_recent_signal_cooldown(db):
 # ---------- c) cooldown expires ----------
 
 def test_cooldown_expires(db):
-    """A signal older than 24h no longer triggers the cooldown."""
+    """A consumed signal older than 24h no longer triggers the cooldown."""
     run_id = db.start_run(mode="paper", notes="expire test")
+    exec_run = db.start_run(mode="paper", notes="exec run")
 
-    # Insert a signal with a backdated created_at (25 hours ago)
+    # Insert a consumed signal with a backdated created_at (25 hours ago)
     old_ts = (datetime.now(UTC) - timedelta(hours=25)).isoformat(timespec="seconds")
 
     with db._connect() as conn:
@@ -106,12 +116,13 @@ def test_cooldown_expires(db):
             """INSERT INTO signals
                (run_id, strategy, market_id, market_title, outcome,
                 market_price, p_hat, ev_pp, confidence, closes, url,
-                rationale, phase, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                rationale, phase, created_at, consumed_by_run_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 run_id, "ev_news", "market-abc", "Will X happen?", "YES",
                 0.40, 0.55, 15.0, "medium", "2026-05-01",
                 "https://polymarket.com/event/test", "test", "combined", old_ts,
+                exec_run,
             ),
         )
         conn.commit()
