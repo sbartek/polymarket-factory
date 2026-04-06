@@ -158,7 +158,7 @@ def call_claude(prompt: str, max_tokens: int = 2048, timeout: int | None = None)
         return msg
 
 
-GEMINI_MODEL = "gemini-2.0-flash"
+GEMINI_MODEL = "gemini-2.5-flash"
 GEMINI_PROJECT = "pplayouts-factory"
 GEMINI_LOCATION = "us-central1"
 
