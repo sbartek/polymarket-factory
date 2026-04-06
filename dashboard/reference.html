@@ -698,14 +698,21 @@ uv run python scripts/update_wiki.py
 # Local DB backup (keep 14 days)
 uv run python scripts/backup_db.py --keep 14</div>
 
-          <h3>Launchd schedule</h3>
+          <h3>Cron schedule (VM) / Launchd (Mac)</h3>
           <table class="metric-table">
-            <thead><tr><th>Job</th><th>Schedule</th></tr></thead>
+            <thead><tr><th>Time</th><th>Job</th><th>Description</th></tr></thead>
             <tbody>
-              <tr><td>com.polymarket.factory</td><td>Every 2 hours at :00 (paper environment)</td></tr>
-              <tr><td>com.polymarket.factory.live</td><td>19:30 daily (live environment)</td></tr>
-              <tr><td>com.polymarket.factory.strategy-factory</td><td>10:30 / 22:30 daily</td></tr>
-              <tr><td>com.polymarket.factory.backup</td><td>03:45 daily</td></tr>
+              <tr><td>:30</td><td>Scan phase</td><td>Fetch 500 markets, run all strategies, cache signals</td></tr>
+              <tr><td>:00</td><td>Execute phase</td><td>Read cached signals, size, trade, resolve, notify</td></tr>
+              <tr><td>09:00</td><td>WhatsApp summary</td><td>Full summary (all strategies, portfolio stats)</td></tr>
+              <tr><td>every 2h</td><td>Combined run</td><td>Fast pass (1000 mkts observations) + slow pass (500 mkts strategies)</td></tr>
+              <tr><td>every 30m</td><td>Observer</td><td>Price snapshots for 1000 markets (no LLM)</td></tr>
+              <tr><td>every 30m</td><td>Trade fetcher</td><td>CLOB trade data from Polymarket Data API (no auth)</td></tr>
+              <tr><td>10:40 / 22:40</td><td>Strategy factory</td><td>Evaluation + auto-generate strategy proposals</td></tr>
+              <tr><td>19:30</td><td>Live run</td><td>Live environment (carry_rewards)</td></tr>
+              <tr><td>07:30</td><td>Research</td><td>Research-only scan (no trades)</td></tr>
+              <tr><td>03:45</td><td>DB backup</td><td>Local + GCS (gs://pplayouts-factory-backups, 30-day retention)</td></tr>
+              <tr><td>04:15</td><td>Retention cleanup</td><td>Prune rows older than 730 days</td></tr>
             </tbody>
           </table>
 
