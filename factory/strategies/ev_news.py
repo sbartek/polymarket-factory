@@ -12,6 +12,7 @@ from datetime import date
 from ddgs import DDGS
 
 from ..claude import call_claude
+from ..db import FactoryDB
 from ..feed import fetch_by_tag, format_date, format_volume, event_url, get_yes_price, markets_to_text
 from ..models import Signal
 from .base import Strategy
@@ -80,7 +81,7 @@ Example: ["iran","fed","bitcoin"]"""
                 pass
         return ["iran", "fed", "bitcoin"]
 
-    def _analyze_topic(self, query: str, markets: list[dict]) -> list[Signal]:
+    def _analyze_topic(self, query: str, markets: list[dict], db: FactoryDB | None = None) -> list[Signal]:
         # Find relevant markets
         slug_words = query.replace("-", " ").split()
         topic_markets = fetch_by_tag(query, limit=5)
@@ -91,6 +92,19 @@ Example: ["iran","fed","bitcoin"]"""
             ][:5]
         if not topic_markets:
             return []
+
+        # Strategy-level dedup: drop markets that already had a signal in the last 24h
+        if db is not None:
+            before = len(topic_markets)
+            topic_markets = [
+                m for m in topic_markets
+                if not db.has_recent_signal(self.name, m.get("slug") or "", hours=24.0)
+            ]
+            skipped = before - len(topic_markets)
+            if skipped:
+                print(f"  [{self.name}] skipped {skipped} market(s) with recent signals")
+            if not topic_markets:
+                return []
 
         news = self._fetch_news(query, n=5)
 
@@ -178,6 +192,11 @@ Only include markets where |ev_pp| >= {self.min_ev_pp}. Return <signals>[]</sign
         # Prioritize near-term markets (closer closing date first)
         filtered_markets.sort(key=lambda m: _days_to_close(m.get("endDate")) or 999)
 
+        try:
+            db = FactoryDB()
+        except Exception:
+            db = None
+
         print(f"  [{self.name}] {len(filtered_markets)} filtered markets → picking topics...", end=" ", flush=True)
         topics = self._pick_topics(filtered_markets or markets)
         limit_topics = getattr(self, "_fast_dry_run_topics_override", None)
@@ -189,7 +208,7 @@ Only include markets where |ev_pp| >= {self.min_ev_pp}. Return <signals>[]</sign
         seen_market_ids: set[str] = set()
         for topic in topics:
             print(f"  [{self.name}] analyzing '{topic}'...", end=" ", flush=True)
-            found = self._analyze_topic(topic, filtered_markets or markets)
+            found = self._analyze_topic(topic, filtered_markets or markets, db=db)
             kept = []
             for sig in found:
                 if sig.market_id in seen_market_ids:

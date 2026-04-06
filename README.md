@@ -393,6 +393,16 @@ else               → Mac mode (sources .env, hardcoded Mac PATH)
 | Retention cleanup | daily 04:15 | `run_retention_cleanup.sh` |
 | DB backup | daily 03:45 | `run_backup.sh` |
 
+### Healthchecks.io (dead man's switch)
+
+All `run_*.sh` scripts ping [healthchecks.io](https://healthchecks.io) on completion (success or failure).
+If a cron job stops running or the VM goes down, healthchecks.io sends an alert.
+
+- **Env var:** `HEALTHCHECKS_PING_KEY` (project ping key, set in `.env`)
+- **Slugs:** `scan`, `execute`, `observer`, `strategy-factory`, `backup`, `live`
+- **Behavior:** pings `/fail` on non-zero exit from the main command; silently skipped if env var is unset
+- **Python module:** `factory/healthcheck.py` (reusable `ping(slug, success=True)` for use inside Python code)
+
 ### `.env` (not committed)
 
 Required on both hosts:
@@ -404,6 +414,7 @@ POLYMARKET_API_PASSPHRASE=...
 WHATSAPP_GROUP_ID=...
 SLACK_WEBHOOK_URL=...
 ANTHROPIC_API_KEY=...
+HEALTHCHECKS_PING_KEY=...          # healthchecks.io project ping key
 ```
 
 ---
