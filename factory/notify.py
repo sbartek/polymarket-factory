@@ -12,9 +12,10 @@ def configured_channels() -> dict[str, dict]:
     """Return lightweight per-channel configuration status for operator visibility."""
     group_id = os.environ.get("WHATSAPP_GROUP_ID")
     webhook_url = os.environ.get("SLACK_WEBHOOK_URL")
+    openclaw = _find_openclaw()
     return {
         "whatsapp": {
-            "configured": bool(group_id),
+            "configured": bool(group_id and openclaw),
             "target": group_id or None,
         },
         "slack": {
