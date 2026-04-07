@@ -15,6 +15,7 @@ from .spread_arb import SpreadArbStrategy
 from .spread_arb_v2 import SpreadArbV2Strategy
 from .stale_market import StaleMarketStrategy
 from .weather_edge_v2 import WeatherEdgeV2Strategy
+from .weather_edge_v3 import WeatherEdgeV3Strategy
 from .weather_oversum import WeatherOversumStrategy
 from .weather_convergence import WeatherConvergenceStrategy
 from .weather_autocorrelation import WeatherAutocorrelationStrategy
@@ -67,7 +68,8 @@ STRATEGIES = [
     MutuallyExclusiveOversumStrategy(),
     FadeCertaintyV2Strategy(),
     ResolutionHunterV2Strategy(),
-    WeatherEdgeV2Strategy(),
+    WeatherEdgeV2Strategy(),  # paused — broken (floor/threshold contradiction)
+    WeatherEdgeV3Strategy(),
     WeatherOversumStrategy(),
     WeatherConvergenceStrategy(),
     WeatherAutocorrelationStrategy(),

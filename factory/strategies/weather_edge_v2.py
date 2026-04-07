@@ -8,7 +8,7 @@ Fixes over v1:
   - Raise min_ev_pp to 18 (be pickier)
   - Only signal when adjusted ensemble probability is very low (<5%) and market prices >15%
 Method: No LLM. Regex-parses sub-market questions → geocode → ECMWF ensemble probability.
-Status: promotable paper strategy; current implementation emits NO-only signals.
+Status: PAUSED — floor (0.10) > threshold (0.05) makes signaling impossible. Superseded by v3.
 """
 import json
 import re
@@ -185,8 +185,10 @@ class WeatherEdgeV2Strategy(Strategy):
     max_position_usdc = 10.0
     min_ev_pp = 18.0      # v1 was 12 — be pickier
     # No min_position_usdc — let Kelly size naturally
-    alert_only = False
-    promotable = True
+    alert_only = True
+    trading_enabled = False
+    paused = True
+    promotable = False
     promotion_criteria = "30 alerts with >55% NO-side accuracy"
     last_check_details: list[dict] = []
 
