@@ -5,6 +5,7 @@ most legs will resolve NO. Bet NO on the most overpriced leg(s) —
 the ones with the highest YES price that are most likely to lose.
 
 Replaces spread_arb (v1 bet YES on all legs — 1% win rate over 79 trades).
+Status: PAPER TRADING — promoted 2026-04-07 (was accidentally alert_only due to base class default).
 """
 import json
 from dataclasses import dataclass
@@ -65,7 +66,8 @@ class SpreadArbV2Strategy(Strategy):
     max_position_usdc = 10.0
     min_ev_pp = 5.0
     min_position_usdc = 1.0
-    alert_only = True
+    alert_only = False
+    trading_enabled = True
 
     def size(self, signal: Signal) -> float:
         # NO price = 1 - YES price; size based on NO entry cost
