@@ -154,7 +154,7 @@ class WeatherConvergenceStrategy(Strategy):
             if not any(kw in title for kw in WEATHER_KEYWORDS):
                 continue
             days = _days_to_close(ev.get("endDate"))
-            if days is None or days < 0 or days > MAX_DAYS_TO_CLOSE:
+            if days is None or days < 1 or days > MAX_DAYS_TO_CLOSE:
                 continue
 
             slug = ev.get("slug", "") or str(ev.get("id", ""))

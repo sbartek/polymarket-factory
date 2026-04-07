@@ -25,6 +25,8 @@ MIN_SURPRISE_DEG = 2.0     # today must have deviated ≥2° from ensemble media
 MAX_DAYS_TO_CLOSE = 2
 MIN_EV_PP = 10.0
 MAX_ALERTS_PER_RUN = 4
+AUTOCORR_FACTOR = 0.3      # 30% of yesterday's surprise expected to persist tomorrow
+MAX_P_HAT = 0.70           # cap ensemble-derived probability to prevent overconfidence
 
 
 def _days_to_close(end_date: str | None) -> int | None:
@@ -229,40 +231,56 @@ class WeatherAutocorrelationStrategy(Strategy):
             if abs(surprise) < MIN_SURPRISE_DEG:
                 continue
 
-            # Surprise > 0: hotter than expected → bet YES on higher bins tomorrow
-            # Surprise < 0: colder than expected → bet YES on lower bins tomorrow
+            # Group bins by target_date — each date needs its own ensemble fetch
+            bins_by_date: dict[str, list] = {}
             for b in bins:
-                bin_mid = b["parsed"]["mid"]
-                # Does this bin align with the surprise direction?
-                if surprise > 0 and bin_mid <= median_forecast:
-                    continue  # surprise is hot, skip cold bins
-                if surprise < 0 and bin_mid >= median_forecast:
-                    continue  # surprise is cold, skip hot bins
+                bins_by_date.setdefault(b["parsed"]["target_date"], []).append(b)
 
-                # Estimate adjusted probability: shift ensemble by half the surprise
-                adj_target = median_forecast + surprise * 0.5
-                dist_from_adj = abs(bin_mid - adj_target)
-                # Simple gaussian-ish estimate: closer bins get higher prob
-                adj_prob = max(0.05, 0.5 - dist_from_adj * 0.08)
-
-                ev_pp = round((adj_prob - b["yes_price"]) * 100, 1)
-                if ev_pp < MIN_EV_PP:
+            for target_date, date_bins in bins_by_date.items():
+                # Fetch ensemble for the target date and shift by autocorrelation factor
+                ensemble_target = _get_ensemble_max_temps(
+                    coords[0], coords[1], target_date, unit
+                )
+                if not ensemble_target:
                     continue
 
-                meta = event_meta.get(b["slug"], {})
-                signals.append(Signal(
-                    strategy=self.name,
-                    market_id=f"{b['slug']}:{b['id']}",
-                    market_title=b["question"],
-                    outcome="YES",
-                    market_price=round(b["yes_price"], 4),
-                    p_hat=round(min(adj_prob, 0.95), 4),
-                    ev_pp=ev_pp,
-                    confidence="medium",
-                    closes=meta.get("closes", ""),
-                    url=meta.get("url", ""),
-                    rationale=f"autocorr:{location},surprise={surprise:+.1f},actual={actual:.1f},forecast={median_forecast:.1f}",
-                ))
+                shifted = [v + surprise * AUTOCORR_FACTOR for v in ensemble_target]
+                n = len(shifted)
+
+                for b in date_bins:
+                    bin_mid = b["parsed"]["mid"]
+                    # Only signal bins in the surprise direction
+                    if surprise > 0 and bin_mid <= median_forecast:
+                        continue
+                    if surprise < 0 and bin_mid >= median_forecast:
+                        continue
+
+                    lo, hi = b["parsed"]["lo"], b["parsed"]["hi"]
+                    count = sum(1 for v in shifted if lo <= v < hi)
+                    adj_prob = round(min(count / n, MAX_P_HAT), 4)
+
+                    ev_pp = round((adj_prob - b["yes_price"]) * 100, 1)
+                    if ev_pp < MIN_EV_PP:
+                        continue
+
+                    meta = event_meta.get(b["slug"], {})
+                    signals.append(Signal(
+                        strategy=self.name,
+                        market_id=f"{b['slug']}:{b['id']}",
+                        market_title=b["question"],
+                        outcome="YES",
+                        market_price=round(b["yes_price"], 4),
+                        p_hat=adj_prob,
+                        ev_pp=ev_pp,
+                        confidence="medium",
+                        closes=meta.get("closes", ""),
+                        url=meta.get("url", ""),
+                        rationale=(
+                            f"autocorr:{location},surprise={surprise:+.1f},"
+                            f"actual={actual:.1f},forecast={median_forecast:.1f},"
+                            f"shifted_prob={adj_prob*100:.0f}%"
+                        ),
+                    ))
 
         signals.sort(key=lambda s: s.ev_pp, reverse=True)
         signals = signals[:MAX_ALERTS_PER_RUN]
