@@ -15,16 +15,10 @@
     <string>/Users/barteks/workai/projects/polymarket-factory</string>
 
     <key>StartCalendarInterval</key>
-    <array>
-        <dict>
-            <key>Hour</key><integer>10</integer>
-            <key>Minute</key><integer>30</integer>
-        </dict>
-        <dict>
-            <key>Hour</key><integer>22</integer>
-            <key>Minute</key><integer>30</integer>
-        </dict>
-    </array>
+    <dict>
+        <key>Hour</key><integer>10</integer>
+        <key>Minute</key><integer>30</integer>
+    </dict>
 
     <key>StandardOutPath</key>
     <string>/Users/barteks/workai/projects/polymarket-factory/factory-strategy-factory.log</string>

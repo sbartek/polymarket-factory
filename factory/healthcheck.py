@@ -20,7 +20,7 @@ SCHEDULES: dict[str, tuple[int, int]] = {
     "execute":          (120, 30),
     "observer":         (30,  15),
     "trade-fetcher":    (30,  15),
-    "strategy-factory": (720, 60),
+    "strategy-factory": (1440, 60),
     "live":             (1440, 60),
     "research":         (1440, 60),
     "backup":           (1440, 60),
