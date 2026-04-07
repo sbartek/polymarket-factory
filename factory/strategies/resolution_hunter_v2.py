@@ -101,6 +101,7 @@ class ResolutionHunterV2Strategy(Strategy):
     max_position_usdc = 12.0
     min_ev_pp = 20.0     # higher bar than v1 (was 15)
     alert_only = True
+    trading_enabled = False
     promotable = True
     promotion_criteria = "20 alerts with >60% directional accuracy"
     signal_cooldown_hours = 48.0  # near-resolution markets don't change hourly

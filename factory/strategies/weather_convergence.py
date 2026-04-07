@@ -127,6 +127,7 @@ class WeatherConvergenceStrategy(Strategy):
     max_position_usdc = 5.0
     min_ev_pp = 12.0
     alert_only = True
+    trading_enabled = False
 
     def __init__(self):
         self._geo_cache: dict = {}

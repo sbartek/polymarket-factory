@@ -58,6 +58,7 @@ class FadeCertaintyV2Strategy(Strategy):
     max_position_usdc = 8.0
     min_ev_pp = FADE_LOW
     alert_only = True
+    trading_enabled = False
     promotable = True
     promotion_criteria = "20 alerts with >50% directional accuracy"
     signal_cooldown_hours = 72.0  # tail-event markets move slowly; daily re-fire adds no value

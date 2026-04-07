@@ -32,7 +32,7 @@ def _days_to_close(end_date: str | None) -> int | None:
 
 
 class MutuallyExclusiveOversumStrategy(Strategy):
-    name = "mutually_exclusive_oversum"
+    name = "mutually_exclusive_oversum_gen"
     alert_only = True
     trading_enabled = False
     promotable = False

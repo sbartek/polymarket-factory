@@ -49,6 +49,7 @@ class BaseRateAnchorStrategy(Strategy):
     min_ev_pp = MIN_GAP_PP
     min_position_usdc = 2.0
     alert_only = True
+    trading_enabled = False
 
     _index: BaseRateIndex | None = None
 

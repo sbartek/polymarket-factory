@@ -45,6 +45,7 @@ class WeatherOversumStrategy(Strategy):
     max_position_usdc = 5.0
     min_ev_pp = 3.0
     alert_only = True
+    trading_enabled = False
 
     def scan(self, markets: list[dict]) -> list[Signal]:
         weather_events = []

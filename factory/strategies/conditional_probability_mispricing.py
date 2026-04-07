@@ -127,6 +127,7 @@ class ConditionalProbabilityMispricingStrategy(Strategy):
     min_ev_pp = MIN_VIOLATION_PP
     min_position_usdc = 2.0
     alert_only = True
+    trading_enabled = False
 
     def _eligible(self, ev: dict) -> MarketInfo | None:
         vol = float(ev.get("volume24hr") or ev.get("volume") or 0)
