@@ -63,6 +63,8 @@ class SpreadArbStrategy(Strategy):
     max_position_usdc = 8.0
     min_ev_pp = 10.0
     min_position_usdc = 1.0
+    trading_enabled = False
+    paused = True
 
     def size(self, signal: Signal) -> float:
         return round(min(self.max_position_usdc * signal.market_price * 1.35, self.max_position_usdc), 2)
