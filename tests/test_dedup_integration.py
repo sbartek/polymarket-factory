@@ -83,8 +83,8 @@ def test_recent_signal_cooldown(db):
         phase="scan",
     )
 
-    # Unconsumed signal should NOT trigger cooldown (scan→execute pipeline)
-    assert db.has_recent_signal("ev_news", "market-abc", hours=24.0) is False
+    # Unconsumed signal ALSO triggers cooldown — alert-only strategies must be blocked too
+    assert db.has_recent_signal("ev_news", "market-abc", hours=24.0) is True
 
     # Mark it consumed (simulating execute phase trading on it)
     rows = db.get_unconsumed_signals()

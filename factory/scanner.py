@@ -85,7 +85,13 @@ def scan(environment: str = "paper", market_limit: int = 500):
                 db.log_decision(run_id, "strategy_scan", "error", strategy=strategy.name, reason=str(e))
                 continue
 
+            cooldown_hours = getattr(strategy, "signal_cooldown_hours", 24.0)
             for sig in signals:
+                if db.has_recent_signal(strategy.name, sig.market_id, hours=cooldown_hours):
+                    print(f"  [{strategy.name}] skip cooldown ({cooldown_hours:.0f}h): {sig.market_title[:45]}")
+                    db.log_decision(run_id, "cooldown_check", "skip", strategy=strategy.name,
+                                    market_id=sig.market_id, reason=f"signal_within_{cooldown_hours:.0f}h")
+                    continue
                 sig_dict = _signal_to_dict(sig)
                 db.log_signal(run_id, strategy.name, sig_dict,
                               time_window=strategy_meta.get("time_window"),

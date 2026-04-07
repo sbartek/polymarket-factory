@@ -103,6 +103,7 @@ class ResolutionHunterV2Strategy(Strategy):
     alert_only = True
     promotable = True
     promotion_criteria = "20 alerts with >60% directional accuracy"
+    signal_cooldown_hours = 48.0  # near-resolution markets don't change hourly
     last_check_details: list[dict] = []
     fast_dry_run_candidates = 4
 

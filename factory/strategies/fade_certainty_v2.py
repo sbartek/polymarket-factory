@@ -60,6 +60,7 @@ class FadeCertaintyV2Strategy(Strategy):
     alert_only = True
     promotable = True
     promotion_criteria = "20 alerts with >50% directional accuracy"
+    signal_cooldown_hours = 72.0  # tail-event markets move slowly; daily re-fire adds no value
     last_check_details: list[dict] = []
 
     def _is_excluded(self, title: str) -> bool:

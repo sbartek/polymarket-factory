@@ -23,6 +23,7 @@ class Strategy(ABC):
     target_hold_max_days: float = 30.0
     scan_frequency: str = "3x/day"
     paused: bool = False
+    signal_cooldown_hours: float = 24.0  # min hours between signals for same (strategy, market_id)
 
     @property
     def resolved_time_window(self) -> TimeWindow:

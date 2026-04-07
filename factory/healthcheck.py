@@ -9,8 +9,13 @@ from __future__ import annotations
 
 import json
 import os
+import sqlite3
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+
+DB_PATH_DEFAULT = Path(os.environ.get("FACTORY_DATA_DIR", "data")) / "factory.sqlite3"
+SIGNAL_REPEAT_WINDOW_HOURS = 24
+SIGNAL_REPEAT_THRESHOLD = 2.5  # avg signals per unique market above this triggers alert
 
 HEARTBEAT_DIR = Path(os.environ.get("FACTORY_DATA_DIR", "data")) / "heartbeats"
 
@@ -87,4 +92,51 @@ def check_heartbeats() -> list[dict]:
                 "detail": f"could not parse {path}",
             })
 
+    return problems
+
+
+def check_signal_repeats(db_path: Path = DB_PATH_DEFAULT) -> list[dict]:
+    """Check for strategies re-firing on the same markets excessively.
+
+    Returns a list of dicts for strategies whose signals/unique_market ratio
+    exceeds SIGNAL_REPEAT_THRESHOLD over the last SIGNAL_REPEAT_WINDOW_HOURS.
+    """
+    if not db_path.exists():
+        return []
+    problems: list[dict] = []
+    cutoff = (datetime.now(UTC) - timedelta(hours=SIGNAL_REPEAT_WINDOW_HOURS)).isoformat(timespec="seconds")
+    try:
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            """
+            SELECT strategy,
+                   COUNT(*) AS total,
+                   COUNT(DISTINCT market_id) AS unique_markets,
+                   ROUND(CAST(COUNT(*) AS FLOAT) / COUNT(DISTINCT market_id), 2) AS ratio
+            FROM signals
+            WHERE created_at >= ?
+            GROUP BY strategy
+            HAVING ratio > ? AND total >= 5
+            ORDER BY ratio DESC
+            """,
+            (cutoff, SIGNAL_REPEAT_THRESHOLD),
+        ).fetchall()
+        conn.close()
+        for row in rows:
+            problems.append({
+                "slug": f"signal-repeat:{row['strategy']}",
+                "status": "signal_repeat",
+                "detail": (
+                    f"{row['total']} signals / {row['unique_markets']} unique markets "
+                    f"= {row['ratio']}x repeat (last {SIGNAL_REPEAT_WINDOW_HOURS}h, "
+                    f"threshold {SIGNAL_REPEAT_THRESHOLD}x)"
+                ),
+            })
+    except Exception as e:
+        problems.append({
+            "slug": "signal-repeat-check",
+            "status": "corrupt",
+            "detail": f"could not query signals: {e}",
+        })
     return problems

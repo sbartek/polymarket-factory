@@ -8,18 +8,21 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parents[1]))
 
-from factory.healthcheck import check_heartbeats
+from factory.healthcheck import check_heartbeats, check_signal_repeats
 from factory.notify import send_slack
 
 
 def main():
-    problems = check_heartbeats()
+    problems = check_heartbeats() + check_signal_repeats()
     if not problems:
         return
 
     lines = ["*Watchdog alert* — cron job issues detected:\n"]
     for p in problems:
-        emoji = {"overdue": "🔴", "failed": "🟡", "never_reported": "⚪", "corrupt": "⚠️"}.get(p["status"], "❓")
+        emoji = {
+            "overdue": "🔴", "failed": "🟡", "never_reported": "⚪",
+            "corrupt": "⚠️", "signal_repeat": "🔁",
+        }.get(p["status"], "❓")
         lines.append(f"{emoji} *{p['slug']}*: {p['status']} — {p['detail']}")
 
     message = "\n".join(lines)

@@ -30,5 +30,6 @@ def test_alert_only_promotion_metadata_is_exposed_for_candidates():
 def test_existing_paper_trading_strategies_remain_trading_enabled():
     meta = strategy_metadata()
 
-    assert meta["spread_arb"]["trading_enabled"] is True
+    # spread_arb was killed 2026-04-07 (-94% ROI, 79 trades)
+    assert meta["spread_arb"]["trading_enabled"] is False
     assert meta["stale_market"]["trading_enabled"] is True

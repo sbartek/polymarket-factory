@@ -65,9 +65,11 @@ class TestScanner:
             fake_strat = MagicMock()
             fake_strat.name = "test_strat"
             fake_strat.paused = False
+            fake_strat.signal_cooldown_hours = 24.0
             fake_strat.scan.return_value = [_fake_signal()]
             fake_strat.last_check_details = []
             fake_strat.last_basket_details = []
+            db.has_recent_signal.return_value = False
 
             with patch("factory.scanner.STRATEGIES", [fake_strat]):
                 with patch("factory.scanner.strategy_metadata", return_value={
