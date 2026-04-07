@@ -1,0 +1,15 @@
+[Unit]
+Description=Polymarket Factory API
+After=network.target
+
+[Service]
+Type=simple
+User=barteks
+WorkingDirectory=/home/barteks/polymarket-factory
+EnvironmentFile=/home/barteks/polymarket-factory/.env
+ExecStart=/home/barteks/polymarket-factory/.venv/bin/uvicorn api.server:app --host 127.0.0.1 --port 8765
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

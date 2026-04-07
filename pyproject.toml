@@ -9,6 +9,8 @@ dependencies = [
     "py-clob-client",
     "scikit-learn",
     "google-genai>=1.70.0",
+    "fastapi",
+    "uvicorn[standard]",
 ]
 
 [project.optional-dependencies]

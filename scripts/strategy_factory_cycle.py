@@ -18,6 +18,7 @@ import re
 import subprocess
 import sys
 import shutil
+import urllib.request
 from datetime import datetime
 from pathlib import Path
 from textwrap import dedent
@@ -26,6 +27,11 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from factory.claude import call_claude
+
+# Remote API mode: set FACTORY_REMOTE_API_URL to fetch eval + benchmarks from the VM API
+# instead of reading local SQLite. Used when running strategy factory on Mac.
+REMOTE_API_URL = os.environ.get("FACTORY_REMOTE_API_URL", "").rstrip("/")
+REMOTE_API_KEY = os.environ.get("FACTORY_API_KEY", "")
 
 GENERATED_DIR = PROJECT_ROOT / "factory" / "strategies" / "generated"
 GENERATED_ARCHIVE_DIR = GENERATED_DIR / "archive"
@@ -54,7 +60,26 @@ def run_cmd(args: list[str], env: dict | None = None) -> str:
     return result.stdout
 
 
+def _api_get(path: str) -> bytes:
+    url = f"{REMOTE_API_URL}{path}"
+    req = urllib.request.Request(url, headers={"x-api-key": REMOTE_API_KEY})
+    with urllib.request.urlopen(req, timeout=60) as resp:
+        return resp.read()
+
+
+def fetch_benchmarks_remote() -> None:
+    """Fetch benchmark JSONs from the VM API and write them to benchmark-data/."""
+    BENCHMARK_DIR.mkdir(parents=True, exist_ok=True)
+    for scope in ("alert-only", "generated"):
+        data = _api_get(f"/benchmark/{scope}")
+        (BENCHMARK_DIR / f"replay-benchmark-{scope}.json").write_bytes(data)
+        print(f"[remote] fetched benchmark/{scope} ({len(data)} bytes)")
+
+
 def capture_eval_report() -> str:
+    if REMOTE_API_URL:
+        print("[remote] fetching eval report from API...")
+        return _api_get("/eval").decode("utf-8")
     return run_cmd([sys.executable, str(PROJECT_ROOT / "eval" / "report.py")])
 
 
@@ -595,13 +620,19 @@ def summarize_eval(eval_text: str, generated: list[dict], archived: list[dict]) 
 def refresh_dashboard() -> None:
     env = dict(os.environ)
     env["PYTHONPATH"] = "."
-    run_cmd([str(PROJECT_ROOT / ".venv" / "bin" / "python"), "scripts/build_replay_benchmark.py", "--scope", "alert-only"], env=env)
-    run_cmd([str(PROJECT_ROOT / ".venv" / "bin" / "python"), "scripts/build_replay_benchmark.py", "--scope", "generated"], env=env)
-    run_cmd([str(PROJECT_ROOT / ".venv" / "bin" / "python"), "scripts/export_dashboard_data.py"], env=env)
-    run_cmd([str(PROJECT_ROOT / ".venv" / "bin" / "python"), "scripts/build_dashboard.py"], env=env)
+    python = str(PROJECT_ROOT / ".venv" / "bin" / "python")
+    if not REMOTE_API_URL:
+        # Only rebuild benchmarks when running locally with SQLite access.
+        run_cmd([python, "scripts/build_replay_benchmark.py", "--scope", "alert-only"], env=env)
+        run_cmd([python, "scripts/build_replay_benchmark.py", "--scope", "generated"], env=env)
+        run_cmd([python, "scripts/export_dashboard_data.py"], env=env)
+    run_cmd([python, "scripts/build_dashboard.py"], env=env)
 
 
 def main() -> None:
+    if REMOTE_API_URL:
+        print(f"[remote] API mode: {REMOTE_API_URL}")
+        fetch_benchmarks_remote()
     prefix = now_local().strftime("%Y%m%d")
     seq = next_daily_sequence(prefix)
     archived = apply_generated_retention_gate()
