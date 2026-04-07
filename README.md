@@ -130,39 +130,52 @@ Generated strategies are blocked from `live` by environment policy.
 
 ### Live trading
 
-- [x] **`carry_rewards`** — Full-set purchases for ~4% APY Holding Rewards. `live_ready=True`, `mode=live`. Runs at 19:30 cycle (long time window). First live orders 2026-04-03.
+- [x] **`carry_rewards`** — Full-set purchases for ~4% APY Holding Rewards. `live_ready=True`, `mode=live`. Runs at 19:30 cycle. First live orders 2026-04-03.
 
 ### Active (paper trading)
 
-- [x] **`ev_news`** — Claude scans top markets + news headlines, picks topics, estimates p̂ per market from news. Current taxonomy window: `short`.
-- [x] **`spread_arb`** — Multi-outcome markets where sum of YES prices is materially below 1.0, with stricter practical filtering.
-- [x] **`stale_market`** — Looks for liquid near/medium-term markets whose prices appear stale versus recent news.
-- [x] **`correlated_pairs`** — MVP for logically inconsistent market pairs (prerequisite vs downstream, broader vs narrower).
-- [x] **`correlated_laggard`** — Alert-only MVP for liquid leader / laggard divergences across obviously related markets.
-- [x] **`esport48`** — Alert-only screener for esport markets expiring within 48 hours, using deterministic liquidity/price filters and subtype tagging.
-- [x] **`celebrity_tabloid`** — Paper-trading celebrity-event screener. Tag-feed augmentation is live (`celebrities` / `pop-culture` / `reality-tv` / `music`), producing candidates beyond the base Gamma top-market feed.
+- [x] **`ev_news`** — Claude scans top markets + news headlines, estimates p̂ per market. 2 closed (+$0.05), 14 open.
+- [x] **`stale_market`** — Liquid near-term markets whose prices appear stale vs recent news. 3 closed (-$7.03), 5 open.
+- [x] **`correlated_pairs`** — Logically inconsistent market pairs (prerequisite vs downstream). 2 open, 0 closed.
+- [x] **`correlated_laggard`** — Liquid leader/laggard divergences. Promoted 2026-04-06. 2 closed (-$3.10), 3 open.
+- [x] **`esport48`** — Esport markets expiring within 48h. Promoted 2026-04-06. 5 closed (-$5.00), 4 open.
+- [x] **`celebrity_tabloid`** — Celebrity-event screener, tag-feed augmented. Signal history cleaned 2026-04-07.
+- [x] **`mutually_exclusive_oversum`** — Multi-outcome YES sum > 100% structural arb. Promoted 2026-04-06.
+- [x] **`spread_arb_v2`** — NO bets on most-overpriced legs in multi-outcome markets. Promoted 2026-04-07. 5 open ($50).
+- [x] **`price_move_fade`** — Fades large price moves (>15pp) on short-term markets lacking news. Promoted 2026-04-07. Best signal quality of alert-only candidates (169 signals, 131 unique).
+- [x] **`polling_vs_market`** — Polling-implied probability vs market price. 1 open. Watch for LLM hallucinations.
 
-Current graduation status:
-- `correlated_laggard`: alert-only, `promotable=True`, `trading_enabled=False`
-- `esport48`: alert-only, `promotable=True`, `trading_enabled=False`
-- `celebrity_tabloid`: paper trading, `trading_enabled=True` — blocked by feed coverage
+### Alert-only (accumulating signals)
+
+- **`fade_certainty_v2`** — Binary markets at extremes (>95% / <5%). 72h cooldown. 4 signals so far.
+- **`base_rate_anchor`** — TF-IDF kNN base rate vs market price. Some overconfident p_hat; accumulating.
+- **`resolution_hunter_v2`** — Near-resolution markets. 48h cooldown. Signal history cleaned 2026-04-07.
+- **`weather_edge_v3`** — NEW 2026-04-08. Observational same-day NO bets: bins already eliminated by observed temps.
+- **`weather_edge_v4`** — NEW 2026-04-08. Bidirectional ensemble vs market price (1-5 day). Fixes v2's broken floor.
+- **`weather_autocorrelation`** — Temperature anomaly persistence. Fixed 2026-04-08 (p_hat formula was broken).
+- **`weather_convergence`** — Ensemble convergence as forecast date approaches. Fixed 2026-04-08 (was signaling resolved markets).
+- **`weather_oversum`** — Structural YES-sum > 100% on temperature bins. min_ev_pp=3.0 (intentional for structural arb).
+
+### Paused
+
+- ⏸ **`weather_edge_v2`** — Paused 2026-04-08. `MIN_ENSEMBLE_FLOOR (0.10) > MAX_ENSEMBLE_PROB (0.05)` makes signaling impossible. Superseded by v3 + v4.
 
 ### Killed
 
-- ❌ **`resolution_hunter`** — Killed 2026-04-03. -92.3% ROI / 8.3% WR on 12 trades. Root cause: CLOB prices resolve within hours; LLM news inference too slow to find real edge. See CR-20260403-006.
-- ❌ **`fade_certainty`** — Killed. 0% WR, -100% ROI (10 trades).
+- ❌ **`spread_arb`** — Killed 2026-04-07. -94% ROI / 1.3% WR on 79 trades (-$183). Root cause: YES bets on all legs — wrong direction.
+- ❌ **`resolution_hunter`** — Killed 2026-04-03. -92.3% ROI / 8.3% WR on 12 trades.
+- ❌ **`fade_certainty`** — Killed. 0% WR, -100% ROI (11 trades). 26 open positions still resolving.
 - ❌ **`weather_edge`** — Killed. 43% WR, -12.7% ROI (136 trades).
 
-### Planned — next builds
+### Important: alert_only + trading_enabled
 
-- [ ] **`polling_vs_market`**
-- [ ] **`base_rate`**
-- [ ] **`crypto_options_basis`**
-- [ ] **`pre_event_drift`**
+Always set **both** `alert_only = True` and `trading_enabled = False` for alert-only strategies.
+The base `Strategy` class defaults `trading_enabled = True`, so `alert_only` alone is not enough —
+`strategy_metadata()` will still return `trading_enabled=True` and the runner will trade.
 
 ### Future (post-validation)
 
-- [ ] Graduate `spread_arb` / `ev_news` to live after ≥15 closed trades + graduation checklist
+- [ ] Graduate `ev_news` / `spread_arb_v2` to live after ≥15 closed trades + graduation checklist
 - [ ] Strategy parameter tuning
 - [ ] Monthly live vs paper calibration report
 - [ ] Claude calibration retrospective (Brier score gate for LLM strategies)
