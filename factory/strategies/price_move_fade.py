@@ -4,7 +4,7 @@ Hypothesis: Large price moves (>15pp) on short-term binary markets that aren't
 driven by news tend to be noise/thin-book artifacts that revert within 12-24h.
 Method: Compare consecutive price snapshots from market_observations table.
 Fade moves that exceed the threshold on markets closing within 7 days.
-Status: ALERT-ONLY — accumulate signals before enabling paper trading.
+Status: PAPER TRADING — promoted 2026-04-07.
 """
 from __future__ import annotations
 
@@ -42,10 +42,10 @@ class PriceMoveFadeStrategy(Strategy):
     scan_frequency = "3x/day"
     max_position_usdc = 8.0
     min_ev_pp = 10.0
-    alert_only = True
-    trading_enabled = False
-    promotable = True
-    promotion_criteria = "20 alerts with >55% directional accuracy"
+    alert_only = False
+    trading_enabled = True
+    promotable = False
+    promotion_candidate = False
     last_check_details: list[dict] = []
 
     def scan(self, markets: list[dict]) -> list[Signal]:

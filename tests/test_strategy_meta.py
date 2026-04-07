@@ -13,12 +13,10 @@ def test_alert_only_promotion_metadata_is_exposed_for_candidates():
     assert esport48["alert_only"] is False
     assert esport48["trading_enabled"] is True
 
-    # price_move_fade is alert-only and promotable
+    # price_move_fade promoted to paper trading 2026-04-07
     price_move_fade = meta["price_move_fade"]
-    assert price_move_fade["alert_only"] is True
-    assert price_move_fade["trading_enabled"] is False
-    assert price_move_fade["promotable"] is True
-    assert price_move_fade["promotion_candidate"] is True
+    assert price_move_fade["alert_only"] is False
+    assert price_move_fade["trading_enabled"] is True
 
     celebrity_tabloid = meta["celebrity_tabloid"]
     assert celebrity_tabloid["alert_only"] is False
