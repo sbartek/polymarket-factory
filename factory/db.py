@@ -632,15 +632,16 @@ class FactoryDB:
             return [dict(r) for r in rows]
 
     def has_recent_signal(self, strategy: str, market_id: str, hours: float = 24.0) -> bool:
-        """Check if a consumed (traded) signal for (strategy, market_id) exists in the last N hours.
+        """Check if any signal for (strategy, market_id) exists in the last N hours.
 
-        Only counts signals that were actually executed (consumed_by_run_id IS NOT NULL),
-        not unconsumed scan-phase signals waiting for execution.
+        Counts both consumed (traded) and unconsumed signals so that alert-only
+        strategies are also subject to cooldown and don't re-fire on the same
+        market every scan cycle.
         """
         cutoff = (datetime.now(UTC) - timedelta(hours=hours)).isoformat(timespec="seconds")
         with self._connect() as conn:
             row = conn.execute(
-                "SELECT 1 FROM signals WHERE strategy = ? AND market_id = ? AND created_at >= ? AND consumed_by_run_id IS NOT NULL LIMIT 1",
+                "SELECT 1 FROM signals WHERE strategy = ? AND market_id = ? AND created_at >= ? LIMIT 1",
                 (strategy, market_id, cutoff),
             ).fetchone()
             return row is not None
