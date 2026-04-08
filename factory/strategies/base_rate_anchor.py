@@ -38,7 +38,7 @@ def _days_to_close(end_date: str | None) -> int | None:
 
 
 class BaseRateAnchorStrategy(Strategy):
-    name = "base_rate_anchor"
+    name = "base_rate_knn"
     last_check_details: list[dict] = []
     edge_type = "statistical_fade"
     time_window = "short"
