@@ -76,7 +76,7 @@ def _is_excluded(title: str) -> bool:
 
 def _fetch_news(query: str, n: int = 4) -> list[dict]:
     try:
-        return list(DDGS().news(query, max_results=n))
+        return list(DDGS(timeout=15).news(query, max_results=n))
     except Exception:
         return []
 

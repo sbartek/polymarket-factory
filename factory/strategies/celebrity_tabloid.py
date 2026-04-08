@@ -221,7 +221,7 @@ class CelebrityTabloidStrategy(Strategy):
         domain_query = " OR ".join(f"site:{domain}" for domain in GOSSIP_DOMAINS)
         query = f"{' OR '.join(candidate['names'])} {candidate['event_family'].replace('_', ' ')} {domain_query}"
         try:
-            return list(DDGS().text(query, max_results=n))
+            return list(DDGS(timeout=15).text(query, max_results=n))
         except Exception:
             return []
 

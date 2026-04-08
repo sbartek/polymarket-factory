@@ -52,7 +52,7 @@ def _days_to_close(end_date: str | None) -> int | None:
 
 def _fetch_news(query: str, n: int = 5) -> list[dict]:
     try:
-        return list(DDGS().news(query, max_results=n))
+        return list(DDGS(timeout=15).news(query, max_results=n))
     except Exception:
         return []
 
