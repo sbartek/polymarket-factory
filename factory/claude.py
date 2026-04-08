@@ -11,6 +11,7 @@ shared request_id for joining.
 """
 import json
 import os
+import signal
 import subprocess
 import time
 import uuid
@@ -24,6 +25,24 @@ CALL_TIMEOUT_SECONDS: int = 60
 LOG_DIR = Path(__file__).resolve().parents[1] / "data"
 PROMPT_LOG = LOG_DIR / "llm_prompts.log"
 RESPONSE_LOG = LOG_DIR / "llm_responses.log"
+
+
+
+def _call_with_hard_timeout(fn, timeout_sec):
+    """Run fn() with a SIGALRM hard timeout. Falls back gracefully on non-Unix."""
+    def _handler(signum, frame):
+        raise TimeoutError(f"Hard timeout after {timeout_sec}s")
+    try:
+        old = signal.signal(signal.SIGALRM, _handler)
+        signal.alarm(timeout_sec)
+        try:
+            return fn()
+        finally:
+            signal.alarm(0)
+            signal.signal(signal.SIGALRM, old)
+    except AttributeError:
+        # Windows — no SIGALRM, just call directly
+        return fn()
 
 
 def _log_prompt(request_id: str, prompt: str, method: str) -> None:
@@ -105,11 +124,13 @@ def call_claude(prompt: str, max_tokens: int = 2048, timeout: int | None = None)
         try:
             import anthropic
             client = anthropic.Anthropic(api_key=api_key, timeout=timeout)
-            response = client.messages.create(
-                model="claude-haiku-4-5",
-                max_tokens=max_tokens,
-                messages=[{"role": "user", "content": prompt}],
-            )
+            def _api_call():
+                return client.messages.create(
+                    model="claude-haiku-4-5",
+                    max_tokens=max_tokens,
+                    messages=[{"role": "user", "content": prompt}],
+                )
+            response = _call_with_hard_timeout(_api_call, timeout)
             result_text = response.content[0].text
             elapsed = int((time.monotonic() - t0) * 1000)
             _record_success()
