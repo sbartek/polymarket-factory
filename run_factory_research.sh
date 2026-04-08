@@ -13,7 +13,7 @@ fi
 export FACTORY_ENV="research"
 
 cd "$SCRIPT_DIR"
-uv run python -m factory.runner
+timeout 3h uv run python -m factory.runner
 EXIT_CODE=$?
 
 DASHBOARD_REPO="${DASHBOARD_REPO:-$HOME/workai/projects/pplayouts-dashboard}"

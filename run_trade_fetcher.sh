@@ -12,7 +12,7 @@ else
 fi
 
 cd "$SCRIPT_DIR"
-uv run python -m factory.trade_fetcher --limit 5000
+timeout 15m uv run python -m factory.trade_fetcher --limit 5000
 EXIT_CODE=$?
 
 # Heartbeat ping

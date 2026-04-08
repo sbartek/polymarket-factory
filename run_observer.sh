@@ -12,7 +12,7 @@ else
 fi
 
 cd "$SCRIPT_DIR"
-uv run python -m factory.observer --limit 1000
+timeout 20m uv run python -m factory.observer --limit 1000
 EXIT_CODE=$?
 
 # Heartbeat ping

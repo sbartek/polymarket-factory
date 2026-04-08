@@ -14,7 +14,7 @@ fi
 export FACTORY_ENV="${FACTORY_ENV:-paper}"
 
 cd "$SCRIPT_DIR"
-uv run python -m factory.scanner --limit 1000
+timeout 90m uv run python -m factory.scanner --limit 1000
 EXIT_CODE=$?
 
 # Heartbeat ping
