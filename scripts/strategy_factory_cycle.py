@@ -107,6 +107,124 @@ def load_existing_strategy_names() -> list[str]:
     return sorted({s.name for s in STRATEGIES})
 
 
+def _paused_scan_body() -> str:
+    """Scan body used when LLM code gen fails — strategy registers but produces no signals."""
+    return (
+        "def _eligible(self, ev: dict) -> dict | None:\n"
+        "    return None  # paused — awaiting proper scan logic\n"
+        "\n"
+        "def scan(self, markets: list[dict]) -> list[Signal]:\n"
+        "    print(f'  [{self.name}] 0 alerts (paused — no scan logic generated)')\n"
+        "    return []"
+    )
+
+
+def _indent_for_class(body: str) -> str:
+    """Add 4-space indent to method source for placement inside a class body."""
+    result = []
+    for line in body.splitlines():
+        result.append("    " + line if line.strip() else "")
+    return "\n".join(result)
+
+
+def _generate_scan_body(spec: dict) -> str | None:
+    """Ask Claude to write _eligible() and scan() for this spec.
+    Returns raw method source (pre-class-indent) or None on failure."""
+    ref_path = PROJECT_ROOT / "factory" / "strategies" / "fade_certainty_v2.py"
+    ref_text = ref_path.read_text(encoding="utf-8") if ref_path.exists() else ""
+
+    prompt = dedent(f"""
+    Write Python scan logic for a Polymarket alert-only trading strategy.
+
+    Strategy spec:
+      name: {spec['name']}
+      thesis: {spec['thesis']}
+      entry_logic: {spec['entry_logic']}
+      likely_inputs: {spec['likely_inputs']}
+      market_types: {spec['market_types']}
+
+    Each market event dict (ev) has:
+      ev['title'] str, ev['slug'] str, ev['id'] str, ev['endDate'] str (ISO date),
+      ev['volume24hr'] float, ev['volume'] float,
+      ev['markets'] list — each sub-market has:
+        m['id'], m['question'] str, m['closed'] bool,
+        m['outcomePrices'] JSON str "[yes_price, no_price]"
+
+    Already imported in the module: date (from datetime), event_url, get_yes_price, Signal, Strategy
+    Helpers: event_url(ev) -> str, get_yes_price(ev) -> float | None
+    Signal fields: strategy, market_id, market_title, outcome ("YES" or "NO"),
+                   market_price, p_hat, ev_pp, confidence, closes, url, rationale
+    Module constant: MAX_SIGNALS = 3
+
+    Reference pattern to follow:
+    ```python
+    {ref_text[:2500]}
+    ```
+
+    Rules:
+    - NO external API calls (no requests, no urllib, no HTTP of any kind)
+    - Use only data from the ev dict and the helpers above
+    - p_hat must be derived from market structure, NOT market_price + constant
+    - End scan() with: print(f"  [{{self.name}}] {{len(signals)}} alerts (auto-generated)")
+    - Return at most MAX_SIGNALS signals
+    - Keep logic simple and directly implementable from available data
+
+    Return ONLY the two methods with 4-space indentation (no class header, no imports):
+    ```python
+    def _eligible(self, ev: dict) -> dict | None:
+        ...
+
+    def scan(self, markets: list[dict]) -> list[Signal]:
+        ...
+    ```
+    """).strip()
+
+    try:
+        raw = call_claude(prompt, max_tokens=2500, timeout=90)
+        blocks = re.findall(r"```(?:python)?\s*(.*?)```", raw, re.S)
+        for block in blocks:
+            block = block.strip()
+            if "def scan(" in block and "def _eligible(" in block:
+                if re.search(r"\brequests\b|\burllib\b", block):
+                    print(f"  [factory] rejecting scan body for {spec['name']} — uses HTTP calls")
+                    return None
+                return block
+    except Exception as e:
+        print(f"  [factory] LLM code gen error for {spec['name']}: {e}")
+    return None
+
+
+def _smoke_test_generated(py_path: Path, strategy_name: str) -> bool:
+    """Return True if the module imports cleanly and scan([]) returns a list."""
+    import py_compile
+    import sys
+    try:
+        py_compile.compile(str(py_path), doraise=True)
+    except py_compile.PyCompileError as e:
+        print(f"  [factory] syntax error in {py_path.name}: {e}")
+        return False
+    module_name = f"factory.strategies.generated.{py_path.stem}"
+    # Remove any cached version to ensure we load the freshly written file
+    sys.modules.pop(module_name, None)
+    try:
+        import importlib
+        importlib.invalidate_caches()
+        mod = importlib.import_module(module_name)
+        for attr_name in dir(mod):
+            attr = getattr(mod, attr_name)
+            if (isinstance(attr, type) and attr.__name__ != "Strategy"
+                    and hasattr(attr, "scan") and callable(getattr(attr, "scan", None))):
+                try:
+                    result = attr().scan([])
+                    if isinstance(result, list):
+                        return True
+                except Exception:
+                    continue
+    except Exception as e:
+        print(f"  [factory] smoke test failed for {strategy_name}: {e}")
+    return False
+
+
 def archived_module_name(module_name: str) -> str:
     stamp = now_local().strftime("%Y%m%d_%H%M%S")
     return f"{module_name}__archived_{stamp}.py"
@@ -318,6 +436,10 @@ def generate_strategy_specs(eval_text: str) -> list[dict]:
     - Prefer concrete, auditable ideas over vague LLM fantasies.
     - Include realistic caveats about fillability/capacity when relevant.
     - Keep them suitable for initial ALERT-ONLY implementation.
+    - Prefer strategies that use only the standard market snapshot data (title, price,
+      volume, endDate, sub-market list). Avoid strategies that require intraday candles,
+      order book depth snapshots, trade history, or live news feeds — mark those as
+      requires_external_data=true so they are paused until the data is available.
 
     Each object must have:
     - name
@@ -331,6 +453,8 @@ def generate_strategy_specs(eval_text: str) -> list[dict]:
     - exit_logic
     - failure_modes (array of 3-6 short strings)
     - validation_plan
+    - requires_external_data (bool): true if entry logic needs intraday candles, order book
+      depth, trade history, live news, or any data beyond the standard market snapshot
 
     Return JSON only.
     """)
@@ -400,7 +524,7 @@ def build_proposal_markdown(spec: dict, proposal_id: str, date_human: str) -> st
     """).strip() + "\n"
 
 
-def generate_strategy_code(spec: dict, module_name: str) -> str:
+def generate_strategy_code(spec: dict, module_name: str, *, force_paused: bool = False) -> str:
     strategy_class = class_name(spec['name'])
     edge_type = spec['edge_type']
     time_window = spec['time_window']
@@ -419,136 +543,65 @@ def generate_strategy_code(spec: dict, module_name: str) -> str:
         'exit_logic': spec['exit_logic'],
         'failure_modes': spec['failure_modes'],
     }, ensure_ascii=False)
-    return dedent(f'''"""
-Auto-generated strategy: {spec['name']}
-Generated by strategy_factory_cycle.py.
 
-This strategy is intentionally ALERT-ONLY on creation.
-It must earn promotion later.
+    # Skip LLM call if strategy explicitly requires unavailable external data
+    needs_external = spec.get('requires_external_data', False)
+    if force_paused or needs_external:
+        if needs_external and not force_paused:
+            print(f"  [factory] {spec['name']} requires external data — using paused skeleton")
+        scan_body = _paused_scan_body()
+        is_paused = True
+    else:
+        scan_body = _generate_scan_body(spec)
+        is_paused = scan_body is None
+        if is_paused:
+            print(f"  [factory] LLM code gen failed for {spec['name']} — using paused skeleton")
+            scan_body = _paused_scan_body()
 
-Design notes:
-{comment}
-"""
-from __future__ import annotations
+    indented_body = _indent_for_class(scan_body)
 
-from datetime import date
+    return (
+        f'"""\nAuto-generated strategy: {spec["name"]}\n'
+        f'Generated by strategy_factory_cycle.py.\n\n'
+        f'This strategy is intentionally ALERT-ONLY on creation.\n'
+        f'It must earn promotion later.\n\n'
+        f'Design notes:\n{comment}\n"""\n'
+        f'from __future__ import annotations\n\n'
+        f'from datetime import date\n\n'
+        f'from ..base import Strategy\n'
+        f'from ...feed import event_url, get_yes_price\n'
+        f'from ...models import Signal\n\n'
+        f'MAX_SIGNALS = 3\n\n\n'
+        f'class {strategy_class}(Strategy):\n'
+        f'    name = "{spec["name"]}"\n'
+        f'    alert_only = True\n'
+        f'    trading_enabled = False\n'
+        f'    promotable = False\n'
+        f'    live_ready = False\n'
+        f'    promotion_criteria = ""\n'
+        f'    edge_type = "{edge_type}"\n'
+        f'    time_window = "{time_window}"\n'
+        f'    target_hold_min_days = {min_days}\n'
+        f'    target_hold_max_days = {max_days}\n'
+        f'    scan_frequency = "auto-generated"\n'
+        f'    paused = {str(is_paused)}\n'
+        f'    min_ev_pp = 8.0\n'
+        f'    last_check_details: list[dict] = []\n\n'
+        f'{indented_body}\n'
+    )
 
-from ..base import Strategy
-from ...feed import event_url, get_yes_price
-from ...models import Signal
 
-MIN_VOLUME = 10000
-MIN_PRICE = 0.12
-MAX_PRICE = 0.88
-MAX_SIGNALS = 3
-
-
-def _days_to_close(end_date: str | None) -> int | None:
-    if not end_date:
-        return None
-    try:
-        return (date.fromisoformat(end_date[:10]) - date.today()).days
-    except ValueError:
-        return None
-
-
-class {strategy_class}(Strategy):
-    name = "{spec['name']}"
-    alert_only = True
-    trading_enabled = False
-    promotable = False
-    live_ready = False
-    promotion_criteria = ""
-    edge_type = "{edge_type}"
-    time_window = "{time_window}"
-    target_hold_min_days = {min_days}
-    target_hold_max_days = {max_days}
-    scan_frequency = "auto-generated"
-    paused = False
-    min_ev_pp = 8.0
-    last_check_details: list[dict] = []
-
-    def _eligible(self, ev: dict) -> dict | None:
-        title = str(ev.get("title") or "")
-        slug = str(ev.get("slug") or ev.get("id") or "")
-        if not slug or not title:
+def write_generated_strategy(spec: dict, prefix: str, seq: int) -> dict | None:
+    # Deduplication: avoid colliding with an existing explicit or generated strategy name
+    existing_names = set(load_existing_strategy_names())
+    original_name = spec['name']
+    if spec['name'] in existing_names:
+        spec = {**spec, 'name': spec['name'] + '_gen'}
+        if spec['name'] in existing_names:
+            print(f"  [factory] skipping {original_name} — name collision even with _gen suffix")
             return None
-        volume = float(ev.get("volume24hr") or ev.get("volume") or 0)
-        if volume < MIN_VOLUME:
-            return None
-        price = get_yes_price(ev)
-        if price is None or not (MIN_PRICE <= price <= MAX_PRICE):
-            return None
-        days = _days_to_close(ev.get("endDate"))
-        if days is None or days < 0:
-            return None
-        text = title.lower()
-        keywords = {json.dumps([w for w in slugify(spec['title']).split('_') if len(w) >= 4][:8])}
-        matches = sum(1 for kw in keywords if kw in text)
-        if matches == 0:
-            return None
-        return {{
-            "slug": slug,
-            "title": title,
-            "price": price,
-            "volume": volume,
-            "days": days,
-            "matches": matches,
-            "url": event_url(ev),
-            "closes": (ev.get("endDate") or "")[:10],
-        }}
+        print(f"  [factory] renamed {original_name} → {spec['name']} (collision with existing strategy)")
 
-    def scan(self, markets: list[dict]) -> list[Signal]:
-        self.last_check_details = []
-        candidates = []
-        for ev in markets:
-            row = self._eligible(ev)
-            if row:
-                candidates.append(row)
-        candidates.sort(key=lambda row: (-row["matches"], -row["volume"], abs(row["price"] - 0.5)))
-        signals: list[Signal] = []
-        for row in candidates[:MAX_SIGNALS]:
-            pull = min(0.03 + 0.01 * row["matches"], 0.10)
-            if row["price"] < 0.5:
-                outcome = "YES"
-                market_price = row["price"]
-                p_hat = min(row["price"] + pull, 0.95)
-            else:
-                outcome = "NO"
-                market_price = 1 - row["price"]
-                p_hat = min((1 - row["price"]) + pull, 0.95)
-            ev_pp = round((p_hat - market_price) * 100, 1)
-            decision = "alert" if ev_pp >= self.min_ev_pp else "watch"
-            self.last_check_details.append({{
-                "market_slug": row["slug"],
-                "title": row["title"][:120],
-                "topic_key": "{spec['name']}",
-                "candidate_score": row["matches"],
-                "news_count": 0,
-                "decision": decision,
-                "reason": "auto_generated_keyword_match",
-            }})
-            if decision != "alert":
-                continue
-            signals.append(Signal(
-                strategy=self.name,
-                market_id=row["slug"],
-                market_title=row["title"][:100],
-                outcome=outcome,
-                market_price=round(market_price, 4),
-                p_hat=round(p_hat, 4),
-                ev_pp=ev_pp,
-                confidence="low",
-                closes=row["closes"],
-                url=row["url"],
-                rationale="auto_generated_alert_only",
-            ))
-        print(f"  [{{self.name}}] {{len(signals)}} alerts (auto-generated)")
-        return signals
-''')
-
-
-def write_generated_strategy(spec: dict, prefix: str, seq: int) -> dict:
     safe_name = slugify(spec['name'])
     module_name = f"auto_{prefix}_{seq:03d}_{safe_name}"
     proposal_id = f"PR-{prefix}-{seq:03d}"
@@ -561,6 +614,12 @@ def write_generated_strategy(spec: dict, prefix: str, seq: int) -> dict:
     md_path = PROPOSALS_DIR / f"{proposal_id}-{safe_name}.md"
 
     py_path.write_text(generate_strategy_code(spec, module_name), encoding="utf-8")
+
+    # Smoke test: if import or scan([]) fail, overwrite with paused skeleton
+    if not _smoke_test_generated(py_path, spec['name']):
+        print(f"  [factory] smoke test failed — rewriting {spec['name']} as paused skeleton")
+        py_path.write_text(generate_strategy_code(spec, module_name, force_paused=True), encoding="utf-8")
+
     md_path.write_text(build_proposal_markdown(spec, proposal_id, date_human), encoding="utf-8")
     return {
         "module": module_name,
@@ -640,7 +699,9 @@ def main() -> None:
     specs = generate_strategy_specs(eval_text)
     generated = []
     for idx, spec in enumerate(specs, start=seq):
-        generated.append(write_generated_strategy(spec, prefix, idx))
+        result = write_generated_strategy(spec, prefix, idx)
+        if result is not None:
+            generated.append(result)
     summary = summarize_eval(eval_text, generated, archived)
     DASHBOARD_DATA.mkdir(parents=True, exist_ok=True)
     EVAL_JSON.write_text(json.dumps(summary, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
