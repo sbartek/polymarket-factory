@@ -17,12 +17,16 @@ FACTORY_REMOTE_API_URL="${FACTORY_REMOTE_API_URL:-https://factory.pplayouts.trad
     uv run python scripts/strategy_factory_cycle.py
 EXIT_CODE=$?
 
-# Commit any newly generated strategy files
-git add factory/strategies/generated/ improvement/proposals/ dashboard-data/ benchmark-data/ 2>/dev/null || true
-if ! git diff --staged --quiet; then
-    git commit -m "strategy factory: auto-generated strategies $(date +%Y-%m-%d)"
-    git push
-    echo "[strategy-factory-local] pushed new strategies to repo"
+if [[ $EXIT_CODE -eq 0 ]]; then
+    # Commit any newly generated strategy files only after a successful cycle.
+    git add factory/strategies/generated/ improvement/proposals/ dashboard-data/ benchmark-data/ 2>/dev/null || true
+    if ! git diff --staged --quiet; then
+        git commit -m "strategy factory: auto-generated strategies $(date +%Y-%m-%d)"
+        git push
+        echo "[strategy-factory-local] pushed new strategies to repo"
+    fi
+else
+    echo "[strategy-factory-local] cycle failed; skipping auto-commit/push"
 fi
 
 # Ping heartbeat to VM so watchdog knows it ran

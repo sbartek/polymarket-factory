@@ -19,10 +19,26 @@ from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 BENCHMARK_DIR = PROJECT_ROOT / "benchmark-data"
 HEARTBEAT_DIR = PROJECT_ROOT / "data" / "heartbeats"
+ENV_FILE = PROJECT_ROOT / ".env"
 
 app = FastAPI(title="Polymarket Factory API", docs_url=None, redoc_url=None)
 
 VALID_SCOPES = {"alert-only", "generated", "all"}
+
+
+def _load_dotenv() -> None:
+    """Load project .env into process env when the service launcher didn't."""
+    if not ENV_FILE.exists():
+        return
+    for raw in ENV_FILE.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        os.environ.setdefault(key.strip(), value.strip())
+
+
+_load_dotenv()
 
 
 def require_auth(x_api_key: str = Header(..., alias="x-api-key")) -> None:
