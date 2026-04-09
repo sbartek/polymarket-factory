@@ -4,7 +4,11 @@
 
 A framework for spinning up, paper-trading, and evaluating Polymarket prediction market strategies. The goal is to find strategies with real edge, paper-trade them, then promote winners to live trading.
 
-Runs automatically via launchd on the `pplayouts` machine (Intel Mac, Tailscale IP 100.75.233.52). Dashboard at https://pplayouts-dashboard.bartekskorulski.workers.dev.
+Current host split:
+- `gpplayouts` (GCP VM) is the primary runtime for paper scan/execute, live, API, and dashboard-facing data.
+- `pplayouts` (Intel Mac) now only runs the local strategy factory at 09:30 and pushes generated strategy/proposal updates.
+
+Dashboard at https://pplayouts-dashboard.bartekskorulski.workers.dev.
 
 This file is the canonical durable project memory for both Claude and Codex. Keep high-signal operational facts here and keep external memory files as thin pointers to this file.
 
@@ -13,12 +17,14 @@ This file is the canonical durable project memory for both Claude and Codex. Kee
 ## Architecture
 
 ```
-runner.py (every 2h, 12x/day via launchd)
-  ├── fetch 100 top markets (Gamma API)
-  ├── each strategy: scan → signal → env policy → open/skip
-  ├── check open positions → close resolved ones
-  ├── WhatsApp summary (full at 09:00, delta at other runs)
-  └── publish dashboard snapshot
+gpplayouts runtime:
+  paper scan   (:30 every 2h) -> fetch markets, run strategies, cache signals
+  paper execute(:00 every 2h) -> read cached signals, open/skip, close resolved
+  observer / trade_fetcher / live / API run as separate services
+
+pplayouts runtime:
+  strategy-factory-local (09:30 daily) -> pull repo, fetch remote eval/benchmarks,
+  generate candidates, refresh dashboard artifacts, push repo changes
 ```
 
 **Runtime environments:** `research` (signals only) · `paper` (default) · `live` (explicit `mode="live"` plus `live_ready=True` only; currently `carry_rewards`)
@@ -27,11 +33,11 @@ runner.py (every 2h, 12x/day via launchd)
 - `factory/runner.py` — main loop
 - `factory/strategies/` — all strategy implementations
 - `factory/strategy_meta.py` — exposure caps, cadence, active set
-- `factory/broker.py` — paper broker (SQLite-backed)
+- `factory/broker.py` — paper broker / trade access layer
 - `factory/live_broker.py` — real CLOB execution, $100 hard cap
 - `factory/feed.py` — Gamma API wrappers
 - `factory/claude.py` — LLM wrapper (Anthropic API -> Claude CLI -> codex fallback)
-- `factory/db.py` — SQLite schema, 15+ tables
+- `factory/db.py` — PostgreSQL persistence (SQLite remains only for local backup/runtime artifacts)
 - `eval/report.py` — weekly kill/keep evaluation
 - `scripts/` — 20+ operational scripts
 - `dashboard/` — static web UI source
@@ -94,15 +100,28 @@ Run: `uv run eval/report.py`
 
 ---
 
-## Launchd schedule
+## Runtime schedule
+
+### `gpplayouts` (primary runtime)
 
 | Job | Schedule |
 |-----|----------|
-| `com.polymarket.factory` | Every 2h at :00 (00:00, 02:00 … 22:00) · paper env |
-| `com.polymarket.factory.live` | 19:30 daily · live env |
-| `com.polymarket.factory.strategy-factory` | 10:30 / 22:30 daily |
-| `com.polymarket.factory.research` | 07:30 daily |
-| `com.polymarket.factory.backup` | 03:45 daily |
+| `paper_scan` | Every 2h at `:30` |
+| `paper_execute` | Every 2h at `:00` |
+| `live` | 19:30 daily |
+| `research` | 07:30 daily |
+| `observer` | separate launchd job |
+| `factory-api` | systemd service on port 8765 behind `factory.pplayouts.trade` |
+
+### `pplayouts` (strategy-factory only)
+
+| Job | Schedule |
+|-----|----------|
+| `com.polymarket.factory.strategy-factory-local` | 09:30 daily |
+
+Important:
+- `pplayouts` should not run the paper combined/scan/execute/live/research/observer jobs.
+- On 2026-04-10 those stale launch agents were unloaded, disabled, and removed from `~/Library/LaunchAgents`.
 
 ---
 
@@ -236,6 +255,35 @@ Remaining backlog:
 - `celebrity_tabloid` tag-feed scan test was updated to use a short-window fixture (`days=20`) consistent with the current strategy horizon (`MAX_DAYS = 30`), instead of the stale long-window fixture.
 - `ev_news` is now canonically a `short` time-window strategy; the DB metadata backfill test was updated accordingly.
 - After those test-alignment changes, the full suite passed locally: `uv run pytest -q` → `290 passed`.
+
+## Operational updates (2026-04-10)
+
+- Paper runtime and strategy-factory roles were clarified and cleaned up:
+  - `gpplayouts` is the only host that should run paper scan/execute and API-backed evaluation.
+  - `pplayouts` should only run `com.polymarket.factory.strategy-factory-local` at 09:30.
+- `pplayouts` had stale launch agents loaded for `com.polymarket.factory`, `scan`, `execute`, `live`, `research`, `observer`, and `aggressive`; these were disabled/unloaded, then the stale plist files were removed from `~/Library/LaunchAgents`.
+- `pplayouts` now has only `com.polymarket.factory.strategy-factory-local` installed and loaded.
+- The strategy factory on `pplayouts` was broken for two reasons:
+  - local `.env` was missing `FACTORY_API_KEY` and `FACTORY_REMOTE_API_URL`
+  - remote `/eval` on `gpplayouts` failed because `api/server.py` launched `eval/report.py` without `DATABASE_URL` in that subprocess environment
+- Fixes applied:
+  - added missing strategy-factory env vars on `pplayouts`
+  - `api/server.py` now loads `.env` into the API process before handling `/eval`
+  - `run_strategy_factory_local.sh` now skips auto-commit/push if the cycle fails
+- Verified after the fix:
+  - `/benchmark/alert-only` from `pplayouts` returned `200`
+  - `/eval` from `pplayouts` returned `200`
+  - `./run_strategy_factory_local.sh` on `pplayouts` completed successfully
+- Successful 2026-04-10 strategy-factory run generated and pushed:
+  - `stale_market_micro_20260410`
+  - `resolution_hunter_conservative_20260410`
+- Rescued alert-only strategies added recently:
+  - `conditional_outcome_count_asymmetry`
+  - `conditional_outcome_drift`
+  - `news_impact_fade_by_recency`
+- First live evidence for the rescued set came from `gpplayouts`:
+  - `news_impact_fade_by_recency` produced a live signal on `Will Paulo Costa win by KO or TKO?` with `NO`, market price `0.635`, `p_hat 0.73`, edge `9.5pp`, confidence `medium`
+- New repo-native backlog category exists at `improvement/ideas/` for strategy concepts that are worth keeping but not worth implementing yet; the seven parked generated strategy leftovers were moved there as structured idea notes.
 
 ---
 
