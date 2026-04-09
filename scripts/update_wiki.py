@@ -25,6 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from factory.claude import call_gemini as call_llm
 from factory.db import FactoryDB
+from factory.pg_compat import connect_compat
 from factory.strategy_meta import ACTIVE_STRATEGIES, strategy_metadata
 
 WIKI_DIR = Path(__file__).resolve().parents[1] / "wiki"
@@ -58,7 +59,7 @@ def _load_all_data(db: FactoryDB) -> dict:
 
         recent_closed = sorted(s_closed, key=lambda t: t.get("closed_at") or "", reverse=True)[:5]
         recent_signals_raw = []
-        with db._connect() as conn:
+        with connect_compat() as conn:
             rows = conn.execute(
                 "SELECT * FROM signals WHERE strategy = ? ORDER BY created_at DESC LIMIT 10",
                 (name,),
@@ -100,7 +101,7 @@ def _load_all_data(db: FactoryDB) -> dict:
             ],
         }
 
-    with db._connect() as conn:
+    with connect_compat() as conn:
         recent_runs = [dict(r) for r in conn.execute(
             "SELECT * FROM runs ORDER BY started_at DESC LIMIT 20"
         ).fetchall()]

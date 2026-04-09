@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import os
-import sqlite3
 import subprocess
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
@@ -14,7 +13,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from factory.db import FactoryDB
+from factory.pg_compat import connect_compat
 from factory.strategy_meta import strategy_metadata, ACTIVE_STRATEGIES as _CANONICAL_ACTIVE
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -339,11 +338,11 @@ def attach_linked_reviews(experiments: list[dict], reviews: dict[str, dict]) -> 
             row["status"] = "review_due"
 
 
-def connect_db() -> sqlite3.Connection:
-    return FactoryDB(path=DB_PATH)._connect()
+def connect_db():
+    return connect_compat()
 
 
-def fetch_runs(conn: sqlite3.Connection, limit: int = 25) -> list[dict]:
+def fetch_runs(conn: object, limit: int = 25) -> list[dict]:
     rows = conn.execute(
         "SELECT * FROM runs ORDER BY started_at DESC LIMIT ?", (limit,)
     ).fetchall()
@@ -363,7 +362,7 @@ def fetch_runs(conn: sqlite3.Connection, limit: int = 25) -> list[dict]:
     return out
 
 
-def summarize_run(row: sqlite3.Row) -> str:
+def summarize_run(row: dict) -> str:
     status = normalize_status(row["status"])
     markets = row["markets_fetched"] or 0
     closed_count = row["closed_count"] or 0
@@ -375,7 +374,7 @@ def summarize_run(row: sqlite3.Row) -> str:
     return "; ".join(bits)
 
 
-def scalar(conn: sqlite3.Connection, sql: str, params: tuple = (), default=None):
+def scalar(conn: object, sql: str, params: tuple = (), default=None):
     row = conn.execute(sql, params).fetchone()
     if row is None:
         return default
@@ -403,12 +402,12 @@ def dir_size_bytes(path: Path, *, excluded_dirs: set[str] | None = None) -> int:
     return total
 
 
-def count_distinct(conn: sqlite3.Connection, sql: str, params: tuple = ()) -> int:
+def count_distinct(conn: object, sql: str, params: tuple = ()) -> int:
     value = scalar(conn, sql, params, 0)
     return int(value or 0)
 
 
-def fetch_execution_summary(conn: sqlite3.Connection) -> dict:
+def fetch_execution_summary(conn: object) -> dict:
     checks_30d = scalar(conn, "SELECT COUNT(*) FROM signal_execution_checks WHERE created_at >= datetime('now', '-30 day')", (), 0)
     strategies_with_checks = scalar(conn, "SELECT COUNT(DISTINCT strategy) FROM signal_execution_checks WHERE created_at >= datetime('now', '-30 day')", (), 0)
     avg_ev_50 = scalar(conn, "SELECT AVG(ev_after_slippage_50_pp) FROM signal_execution_checks WHERE created_at >= datetime('now', '-30 day')", (), None)
@@ -425,7 +424,7 @@ def fetch_execution_summary(conn: sqlite3.Connection) -> dict:
     }
 
 
-def fetch_storage(conn: sqlite3.Connection) -> dict:
+def fetch_storage(conn: object) -> dict:
     archive_rows = conn.execute(
         """
         SELECT run_id, created_at, event_count, LENGTH(payload_json) AS payload_bytes
@@ -556,7 +555,7 @@ def load_generated_registry(benchmarks: dict | None = None) -> dict[str, dict]:
     return rows
 
 
-def fetch_overview(conn: sqlite3.Connection, experiments: list[dict], warnings: list[str], benchmarks: dict | None = None, storage: dict | None = None) -> dict:
+def fetch_overview(conn: object, experiments: list[dict], warnings: list[str], benchmarks: dict | None = None, storage: dict | None = None) -> dict:
     latest = conn.execute("SELECT * FROM runs ORDER BY started_at DESC LIMIT 1").fetchone()
     open_active_exposure = scalar(conn, "SELECT COALESCE(SUM(amount_usdc), 0) FROM trades WHERE status='open' AND strategy IN ({})".format(
         ",".join("?" for _ in ACTIVE_STRATEGIES)
@@ -623,7 +622,7 @@ def fetch_overview(conn: sqlite3.Connection, experiments: list[dict], warnings: 
     }
 
 
-def fetch_strategy_rows(conn: sqlite3.Connection) -> list[dict]:
+def fetch_strategy_rows(conn: object) -> list[dict]:
     rows = conn.execute(
         """
         SELECT
@@ -642,7 +641,7 @@ def fetch_strategy_rows(conn: sqlite3.Connection) -> list[dict]:
     return [dict(r) for r in rows]
 
 
-def fetch_positions_open(conn: sqlite3.Connection) -> list[dict]:
+def fetch_positions_open(conn: object) -> list[dict]:
     rows = conn.execute(
         """
         SELECT id, strategy, market_title, outcome, amount_usdc, opened_at, url, status,
@@ -680,7 +679,7 @@ def fetch_positions_open(conn: sqlite3.Connection) -> list[dict]:
     return out
 
 
-def fetch_strategies(conn: sqlite3.Connection, warnings: list[str], benchmarks: dict | None = None) -> list[dict]:
+def fetch_strategies(conn: object, warnings: list[str], benchmarks: dict | None = None) -> list[dict]:
     meta_lookup = strategy_metadata()
     benchmark_scopes = (benchmarks or {}).get("scopes", {})
     alert_only_benchmark_rows = {
@@ -804,7 +803,7 @@ def fetch_strategies(conn: sqlite3.Connection, warnings: list[str], benchmarks: 
     return out
 
 
-def fetch_execution_checks(conn: sqlite3.Connection, limit: int = 250) -> list[dict]:
+def fetch_execution_checks(conn: object, limit: int = 250) -> list[dict]:
     rows = conn.execute(
         """
         SELECT
@@ -874,7 +873,7 @@ def build_manifest(warnings: list[str], sqlite_available: bool, improvement_avai
     }
 
 
-def collect_warnings(conn: sqlite3.Connection | None, changes: dict[str, dict], experiments: list[dict], reviews: dict[str, dict]) -> list[str]:
+def collect_warnings(conn: object | None, changes: dict[str, dict], experiments: list[dict], reviews: dict[str, dict]) -> list[str]:
     warnings: list[str] = []
     for exp in experiments:
         for change_id in exp.get("linked_changes", []):
@@ -910,7 +909,7 @@ def write_json(path: Path, data) -> None:
     path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
-def fetch_run_history(conn: sqlite3.Connection, days: int = 14) -> dict:
+def fetch_run_history(conn: object, days: int = 14) -> dict:
     """Export run history for charting: per-pipeline daily counts + timeline."""
     from datetime import timedelta
     cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()

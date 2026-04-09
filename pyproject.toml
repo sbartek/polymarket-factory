@@ -11,6 +11,7 @@ dependencies = [
     "google-genai>=1.70.0",
     "fastapi",
     "uvicorn[standard]",
+    "psycopg2-binary>=2.9.11",
 ]
 
 [project.optional-dependencies]

@@ -274,5 +274,5 @@ def get_run_analytics(db: FactoryDB, limit_runs: int = 20) -> dict:
 
 
 def open_db(path: Path | None = None) -> FactoryDB:
-    """Open the factory DB from an optional override path."""
-    return FactoryDB(path=path or DB_PATH)
+    """Open the factory DB."""
+    return FactoryDB()

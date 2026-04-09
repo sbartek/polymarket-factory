@@ -9,11 +9,13 @@ from __future__ import annotations
 
 import json
 import os
-import sqlite3
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-DB_PATH_DEFAULT = Path(os.environ.get("FACTORY_DATA_DIR", "data")) / "factory.sqlite3"
+import psycopg2
+import psycopg2.extras
+
+DATABASE_URL = os.environ.get("DATABASE_URL", "")
 SIGNAL_REPEAT_WINDOW_HOURS = 24
 SIGNAL_REPEAT_THRESHOLD = 2.5  # avg signals per unique market above this triggers alert
 
@@ -95,33 +97,35 @@ def check_heartbeats() -> list[dict]:
     return problems
 
 
-def check_signal_repeats(db_path: Path = DB_PATH_DEFAULT) -> list[dict]:
+def check_signal_repeats(dsn: str | None = None) -> list[dict]:
     """Check for strategies re-firing on the same markets excessively.
 
     Returns a list of dicts for strategies whose signals/unique_market ratio
     exceeds SIGNAL_REPEAT_THRESHOLD over the last SIGNAL_REPEAT_WINDOW_HOURS.
     """
-    if not db_path.exists():
+    dsn = dsn or DATABASE_URL
+    if not dsn:
         return []
     problems: list[dict] = []
     cutoff = (datetime.now(UTC) - timedelta(hours=SIGNAL_REPEAT_WINDOW_HOURS)).isoformat(timespec="seconds")
     try:
-        conn = sqlite3.connect(db_path)
-        conn.row_factory = sqlite3.Row
-        rows = conn.execute(
+        conn = psycopg2.connect(dsn)
+        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        cur.execute(
             """
             SELECT strategy,
                    COUNT(*) AS total,
                    COUNT(DISTINCT market_id) AS unique_markets,
-                   ROUND(CAST(COUNT(*) AS FLOAT) / COUNT(DISTINCT market_id), 2) AS ratio
+                   ROUND(CAST(COUNT(*) AS NUMERIC) / COUNT(DISTINCT market_id), 2) AS ratio
             FROM signals
-            WHERE created_at >= ?
+            WHERE created_at >= %s
             GROUP BY strategy
-            HAVING ratio > ? AND total >= 5
+            HAVING ROUND(CAST(COUNT(*) AS NUMERIC) / COUNT(DISTINCT market_id), 2) > %s AND COUNT(*) >= 5
             ORDER BY ratio DESC
             """,
             (cutoff, SIGNAL_REPEAT_THRESHOLD),
-        ).fetchall()
+        )
+        rows = cur.fetchall()
         conn.close()
         for row in rows:
             problems.append({

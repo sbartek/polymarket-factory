@@ -1,5 +1,5 @@
 #!/bin/bash
-# Daily DB backup with GCS upload.
+# Daily DB backup — pg_dump to GCS.
 
 set -uo pipefail
 
@@ -12,8 +12,31 @@ else
 fi
 
 cd "$SCRIPT_DIR"
-uv run python scripts/backup_db.py --keep 14
+
+STAMP=$(date -u +%Y-%m-%d)
+BACKUP_DIR="$SCRIPT_DIR/backups"
+DUMP_FILE="$BACKUP_DIR/factory-${STAMP}.sql.gz"
+GCS_BUCKET="pplayouts-factory-backups"
+
+mkdir -p "$BACKUP_DIR"
+
+# pg_dump compressed
+pg_dump "$DATABASE_URL" | gzip > "$DUMP_FILE"
 EXIT_CODE=$?
+
+if [[ $EXIT_CODE -eq 0 ]]; then
+    echo "Backup created: $DUMP_FILE ($(du -h "$DUMP_FILE" | cut -f1))"
+
+    # Upload to GCS
+    if command -v gcloud &>/dev/null; then
+        gcloud storage cp "$DUMP_FILE" "gs://${GCS_BUCKET}/" && echo "Uploaded to GCS"
+    fi
+
+    # Keep only 1 local backup
+    find "$BACKUP_DIR" -name 'factory-*.sql.gz' -not -name "factory-${STAMP}.sql.gz" -delete
+    # Clean old SQLite backups
+    find "$BACKUP_DIR" -name 'factory-*.sqlite3' -delete 2>/dev/null
+fi
 
 # Heartbeat ping
 if [[ $EXIT_CODE -eq 0 ]]; then

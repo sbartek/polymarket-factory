@@ -26,7 +26,8 @@ You (idea) → new file in factory/strategies/ → add to STRATEGIES registry �
 ```
 
 **Stack:** Python 3.12 · uv · Gamma API · DDGS news · Anthropic Claude API · Slack + WhatsApp
-**Hosts:** GCP VM (primary) + Mac (legacy) — portable shell scripts, same codebase
+**Database:** Cloud SQL PostgreSQL 15 (`pplayouts-db`, db-f1-micro)
+**Hosts:** GCP VM (primary) + Mac (strategy-factory only) — GitHub Actions CI/CD deploys on push to main
 
 ---
 
