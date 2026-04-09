@@ -2,12 +2,15 @@ from .base import Strategy
 from .base_rate_anchor import BaseRateAnchorStrategy
 from .carry_rewards import CarryRewardsStrategy
 from .conditional_probability_mispricing import ConditionalProbabilityMispricingStrategy
+from .conditional_outcome_count_asymmetry import ConditionalOutcomeCountAsymmetryStrategy
+from .conditional_outcome_drift import ConditionalOutcomeDriftStrategy
 from .celebrity_tabloid import CelebrityTabloidStrategy
 from .correlated_laggard import CorrelatedLaggardStrategy
 from .correlated_pairs import CorrelatedPairsStrategy
 from .esport48 import Esport48Strategy
 from .ev_news import EvNewsStrategy
 from .fade_certainty_v2 import FadeCertaintyV2Strategy
+from .news_impact_fade_by_recency import NewsImpactFadeByRecencyStrategy
 from .mutually_exclusive_oversum import MutuallyExclusiveOversumStrategy
 from .polling_vs_market import PollingVsMarketStrategy
 from .resolution_hunter_v2 import ResolutionHunterV2Strategy
@@ -65,9 +68,12 @@ STRATEGIES = [
     CelebrityTabloidStrategy(),
     CarryRewardsStrategy(),
     ConditionalProbabilityMispricingStrategy(),
+    ConditionalOutcomeCountAsymmetryStrategy(),
+    ConditionalOutcomeDriftStrategy(),
     PollingVsMarketStrategy(),
     MutuallyExclusiveOversumStrategy(),
     FadeCertaintyV2Strategy(),
+    NewsImpactFadeByRecencyStrategy(),
     ResolutionHunterV2Strategy(),
     WeatherEdgeV2Strategy(),  # paused — broken (floor/threshold contradiction)
     WeatherEdgeV3Strategy(),
