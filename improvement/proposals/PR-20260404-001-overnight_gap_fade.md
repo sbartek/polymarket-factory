@@ -3,7 +3,7 @@
     - **proposal_id:** PR-20260404-001
     - **date:** 2026-04-04
     - **proposed_by:** aggressive_strategy_cycle
-    - **status:** deferred
+    - **status:** archived
     - **deferred_reason:** Needs ~1 week of hourly price history. Observer running every 30min since 2026-04-04. Revisit after 2026-04-11 when we have enough data for hour-of-day distributions.
 
     ## Plain-language idea
@@ -52,3 +52,7 @@
 
     Generated automatically under the aggressive strategy experiment.
     Retention now depends on replay-benchmark evidence or explicit review.
+
+## Benchmark gate note
+
+Archived by benchmark gate: no generated benchmark evidence after 3 days

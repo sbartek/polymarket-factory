@@ -3,7 +3,7 @@
     - **proposal_id:** PR-20260405-002
     - **date:** 2026-04-05
     - **proposed_by:** aggressive_strategy_cycle
-    - **status:** pending_benchmark_review
+    - **status:** archived
 
     ## Plain-language idea
 
@@ -52,3 +52,7 @@
 
     Generated automatically under the aggressive strategy experiment.
     Retention now depends on replay-benchmark evidence or explicit review.
+
+## Benchmark gate note
+
+Archived by benchmark gate: no generated benchmark evidence after 3 days
