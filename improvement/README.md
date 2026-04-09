@@ -13,7 +13,9 @@ Its job is simple:
 
 - `changes/` — one record per meaningful change
 - `experiments/` — one record per experiment / validation window
+- `ideas/` — parked strategy concepts worth keeping, but not ready to implement
 - `metrics/` — metric definitions with maturity and caveats
+- `proposals/` — concrete candidate strategies under active review
 - `reviews/` — reviewer notes and verdict summaries
 - `templates/` — templates for the above records
 

@@ -110,6 +110,8 @@ The report aggregates by:
 
 Alert-only graduation criteria and promotion workflow live in [`docs/alert_only_graduation.md`](docs/alert_only_graduation.md).
 
+Parked strategy concepts that are worth revisiting later live in [`improvement/ideas`](improvement/ideas), separate from active review items in [`improvement/proposals`](improvement/proposals).
+
 ## Runtime Environments
 
 The runner now supports three explicit environments:
