@@ -1,5 +1,5 @@
 """
-Main runner — called 3x/day by launchd.
+Main runner for combined/manual execution and execute-only runs.
 
 Supports two modes:
   phase="combined" (default): fetch → scan → execute → notify (legacy single-pass)

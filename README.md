@@ -388,10 +388,13 @@ else               → Mac mode (sources .env, hardcoded Mac PATH)
 
 ### Mac (legacy)
 
-- **Scheduler:** launchd (10 plist jobs)
+- **Scheduler:** launchd (9 repo plist jobs)
 - **Notifications:** WhatsApp via OpenClaw + Slack webhook
 - **LLM:** Claude CLI / Codex (local) + Anthropic API fallback
 - **Dashboard publish:** pushes to `~/workai/projects/pplayouts-dashboard`
+
+Paper mode uses split scheduling only: `run_scan.sh` and `run_execute.sh`.
+The legacy combined paper launcher (`run_factory.sh` via `com.polymarket.factory.plist`) has been removed from launchd config.
 
 ### Cron schedule (VM)
 

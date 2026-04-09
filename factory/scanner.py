@@ -7,6 +7,7 @@ don't block position execution.
 """
 import argparse
 import os
+import signal
 from datetime import datetime
 
 from .claude import reset_circuit_breaker
@@ -16,6 +17,29 @@ from .runner import _extract_market_observations, _log_strategy_details, _signal
 from .execution import build_market_index, snapshot_for_signal
 from .strategies import STRATEGIES
 from .strategy_meta import strategy_metadata, should_run_in_cycle
+
+
+def _install_termination_handlers(db: FactoryDB, run_id: str, get_markets_fetched, finalize_run):
+    """Finalize the current scan run on SIGINT/SIGTERM before the process exits."""
+    previous = {}
+
+    def _handle_termination(signum, _frame):
+        signame = signal.Signals(signum).name
+        msg = f"terminated by signal {signame}"
+        try:
+            db.log_event(run_id, "error", msg)
+            finalize_run("failed", markets_fetched=get_markets_fetched(), notes=msg)
+        finally:
+            raise SystemExit(128 + signum)
+
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        previous[sig] = signal.signal(sig, _handle_termination)
+
+    def _restore():
+        for sig, handler in previous.items():
+            signal.signal(sig, handler)
+
+    return _restore
 
 
 def scan(environment: str = "paper", market_limit: int = 500):
@@ -45,6 +69,22 @@ def scan(environment: str = "paper", market_limit: int = 500):
     meta = strategy_metadata()
     markets_fetched = 0
     total_signals = 0
+    run_finalized = False
+
+    def finalize_run(status: str, *, markets_fetched: int = 0, notes: str | None = None):
+        nonlocal run_finalized
+        if run_finalized:
+            return
+        db.finish_run(run_id, status=status, markets_fetched=markets_fetched,
+                      new_positions_count=0, notes=notes)
+        run_finalized = True
+
+    restore_handlers = _install_termination_handlers(
+        db,
+        run_id,
+        lambda: markets_fetched,
+        finalize_run,
+    )
 
     try:
         print(f"Fetching up to {market_limit} markets (paginated)...", end=" ", flush=True)
@@ -53,7 +93,7 @@ def scan(environment: str = "paper", market_limit: int = 500):
         except Exception as e:
             print(f"FAILED: {e}")
             db.log_event(run_id, "error", f"fetch_top_paginated failed: {e}")
-            db.finish_run(run_id, status="failed", markets_fetched=0, notes=f"fetch failed: {e}")
+            finalize_run("failed", markets_fetched=0, notes=f"fetch failed: {e}")
             return
         markets_fetched = len(markets)
         print(f"{markets_fetched} markets.\n")
@@ -109,13 +149,14 @@ def scan(environment: str = "paper", market_limit: int = 500):
                          payload={"signals": len(signals)})
 
         print(f"Scan complete: {total_signals} signals cached from {markets_fetched} markets.")
-        db.finish_run(run_id, status="success", markets_fetched=markets_fetched,
-                      new_positions_count=0, notes=f"scan_phase: {total_signals} signals cached")
+        finalize_run("success", markets_fetched=markets_fetched,
+                     notes=f"scan_phase: {total_signals} signals cached")
     except Exception as e:
         db.log_event(run_id, "error", f"scan_failed: {e}")
-        db.finish_run(run_id, status="failed", markets_fetched=markets_fetched, notes=str(e))
+        finalize_run("failed", markets_fetched=markets_fetched, notes=str(e))
         raise
     finally:
+        restore_handlers()
         db.release_run_lock(lock_name, run_id)
 
     print(f"\n{'='*60}\n")

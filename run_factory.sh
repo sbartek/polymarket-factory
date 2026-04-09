@@ -1,5 +1,5 @@
 #!/bin/bash
-# Entry point for launchd — sources env and runs the factory runner.
+# Legacy manual combined runner — no longer scheduled for paper mode.
 
 set -uo pipefail
 

@@ -1,4 +1,5 @@
 """Tests for factory.scanner (Phase 1 scan)."""
+import signal
 import tempfile
 from unittest.mock import patch, MagicMock
 
@@ -114,3 +115,32 @@ class TestScanner:
             mock_fetch.assert_not_called()
             db.finish_run.assert_called_once()
             assert "aborted" in str(db.finish_run.call_args)
+
+    @patch("factory.scanner.fetch_top_paginated", return_value=[_fake_market()])
+    def test_scan_marks_run_failed_on_sigterm(self, _mock_fetch):
+        handlers = {}
+
+        def fake_signal(sig, handler):
+            previous = handlers.get(sig, signal.SIG_DFL)
+            handlers[sig] = handler
+            return previous
+
+        with patch("factory.scanner.FactoryDB") as MockDB, \
+             patch("factory.scanner.signal.signal", side_effect=fake_signal), \
+             patch("factory.scanner.build_market_index", side_effect=lambda markets: handlers[signal.SIGTERM](signal.SIGTERM, None)):
+            db = MagicMock()
+            MockDB.return_value = db
+            db.start_run.return_value = "run-1"
+            db.acquire_run_lock.return_value = True
+
+            with patch("factory.scanner.STRATEGIES", []):
+                try:
+                    scan(environment="paper", market_limit=50)
+                except SystemExit as exc:
+                    assert exc.code == 128 + signal.SIGTERM
+                else:
+                    raise AssertionError("scan() should exit on SIGTERM")
+
+            db.finish_run.assert_called_once()
+            assert db.finish_run.call_args.kwargs["status"] == "failed"
+            assert "SIGTERM" in db.finish_run.call_args.kwargs["notes"]

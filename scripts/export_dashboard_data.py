@@ -937,9 +937,13 @@ def fetch_run_history(conn: object, days: int = 14) -> dict:
     # Daily aggregates by pipeline
     daily: dict[str, dict[str, dict]] = {}  # date -> pipeline -> {success, failed, total}
     pipeline_map = {
-        "paper": "combined", "paper_scan": "scanner", "paper_execute": "execute",
-        "paper_dry_run": "combined", "paper_fast_dry_run": "combined",
-        "observer": "observer", "trade_fetcher": "trade_fetcher",
+        "paper": "manual_combined",
+        "paper_scan": "scanner",
+        "paper_execute": "execute",
+        "paper_dry_run": "manual_combined",
+        "paper_fast_dry_run": "manual_combined",
+        "observer": "observer",
+        "trade_fetcher": "trade_fetcher",
     }
     for row in rows:
         date_str = (row["started_at"] or "")[:10]
@@ -959,7 +963,6 @@ def fetch_run_history(conn: object, days: int = 14) -> dict:
 
     # Pipeline health (current)
     pipelines_config = [
-        {"name": "combined", "mode": "paper", "expected_min": 150},
         {"name": "scanner", "mode": "paper_scan", "expected_min": 150},
         {"name": "execute", "mode": "paper_execute", "expected_min": 150},
         {"name": "observer", "mode": "observer", "expected_min": 45},

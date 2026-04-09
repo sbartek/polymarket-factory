@@ -65,11 +65,22 @@
     <script>
       const PIPELINE_COLORS = {
         combined: '#4ade80',
+        manual_combined: '#34d399',
         scanner: '#60a5fa',
         execute: '#a78bfa',
         observer: '#fbbf24',
         trade_fetcher: '#f472b6',
         other: '#6b7280',
+      };
+
+      const PIPELINE_LABELS = {
+        combined: 'combined',
+        manual_combined: 'manual combined',
+        scanner: 'scanner',
+        execute: 'execute',
+        observer: 'observer',
+        trade_fetcher: 'trade fetcher',
+        other: 'other',
       };
 
       const chartDefaults = {
@@ -111,7 +122,7 @@
         const dates = Object.keys(daily).sort();
         const pipelines = [...new Set(dates.flatMap(d => Object.keys(daily[d])))].sort();
         const datasets = pipelines.map(p => ({
-          label: p,
+          label: PIPELINE_LABELS[p] || p,
           data: dates.map(d => (daily[d][p] || {}).total || 0),
           backgroundColor: PIPELINE_COLORS[p] || PIPELINE_COLORS.other,
           borderWidth: 0,
@@ -134,7 +145,7 @@
         const dates = Object.keys(daily).sort();
         const pipelines = [...new Set(dates.flatMap(d => Object.keys(daily[d])))].sort();
         const datasets = pipelines.map(p => ({
-          label: p,
+          label: PIPELINE_LABELS[p] || p,
           data: dates.map(d => {
             const entry = daily[d][p];
             if (!entry || !entry.total) return null;
@@ -167,13 +178,13 @@
           return `${d.getMonth()+1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
         });
         const pipelineMap = {
-          paper: 'combined', paper_scan: 'scanner', paper_execute: 'execute',
-          paper_dry_run: 'combined', paper_fast_dry_run: 'combined',
+          paper: 'manual_combined', paper_scan: 'scanner', paper_execute: 'execute',
+          paper_dry_run: 'manual_combined', paper_fast_dry_run: 'manual_combined',
           observer: 'observer', trade_fetcher: 'trade_fetcher',
         };
         const pipelines = [...new Set(recent.map(r => pipelineMap[r.mode] || 'other'))];
         const datasets = pipelines.map(p => ({
-          label: p,
+          label: PIPELINE_LABELS[p] || p,
           data: recent.map((r, i) => (pipelineMap[r.mode] || 'other') === p ? r.duration_seconds : null),
           borderColor: PIPELINE_COLORS[p] || PIPELINE_COLORS.other,
           backgroundColor: (PIPELINE_COLORS[p] || PIPELINE_COLORS.other) + '40',
@@ -206,9 +217,9 @@
       }
 
       function renderPositionsChart(timeline) {
-        // Only combined/execute runs that touch positions
+        // Split paper mode only opens/closes positions during execute runs.
         const relevant = timeline.filter(r =>
-          ['paper', 'paper_execute', 'paper_dry_run'].includes(r.mode) &&
+          ['paper_execute'].includes(r.mode) &&
           (r.new_positions > 0 || r.closed > 0)
         ).slice(-50);
         if (!relevant.length) {
