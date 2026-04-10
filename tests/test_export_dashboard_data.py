@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import importlib.util
+import sqlite3
 from pathlib import Path
-
-from factory.db import FactoryDB
 
 
 MODULE_PATH = Path(__file__).resolve().parents[1] / "scripts" / "export_dashboard_data.py"
@@ -13,55 +12,81 @@ export_dashboard_data = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(export_dashboard_data)
 
 
-def test_connect_db_initializes_signal_execution_checks_schema(tmp_path, monkeypatch):
+def _sqlite_db(path: Path) -> sqlite3.Connection:
+    conn = sqlite3.connect(path)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def test_connect_db_opens_sqlite_when_database_url_absent(tmp_path, monkeypatch):
     db_path = tmp_path / "factory.sqlite3"
     monkeypatch.setattr(export_dashboard_data, "DB_PATH", db_path)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
 
     conn = export_dashboard_data.connect_db()
     try:
-        row = conn.execute(
-            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'signal_execution_checks'"
-        ).fetchone()
+        row = conn.execute("SELECT 1 AS ok").fetchone()
     finally:
         conn.close()
 
-    assert row is not None
+    assert row["ok"] == 1
 
 
 def test_fetch_execution_checks_returns_recent_rows(tmp_path):
-    db = FactoryDB(path=tmp_path / "factory.sqlite3")
-    run_id = db.start_run("dry_run")
-    db.finish_run(run_id, "success", markets_fetched=10)
-    db.log_signal_execution_check(run_id, {
-        "strategy": "esport48",
-        "market_id": "m1",
-        "market_title": "Example market",
-        "outcome": "YES",
-        "quote_price": 0.21,
-        "best_bid": 0.19,
-        "best_ask": 0.22,
-        "fill_price_10": 0.2205,
-        "fill_price_25": 0.225,
-        "fill_price_50": 0.23,
-        "fill_price_100": 0.24,
-        "fill_price_250": 0.3,
-        "slippage_10_pp": 1.05,
-        "slippage_25_pp": 1.5,
-        "slippage_50_pp": 2.0,
-        "slippage_100_pp": 3.0,
-        "slippage_250_pp": 9.0,
-        "ev_after_slippage_10_pp": 12.0,
-        "ev_after_slippage_25_pp": 11.5,
-        "ev_after_slippage_50_pp": 11.0,
-        "ev_after_slippage_100_pp": 10.0,
-        "ev_after_slippage_250_pp": 4.0,
-        "max_size_positive_ev": 100.0,
-        "max_size_above_min_edge": 50.0,
-        "source_confidence": "medium",
-    })
-
-    conn = db._connect()
+    conn = _sqlite_db(tmp_path / "factory.sqlite3")
     try:
+        conn.execute(
+            """
+            CREATE TABLE signal_execution_checks (
+                run_id TEXT,
+                strategy TEXT,
+                market_id TEXT,
+                market_title TEXT,
+                outcome TEXT,
+                quote_price REAL,
+                best_bid REAL,
+                best_ask REAL,
+                fill_price_10 REAL,
+                fill_price_25 REAL,
+                fill_price_50 REAL,
+                fill_price_100 REAL,
+                fill_price_250 REAL,
+                slippage_10_pp REAL,
+                slippage_25_pp REAL,
+                slippage_50_pp REAL,
+                slippage_100_pp REAL,
+                slippage_250_pp REAL,
+                ev_after_slippage_10_pp REAL,
+                ev_after_slippage_25_pp REAL,
+                ev_after_slippage_50_pp REAL,
+                ev_after_slippage_100_pp REAL,
+                ev_after_slippage_250_pp REAL,
+                max_size_positive_ev REAL,
+                max_size_above_min_edge REAL,
+                source_confidence TEXT,
+                created_at TEXT
+            )
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO signal_execution_checks (
+                run_id, strategy, market_id, market_title, outcome, quote_price, best_bid, best_ask,
+                fill_price_10, fill_price_25, fill_price_50, fill_price_100, fill_price_250,
+                slippage_10_pp, slippage_25_pp, slippage_50_pp, slippage_100_pp, slippage_250_pp,
+                ev_after_slippage_10_pp, ev_after_slippage_25_pp, ev_after_slippage_50_pp,
+                ev_after_slippage_100_pp, ev_after_slippage_250_pp, max_size_positive_ev,
+                max_size_above_min_edge, source_confidence, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+            """,
+            (
+                "run-1", "esport48", "m1", "Example market", "YES", 0.21, 0.19, 0.22,
+                0.2205, 0.225, 0.23, 0.24, 0.3,
+                1.05, 1.5, 2.0, 3.0, 9.0,
+                12.0, 11.5, 11.0, 10.0, 4.0, 100.0, 50.0, "medium",
+            ),
+        )
+        conn.commit()
         rows = export_dashboard_data.fetch_execution_checks(conn, limit=10)
     finally:
         conn.close()
@@ -90,13 +115,47 @@ def test_load_benchmarks_reads_available_scopes(tmp_path, monkeypatch):
 
 def test_fetch_overview_includes_benchmark_coverage_counts(tmp_path, monkeypatch):
     db_path = tmp_path / "factory.sqlite3"
-    db = FactoryDB(path=db_path)
-    run_id = db.start_run("paper")
-    db.finish_run(run_id, "success", markets_fetched=10)
     monkeypatch.setattr(export_dashboard_data, "DB_PATH", db_path)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
 
-    conn = export_dashboard_data.connect_db()
+    conn = _sqlite_db(db_path)
     try:
+        conn.execute(
+            """
+            CREATE TABLE runs (
+                id TEXT PRIMARY KEY,
+                started_at TEXT,
+                finished_at TEXT,
+                mode TEXT,
+                status TEXT,
+                markets_fetched INTEGER,
+                closed_count INTEGER,
+                new_positions_count INTEGER,
+                notes TEXT
+            )
+            """
+        )
+        conn.execute("CREATE TABLE trades (strategy TEXT, status TEXT, amount_usdc REAL)")
+        conn.execute(
+            """
+            CREATE TABLE signal_execution_checks (
+                strategy TEXT,
+                ev_after_slippage_50_pp REAL,
+                max_size_positive_ev REAL,
+                source_confidence TEXT,
+                created_at TEXT
+            )
+            """
+        )
+        conn.execute(
+            "INSERT INTO runs VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            ("run-1", "2026-04-10T09:30:00+00:00", "2026-04-10T09:31:00+00:00", "paper", "success", 10, 0, 0, None),
+        )
+        conn.execute(
+            "INSERT INTO signal_execution_checks VALUES (?, ?, ?, ?, datetime('now'))",
+            ("esport48", 11.0, 50.0, "medium"),
+        )
+        conn.commit()
         overview = export_dashboard_data.fetch_overview(
             conn,
             experiments=[],
@@ -163,6 +222,23 @@ def test_load_strategy_factory_status_reads_latest_run(tmp_path, monkeypatch):
     assert payload["status_normalized"] == "warning"
     assert payload["eval_source"] == "cache"
     assert payload["generated_count"] == 2
+
+
+def test_load_strategy_factory_history_reads_recent_runs(tmp_path, monkeypatch):
+    run_dir = tmp_path / "strategy-factory-runs"
+    run_dir.mkdir(parents=True)
+    for idx, status in enumerate(["ok", "degraded"], start=1):
+        (run_dir / f"strategy-factory-20260410T0{idx}0000Z.json").write_text(
+            f'{{"started_at":"2026-04-10T0{idx}:00:00+00:00","finished_at":"2026-04-10T0{idx}:01:00+00:00","status":"{status}","eval_source":"remote","generated_count":{idx},"archived_count":0}}',
+            encoding="utf-8",
+        )
+    monkeypatch.setattr(export_dashboard_data, "STRATEGY_FACTORY_RUNS_DIR", run_dir)
+
+    rows = export_dashboard_data.load_strategy_factory_history(limit=5)
+
+    assert len(rows) == 2
+    assert rows[0]["status"] == "degraded"
+    assert rows[1]["status"] == "ok"
 
 
 def test_fetch_overview_includes_strategy_factory_alert(tmp_path, monkeypatch):
@@ -300,18 +376,45 @@ def test_fetch_storage_reports_sizes_and_recent_archives(tmp_path, monkeypatch):
     (benchmark_dir / "sample.json").write_text('{"ok":true}\n', encoding="utf-8")
     (output_dir / "sample.json").write_text('{"ok":true}\n', encoding="utf-8")
 
-    db = FactoryDB(path=db_path)
-    run_id = db.start_run("paper")
-    db.log_market_snapshot_archive(run_id, [{"slug": "event-a"}])
-    db.log_market_observations(run_id, [{"market_id": "event-a", "market_title": "Event A"}])
-
     monkeypatch.setattr(export_dashboard_data, "DB_PATH", db_path)
     monkeypatch.setattr(export_dashboard_data, "BENCHMARK_DIR", benchmark_dir)
     monkeypatch.setattr(export_dashboard_data, "OUTPUT_DIR", output_dir)
     monkeypatch.setattr(export_dashboard_data, "PROJECT_ROOT", project_root)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
 
-    conn = db._connect()
+    conn = _sqlite_db(db_path)
     try:
+        conn.execute(
+            """
+            CREATE TABLE market_snapshot_archives (
+                run_id TEXT PRIMARY KEY,
+                source TEXT,
+                event_count INTEGER,
+                payload_json TEXT,
+                created_at TEXT
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE market_observations (
+                id INTEGER PRIMARY KEY,
+                run_id TEXT,
+                market_id TEXT,
+                market_title TEXT,
+                created_at TEXT
+            )
+            """
+        )
+        conn.execute(
+            "INSERT INTO market_snapshot_archives VALUES (?, ?, ?, ?, datetime('now'))",
+            ("run-1", "gamma", 1, '[{\"slug\":\"event-a\"}]'),
+        )
+        conn.execute(
+            "INSERT INTO market_observations (run_id, market_id, market_title, created_at) VALUES (?, ?, ?, datetime('now'))",
+            ("run-1", "event-a", "Event A"),
+        )
+        conn.commit()
         storage = export_dashboard_data.fetch_storage(conn)
     finally:
         conn.close()

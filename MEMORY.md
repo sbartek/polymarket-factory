@@ -284,6 +284,20 @@ Remaining backlog:
 - First live evidence for the rescued set came from `gpplayouts`:
   - `news_impact_fade_by_recency` produced a live signal on `Will Paulo Costa win by KO or TKO?` with `NO`, market price `0.635`, `p_hat 0.73`, edge `9.5pp`, confidence `medium`
 - New repo-native backlog category exists at `improvement/ideas/` for strategy concepts that are worth keeping but not worth implementing yet; the seven parked generated strategy leftovers were moved there as structured idea notes.
+- Strategy-factory runtime hardening landed in `c11543a` with two follow-up fixes in `595c2ff` and `272a686`:
+  - `scripts/strategy_factory_local_runner.py` now owns preflight, lockfile, structured run records, push handling, heartbeat posting, and degraded/failed Slack alerts.
+  - `api/server.py` now exposes `/ready`, adds eval timeout/error logging, and accepts heartbeat `status` + `detail`.
+  - `scripts/strategy_factory_cycle.py` now retries transient remote API failures, caches eval text, skips generation when remote eval falls back to cache, and writes `dashboard-data/strategy_factory_cycle_meta.json`.
+  - `scripts/export_dashboard_data.py` now reads `data/strategy-factory-runs/latest.json` into `overview.json` and falls back to local SQLite when `DATABASE_URL` is absent.
+  - `dashboard/index.html` now has a Strategy Factory panel sourced from `overview.strategy_factory`.
+- Deployment nuance discovered on 2026-04-10:
+  - GitHub Actions deploy only does `git pull` on `gpplayouts` / `pplayouts`; it does not restart the running API process on `gpplayouts`.
+  - After deploying `c11543a`, `factory.pplayouts.trade/ready` still returned `404` until the existing `uvicorn api.server:app` process on `gpplayouts` was restarted manually via `run_api.sh`.
+- End-to-end verification completed on 2026-04-10 after restarting the `gpplayouts` API and rerunning `pplayouts`:
+  - `factory.pplayouts.trade/ready` returned `200` with `factory_api_key`, `database_url`, `eval_report`, and `database_connectivity` all true.
+  - `./run_strategy_factory_local.sh` on `pplayouts` completed with `status=ok`, `preflight_ok=true`, `pull_ok=true`, `cycle_ok=true`, `push_ok=true`, `heartbeat_ok=true`, `eval_source=remote`, `generated_count=0`, `archived_count=0`.
+  - `data/strategy-factory-runs/latest.json` now exists on `pplayouts`.
+  - `dashboard-data/overview.json` on `pplayouts` now exports a non-null `strategy_factory` block and `dashboard-dist/` was rebuilt successfully (14 data files, 27 wiki pages).
 
 ---
 

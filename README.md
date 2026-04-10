@@ -29,6 +29,16 @@ You (idea) → new file in factory/strategies/ → add to STRATEGIES registry �
 **Database:** Cloud SQL PostgreSQL 15 (`pplayouts-db`, db-f1-micro)
 **Hosts:** GCP VM (primary) + Mac (strategy-factory only) — GitHub Actions CI/CD deploys on push to main
 
+### Strategy-factory control loop
+
+- `pplayouts` runs the local strategy factory via `./run_strategy_factory_local.sh`
+- the runner now writes structured status to `data/strategy-factory-runs/latest.json`
+- `factory.pplayouts.trade/ready` is the preflight gate for remote eval/benchmark access
+- if remote eval falls back to cache, the cycle refreshes artifacts but skips generating new strategies
+- the dashboard Overview now reads the latest strategy-factory status from `overview.strategy_factory`
+
+Important deployment detail: GitHub Actions deploy currently does `git pull` on the hosts, but does not restart the running API process on `gpplayouts`. If `/ready` still returns `404` after a deploy, restart the API manually on `gpplayouts` with `./run_api.sh`.
+
 ---
 
 ## Adding a Strategy

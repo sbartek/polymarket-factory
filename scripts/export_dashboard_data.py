@@ -131,6 +131,31 @@ def load_strategy_factory_status() -> dict | None:
     }
 
 
+def load_strategy_factory_history(limit: int = 5) -> list[dict]:
+    if not STRATEGY_FACTORY_RUNS_DIR.exists():
+        return []
+    rows: list[dict] = []
+    for path in sorted(STRATEGY_FACTORY_RUNS_DIR.glob("strategy-factory-*.json"), reverse=True):
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        rows.append({
+            "started_at": payload.get("started_at"),
+            "finished_at": payload.get("finished_at"),
+            "status": payload.get("status"),
+            "status_normalized": normalize_status(payload.get("status")),
+            "eval_source": payload.get("eval_source"),
+            "generated_count": payload.get("generated_count"),
+            "archived_count": payload.get("archived_count"),
+            "degraded": bool(payload.get("degraded")),
+            "error": payload.get("error"),
+        })
+        if len(rows) >= limit:
+            break
+    return rows
+
+
 PAUSED_STRATEGIES = {"fade_certainty", "weather_edge"}
 
 
@@ -601,7 +626,7 @@ def load_generated_registry(benchmarks: dict | None = None) -> dict[str, dict]:
     return rows
 
 
-def fetch_overview(conn: object, experiments: list[dict], warnings: list[str], benchmarks: dict | None = None, storage: dict | None = None, strategy_factory: dict | None = None) -> dict:
+def fetch_overview(conn: object, experiments: list[dict], warnings: list[str], benchmarks: dict | None = None, storage: dict | None = None, strategy_factory: dict | None = None, strategy_factory_history: list[dict] | None = None) -> dict:
     latest = conn.execute("SELECT * FROM runs ORDER BY started_at DESC LIMIT 1").fetchone()
     open_active_exposure = scalar(conn, "SELECT COALESCE(SUM(amount_usdc), 0) FROM trades WHERE status='open' AND strategy IN ({})".format(
         ",".join("?" for _ in ACTIVE_STRATEGIES)
@@ -676,6 +701,7 @@ def fetch_overview(conn: object, experiments: list[dict], warnings: list[str], b
         "benchmark_top_strategy_alert_only": top_alert_only.get("strategy") if top_alert_only else None,
         "benchmark_top_score_alert_only": top_alert_only.get("benchmark_score") if top_alert_only else None,
         "strategy_factory": strategy_factory,
+        "strategy_factory_history": strategy_factory_history or [],
         "alerts": alerts,
     }
 
@@ -1081,7 +1107,8 @@ def main() -> None:
     positions_open = fetch_positions_open(conn)
     storage = fetch_storage(conn)
     strategy_factory = load_strategy_factory_status()
-    overview = fetch_overview(conn, experiments, warnings, benchmarks, storage, strategy_factory)
+    strategy_factory_history = load_strategy_factory_history()
+    overview = fetch_overview(conn, experiments, warnings, benchmarks, storage, strategy_factory, strategy_factory_history)
 
     write_json(OUTPUT_DIR / "overview.json", overview)
     write_json(OUTPUT_DIR / "runs.json", runs)

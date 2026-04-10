@@ -18,6 +18,11 @@ jobs:
           script: |
             cd ~/polymarket-factory
             git pull origin main
+            if pgrep -f "uvicorn api.server:app --host 127.0.0.1 --port 8765" >/dev/null; then
+              pkill -f "uvicorn api.server:app --host 127.0.0.1 --port 8765"
+              sleep 2
+            fi
+            nohup ./run_api.sh > factory-api.log 2>&1 < /dev/null &
 
   deploy-mac:
     name: Deploy to pplayouts (Mac)

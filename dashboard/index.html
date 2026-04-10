@@ -47,6 +47,7 @@
         <article class="panel">
           <div class="panel-header"><h2>Strategy factory</h2><span id="strategy-factory-meta" class="muted"></span></div>
           <div id="strategy-factory-panel" class="stack muted">No strategy-factory run record yet.</div>
+          <div id="strategy-factory-history" class="stack section-gap muted"></div>
         </article>
 
         <article class="panel">
@@ -119,8 +120,10 @@
         }
 
         const strategyFactory = snapshot.overview.strategy_factory;
+        const strategyFactoryHistory = snapshot.overview.strategy_factory_history || [];
         const strategyFactoryPanel = document.getElementById('strategy-factory-panel');
         const strategyFactoryMeta = document.getElementById('strategy-factory-meta');
+        const strategyFactoryHistoryPanel = document.getElementById('strategy-factory-history');
         if (strategyFactory) {
           strategyFactoryMeta.textContent = Dashboard.fmtDate(strategyFactory.finished_at || strategyFactory.started_at);
           strategyFactoryPanel.classList.remove('muted');
@@ -131,6 +134,17 @@
             strategyFactory.degraded ? '<div class="muted section-gap">This run completed in degraded mode and used cached evaluation input.</div>' : '',
             strategyFactory.error ? `<div class="muted section-gap"><strong>Error:</strong> ${Dashboard.cleanSummary(strategyFactory.error)}</div>` : '',
           ].join('');
+        }
+        if (strategyFactoryHistory.length) {
+          strategyFactoryHistoryPanel.classList.remove('muted');
+          strategyFactoryHistoryPanel.innerHTML = [
+            '<div><strong>Recent runs</strong></div>',
+            '<div class="table-wrap"><table><thead><tr><th>Started</th><th>Status</th><th>Eval</th><th>Generated</th><th>Archived</th></tr></thead><tbody>' +
+              strategyFactoryHistory.map((row) => `<tr><td>${Dashboard.fmtDate(row.started_at)}</td><td><span class="${Dashboard.pillClass(row.status)}">${row.status}</span></td><td>${row.eval_source || 'unknown'}</td><td>${Dashboard.fmtInt(row.generated_count)}</td><td>${Dashboard.fmtInt(row.archived_count)}</td></tr>`).join('') +
+            '</tbody></table></div>',
+          ].join('');
+        } else {
+          strategyFactoryHistoryPanel.textContent = 'No recent strategy-factory run history.';
         }
 
         const benchmarkPanel = document.getElementById('benchmark-panel');
