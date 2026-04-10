@@ -546,7 +546,7 @@ def run(environment: str = "paper", dry_run: bool = False, send: bool = True, fa
     elif policy.name == "live":
         base_broker = LiveBroker(db=db, run_id=run_id)
     else:
-        base_broker = PaperBroker(run_id=run_id)
+        base_broker = PaperBroker(db=db, run_id=run_id)
     broker = DryRunBroker(base_broker) if dry_run else base_broker
     meta = strategy_metadata()
     saved_overrides = _apply_fast_dry_run_overrides(STRATEGIES, enabled=fast_dry_run)

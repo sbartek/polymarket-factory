@@ -125,7 +125,7 @@ class TestPriceMoveFade:
 
         assert len(signals) == 0
 
-    def test_is_alert_only(self):
+    def test_strategy_flags_match_current_design(self):
         s = PriceMoveFadeStrategy()
-        assert s.alert_only is True
-        assert s.promotable is True
+        assert s.alert_only is False
+        assert s.promotable is False

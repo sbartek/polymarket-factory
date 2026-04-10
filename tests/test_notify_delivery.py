@@ -14,12 +14,13 @@ class TestConfiguredChannels:
         assert cfg["slack"]["configured"] is False
 
     def test_reports_present_channels(self):
-        with patch.dict(
-            "factory.notify.os.environ",
-            {"WHATSAPP_GROUP_ID": "group-1", "SLACK_WEBHOOK_URL": "https://example.test/hook"},
-            clear=True,
-        ):
-            cfg = configured_channels()
+        with patch("factory.notify._find_openclaw", return_value="/usr/local/bin/openclaw"):
+            with patch.dict(
+                "factory.notify.os.environ",
+                {"WHATSAPP_GROUP_ID": "group-1", "SLACK_WEBHOOK_URL": "https://example.test/hook"},
+                clear=True,
+            ):
+                cfg = configured_channels()
         assert cfg["whatsapp"]["configured"] is True
         assert cfg["slack"]["configured"] is True
 

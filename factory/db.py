@@ -5,6 +5,8 @@ import contextlib
 import csv
 import json
 import os
+import re
+import sqlite3
 import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -405,20 +407,63 @@ CREATE INDEX IF NOT EXISTS idx_market_trades_trade_timestamp ON market_trades(tr
 CREATE INDEX IF NOT EXISTS idx_market_trades_fetched_at ON market_trades(fetched_at);
 """
 
+SQLITE_SCHEMA_SQL = (
+    "PRAGMA journal_mode=WAL;\n\n"
+    + re.sub(r"\bid SERIAL PRIMARY KEY\b", "id INTEGER PRIMARY KEY AUTOINCREMENT", SCHEMA_SQL)
+)
+
+
+class _SQLiteCursorCompat:
+    def __init__(self, cursor: sqlite3.Cursor):
+        self._cursor = cursor
+
+    def execute(self, sql, params=()):
+        self._cursor.execute(sql.replace("%s", "?"), params)
+        return self
+
+    def executemany(self, sql, seq_of_params):
+        self._cursor.executemany(sql.replace("%s", "?"), seq_of_params)
+        return self
+
+    def fetchone(self):
+        return self._cursor.fetchone()
+
+    def fetchall(self):
+        return self._cursor.fetchall()
+
+    def fetchmany(self, size=None):
+        if size is None:
+            return self._cursor.fetchmany()
+        return self._cursor.fetchmany(size)
+
+    @property
+    def rowcount(self):
+        return self._cursor.rowcount
+
 
 class FactoryDB:
-    def __init__(self, dsn: str | None = None):
-        self.dsn = dsn or DATABASE_URL
-        if not self.dsn:
+    def __init__(self, dsn: str | None = None, path: Path | None = None):
+        self.path = Path(path) if path is not None else None
+        self.sqlite_mode = self.path is not None
+        self.dsn = None if self.sqlite_mode else (dsn or DATABASE_URL)
+        if self.sqlite_mode:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+        elif not self.dsn:
             raise RuntimeError("DATABASE_URL not set and no dsn provided")
         self._init_db()
 
     def _connect(self):
         """Return a sqlite3-compatible connection for legacy code using conn.execute() and ? placeholders."""
+        if self.sqlite_mode:
+            conn = sqlite3.connect(self.path)
+            conn.row_factory = sqlite3.Row
+            return conn
         from .pg_compat import CompatConnection
         return CompatConnection(self.dsn)
 
     def _raw_connect(self):
+        if self.sqlite_mode:
+            return self._connect()
         conn = psycopg2.connect(self.dsn)
         conn.autocommit = False
         return conn
@@ -426,6 +471,17 @@ class FactoryDB:
     @contextlib.contextmanager
     def _conn(self):
         """Context manager that yields (conn, cur) with DictCursor, commits on success, rolls back on error."""
+        if self.sqlite_mode:
+            conn = self._connect()
+            try:
+                yield conn, _SQLiteCursorCompat(conn.cursor())
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
+            finally:
+                conn.close()
+            return
         conn = self._raw_connect()
         try:
             cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
@@ -438,6 +494,12 @@ class FactoryDB:
             conn.close()
 
     def _init_db(self):
+        if self.sqlite_mode:
+            with self._connect() as conn:
+                conn.executescript(SQLITE_SCHEMA_SQL)
+                conn.commit()
+            self._migrate_db()
+            return
         with self._conn() as (conn, cur):
             for statement in SCHEMA_SQL.split(";"):
                 statement = statement.strip()
@@ -451,6 +513,17 @@ class FactoryDB:
             "ALTER TABLE signals ADD COLUMN phase TEXT DEFAULT 'combined'",
             "ALTER TABLE signals ADD COLUMN consumed_by_run_id TEXT",
         ]
+        if self.sqlite_mode:
+            with self._connect() as conn:
+                for sql in migrations:
+                    try:
+                        conn.execute(sql)
+                        conn.commit()
+                    except sqlite3.OperationalError as e:
+                        text = str(e).lower()
+                        if "duplicate column" not in text and "already exists" not in text:
+                            raise
+            return
         conn = self._raw_connect()
         try:
             cur = conn.cursor()
@@ -470,6 +543,27 @@ class FactoryDB:
     def acquire_run_lock(self, name: str, owner_run_id: str, ttl_seconds: int = 7200) -> bool:
         now = utcnow()
         expires = utcnow_plus_seconds(ttl_seconds)
+        if self.sqlite_mode:
+            conn = self._connect()
+            try:
+                conn.execute("BEGIN EXCLUSIVE")
+                row = conn.execute("SELECT owner_run_id, expires_at FROM run_locks WHERE name = ?", (name,)).fetchone()
+                if row and row["expires_at"] and row["expires_at"] > now and row["owner_run_id"] != owner_run_id:
+                    conn.rollback()
+                    return False
+                conn.execute(
+                    "INSERT INTO run_locks (name, owner_run_id, acquired_at, expires_at) VALUES (?, ?, ?, ?) "
+                    "ON CONFLICT(name) DO UPDATE SET owner_run_id=excluded.owner_run_id, acquired_at=excluded.acquired_at, expires_at=excluded.expires_at",
+                    (name, owner_run_id, now, expires),
+                )
+                conn.commit()
+                return True
+            except sqlite3.OperationalError:
+                with contextlib.suppress(Exception):
+                    conn.rollback()
+                return False
+            finally:
+                conn.close()
         conn = self._raw_connect()
         try:
             cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
@@ -671,6 +765,15 @@ class FactoryDB:
     def mark_signals_consumed(self, signal_ids: list[int], run_id: str):
         if not signal_ids:
             return
+        if self.sqlite_mode:
+            placeholders = ",".join("?" for _ in signal_ids)
+            with self._connect() as conn:
+                conn.execute(
+                    f"UPDATE signals SET consumed_by_run_id = ? WHERE id IN ({placeholders})",
+                    (run_id, *signal_ids),
+                )
+                conn.commit()
+            return
         with self._conn() as (conn, cur):
             cur.execute(
                 "UPDATE signals SET consumed_by_run_id = %s WHERE id = ANY(%s)",
@@ -755,6 +858,20 @@ class FactoryDB:
             if row.get("market_id")
         ]
         if not payload:
+            return
+        if self.sqlite_mode:
+            with self._connect() as conn:
+                conn.executemany(
+                    """
+                    INSERT INTO market_observations (
+                        run_id, event_slug, market_id, market_slug, market_title,
+                        yes_price, best_bid, best_ask, spread, liquidity, volume, volume_24hr,
+                        close_time, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    payload,
+                )
+                conn.commit()
             return
         with self._conn() as (conn, cur):
             psycopg2.extras.execute_batch(
@@ -1127,8 +1244,12 @@ class FactoryDB:
         params: list = []
         strategy_filter = ""
         if strategies:
-            strategy_filter = "AND t.strategy = ANY(%s)"
-            params = [strategies]
+            if self.sqlite_mode:
+                strategy_filter = f"AND t.strategy IN ({','.join('?' for _ in strategies)})"
+                params = list(strategies)
+            else:
+                strategy_filter = "AND t.strategy = ANY(%s)"
+                params = [strategies]
 
         query = f"""
             SELECT

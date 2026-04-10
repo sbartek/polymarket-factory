@@ -48,19 +48,21 @@ class TestReconstructSignal:
 
 
 class TestExecutePhase:
+    @patch("factory.runner.fetch_top_paginated", return_value=[])
     @patch("factory.runner.fetch_top", return_value=[])
     @patch("factory.runner.send_whatsapp", return_value=True)
     @patch("factory.runner.fetch_closed", return_value=[])
-    def test_handles_zero_cached_signals(self, _fc, _wa, _ft):
+    def test_handles_zero_cached_signals(self, _fc, _wa, _ft, _ftp):
         """Execute phase with no cached signals should complete gracefully."""
         db = _make_db()
         with patch("factory.runner.FactoryDB", return_value=db):
             run(environment="paper", dry_run=True, send=False, phase="execute")
 
+    @patch("factory.runner.fetch_top_paginated", return_value=[])
     @patch("factory.runner.fetch_top", return_value=[])
     @patch("factory.runner.send_whatsapp", return_value=True)
     @patch("factory.runner.fetch_closed", return_value=[])
-    def test_dry_run_does_not_consume_signals(self, _fc, _wa, _ft):
+    def test_dry_run_does_not_consume_signals(self, _fc, _wa, _ft, _ftp):
         """Dry runs should NOT mark signals as consumed (so real execute can pick them up)."""
         db = _make_db()
         scan_run = db.start_run(mode="paper_scan")
@@ -74,10 +76,11 @@ class TestExecutePhase:
         remaining = db.get_unconsumed_signals()
         assert len(remaining) == 2
 
+    @patch("factory.runner.fetch_top_paginated", return_value=[])
     @patch("factory.runner.fetch_top", return_value=[])
     @patch("factory.runner.send_whatsapp", return_value=True)
     @patch("factory.runner.fetch_closed", return_value=[])
-    def test_consumes_fresh_signals(self, _fc, _wa, _ft):
+    def test_consumes_fresh_signals(self, _fc, _wa, _ft, _ftp):
         db = _make_db()
         scan_run = db.start_run(mode="paper_scan")
         _insert_scan_signal(db, scan_run, market_id="m1")
@@ -90,10 +93,11 @@ class TestExecutePhase:
         remaining = db.get_unconsumed_signals()
         assert len(remaining) == 0
 
+    @patch("factory.runner.fetch_top_paginated", return_value=[])
     @patch("factory.runner.fetch_top", return_value=[])
     @patch("factory.runner.send_whatsapp", return_value=True)
     @patch("factory.runner.fetch_closed", return_value=[])
-    def test_skips_stale_signals(self, _fc, _wa, _ft):
+    def test_skips_stale_signals(self, _fc, _wa, _ft, _ftp):
         db = _make_db()
         scan_run = db.start_run(mode="paper_scan")
         old_time = (datetime.now(UTC) - timedelta(hours=3)).isoformat(timespec="seconds")
