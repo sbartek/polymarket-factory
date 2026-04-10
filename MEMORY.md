@@ -298,6 +298,46 @@ Remaining backlog:
   - `./run_strategy_factory_local.sh` on `pplayouts` completed with `status=ok`, `preflight_ok=true`, `pull_ok=true`, `cycle_ok=true`, `push_ok=true`, `heartbeat_ok=true`, `eval_source=remote`, `generated_count=0`, `archived_count=0`.
   - `data/strategy-factory-runs/latest.json` now exists on `pplayouts`.
   - `dashboard-data/overview.json` on `pplayouts` now exports a non-null `strategy_factory` block and `dashboard-dist/` was rebuilt successfully (14 data files, 27 wiki pages).
+- Follow-up operational/docs/dashboard work was pushed in `eaa363b`:
+  - `.github/workflows/deploy.yml` now restarts the `gpplayouts` API after `git pull`
+  - dashboard Overview now exposes recent strategy-factory run history
+  - `README.md` and `MEMORY.md` were updated to reflect the hardened strategy-factory runtime path
+
+## Runtime/test updates (2026-04-10, later session)
+
+- Python/runtime stability work landed in two local commits that were then pushed to `main`:
+  - `a9c2ace` — pin Python away from the `ddgs` / `primp` crash
+  - `d954614` — restore SQLite test compatibility and align stale tests with current contracts
+- Root cause of the remaining full-suite abort:
+  - local `.venv` had been running Python `3.14.2`
+  - `ddgs 9.12.0` + `primp 1.2.0` could abort the interpreter in native code when tests accidentally initialized the real `DDGS()` client on macOS/Python 3.14
+- Fixes applied:
+  - `pyproject.toml` now pins `requires-python` to `>=3.12,<3.14`
+  - `.python-version` now pins the repo to `3.12`
+  - `tests/test_ev_news_dedup.py` no longer initializes real `DDGS`; it uses a narrow SQLite-backed dedup stub instead
+  - `factory/db.py` now supports an explicit SQLite compatibility mode again when constructed as `FactoryDB(path=...)`, while keeping PostgreSQL/DSN as the default runtime path
+  - `factory/runner.py` now passes the active DB instance into `PaperBroker` during execute runs instead of creating a fresh default DB connection
+  - stale tests were updated to match current contracts:
+    - `price_move_fade` is promoted paper-trading, not alert-only
+    - `weather_edge_v2` is paused alert-only, not promoted
+    - notification config tests now account for `configured_channels()` requiring both `WHATSAPP_GROUP_ID` and an `openclaw` binary
+    - execute-phase tests now mock `fetch_top_paginated`, which is the current fast-pass fetch path in `runner.py`
+- Verification:
+  - targeted regression batch for the restored SQLite path passed: `136 passed`
+  - full local suite under Python 3.12 passed: `365 passed in 35.86s`
+
+## Current plan state (2026-04-10)
+
+- Completed:
+  - strategy-factory runtime hardening and dashboard visibility
+  - deploy workflow restart for `gpplayouts` API
+  - Python 3.12 pin and removal of the local `ddgs` / `primp` crash path
+  - restored SQLite compatibility for legacy tests and a fully green local suite
+- Next:
+  - verify the latest deploy run for `d954614` and confirm `gpplayouts` / `pplayouts` pulled the new commits cleanly
+  - run one more real strategy-factory cycle on `pplayouts` after the latest deploy to confirm no operational drift
+  - add CI enforcement for Python 3.12 so the runtime pin is checked outside local development
+  - keep `origin/main` tracking tidy locally when pushing via explicit SSH URLs
 
 ---
 

@@ -37,7 +37,7 @@ You (idea) → new file in factory/strategies/ → add to STRATEGIES registry �
 - if remote eval falls back to cache, the cycle refreshes artifacts but skips generating new strategies
 - the dashboard Overview now reads the latest strategy-factory status from `overview.strategy_factory`
 
-Important deployment detail: GitHub Actions deploy currently does `git pull` on the hosts, but does not restart the running API process on `gpplayouts`. If `/ready` still returns `404` after a deploy, restart the API manually on `gpplayouts` with `./run_api.sh`.
+Important deployment detail: GitHub Actions deploy now restarts the API on `gpplayouts` after `git pull`, so `/ready` should usually track the deployed `api/server.py` automatically. If `/ready` still returns `404` after a deploy, inspect the latest deploy run and restart the API manually on `gpplayouts` with `./run_api.sh`.
 
 ---
 
@@ -192,6 +192,8 @@ The base `Strategy` class defaults `trading_enabled = True`, so `alert_only` alo
 - [ ] Strategy parameter tuning
 - [ ] Monthly live vs paper calibration report
 - [ ] Claude calibration retrospective (Brier score gate for LLM strategies)
+- [ ] Verify latest deploy on `gpplayouts` / `pplayouts` after `d954614` and confirm one clean strategy-factory cycle with the Python 3.12 + test-compat changes on `main`
+- [ ] Add CI enforcement for Python 3.12 so the `ddgs` / `primp` crash path does not regress
 
 ---
 
