@@ -34,13 +34,15 @@ SCHEDULES: dict[str, tuple[int, int]] = {
 }
 
 
-def ping(slug: str, *, success: bool = True) -> None:
+def ping(slug: str, *, success: bool = True, status: str = "ok", detail: str | None = None) -> None:
     """Record a heartbeat for the given job slug."""
     HEARTBEAT_DIR.mkdir(parents=True, exist_ok=True)
     path = HEARTBEAT_DIR / f"{slug}.json"
     data = {
         "slug": slug,
         "success": success,
+        "status": status,
+        "detail": detail,
         "timestamp": datetime.now(UTC).isoformat(timespec="seconds"),
     }
     path.write_text(json.dumps(data))
@@ -78,6 +80,13 @@ def check_heartbeats() -> list[dict]:
                     "slug": slug,
                     "status": "overdue",
                     "detail": f"last ping {hours:.1f}h ago, expected every {period_min}m +{grace_min}m grace",
+                    "last_success": data.get("success", True),
+                })
+            elif data.get("status") == "degraded":
+                problems.append({
+                    "slug": slug,
+                    "status": "degraded",
+                    "detail": data.get("detail") or f"last run degraded at {data['timestamp']}",
                     "last_success": data.get("success", True),
                 })
             elif not data.get("success", True):

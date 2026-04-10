@@ -38,8 +38,8 @@ const fmtBytes = (value) => {
 const pillClass = (status) => {
   const s = (status || '').toLowerCase();
   if (s === 'ok' || s === 'active' || s === 'completed') return 'pill pill-ok';
-  if (s === 'warning' || s === 'review_due' || s === 'paused') return 'pill pill-warning';
-  if (s === 'error') return 'pill pill-error';
+  if (s === 'warning' || s === 'review_due' || s === 'paused' || s === 'degraded') return 'pill pill-warning';
+  if (s === 'error' || s === 'failed') return 'pill pill-error';
   return 'pill pill-neutral';
 };
 

@@ -23,6 +23,14 @@ def test_ping_failure(tmp_path):
         assert data["success"] is False
 
 
+def test_ping_degraded(tmp_path):
+    with patch("factory.healthcheck.HEARTBEAT_DIR", tmp_path):
+        ping("strategy-factory", success=True, status="degraded", detail="used cached eval report")
+        data = json.loads((tmp_path / "strategy-factory.json").read_text())
+        assert data["status"] == "degraded"
+        assert data["detail"] == "used cached eval report"
+
+
 def test_check_heartbeats_all_fresh(tmp_path):
     now = datetime.now(UTC).isoformat(timespec="seconds")
     with patch("factory.healthcheck.HEARTBEAT_DIR", tmp_path):
@@ -77,3 +85,19 @@ def test_check_heartbeats_detects_failure(tmp_path):
         assert len(problems) == 1
         assert problems[0]["slug"] == "backup"
         assert problems[0]["status"] == "failed"
+
+
+def test_check_heartbeats_detects_degraded(tmp_path):
+    now = datetime.now(UTC).isoformat(timespec="seconds")
+    with patch("factory.healthcheck.HEARTBEAT_DIR", tmp_path):
+        for slug in ("scan", "execute", "observer", "trade-fetcher",
+                     "strategy-factory", "live", "research", "backup"):
+            payload = {"slug": slug, "success": True, "timestamp": now}
+            if slug == "strategy-factory":
+                payload["status"] = "degraded"
+                payload["detail"] = "used cached eval report"
+            (tmp_path / f"{slug}.json").write_text(json.dumps(payload))
+        problems = check_heartbeats()
+        assert len(problems) == 1
+        assert problems[0]["slug"] == "strategy-factory"
+        assert problems[0]["status"] == "degraded"

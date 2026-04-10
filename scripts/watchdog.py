@@ -21,7 +21,7 @@ def main():
     for p in problems:
         emoji = {
             "overdue": "🔴", "failed": "🟡", "never_reported": "⚪",
-            "corrupt": "⚠️", "signal_repeat": "🔁",
+            "corrupt": "⚠️", "signal_repeat": "🔁", "degraded": "🟠",
         }.get(p["status"], "❓")
         lines.append(f"{emoji} *{p['slug']}*: {p['status']} — {p['detail']}")
 

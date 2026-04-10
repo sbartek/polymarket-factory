@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import sqlite3
 import subprocess
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
@@ -27,12 +28,28 @@ REVIEWS_DIR = IMPROVEMENT_DIR / "reviews"
 PROPOSALS_DIR = IMPROVEMENT_DIR / "proposals"
 GENERATED_DIR = PROJECT_ROOT / "factory" / "strategies" / "generated"
 GENERATED_ARCHIVE_DIR = GENERATED_DIR / "archive"
+STRATEGY_FACTORY_RUNS_DIR = PROJECT_ROOT / "data" / "strategy-factory-runs"
 
 ACTIVE_STRATEGIES = _CANONICAL_ACTIVE
 TIME_WINDOWS = ["super_short", "intraday", "short", "medium", "long", "unknown"]
 RAW_SNAPSHOT_RETENTION_DAYS = 365 * 2
 DISK_FREE_ALERT_THRESHOLD = 0.20  # alert when less than 20% of disk is free
 PROJECT_STORAGE_EXCLUDED_DIRS = {".git", ".venv", "node_modules", "__pycache__", ".pytest_cache"}
+
+
+def load_dotenv() -> None:
+    env_file = PROJECT_ROOT / ".env"
+    if not env_file.exists():
+        return
+    for raw in env_file.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        os.environ.setdefault(key.strip(), value.strip())
+
+
+load_dotenv()
 
 
 def utc_now_iso() -> str:
@@ -82,11 +99,36 @@ def normalize_status(raw: str | None) -> str:
     raw = raw.strip().lower()
     if raw in {"ok", "success", "done", "completed"}:
         return "ok"
-    if raw in {"warning", "warn", "partial"}:
+    if raw in {"warning", "warn", "partial", "degraded"}:
         return "warning"
     if raw in {"error", "failed", "fail"}:
         return "error"
     return "unknown"
+
+
+def load_strategy_factory_status() -> dict | None:
+    path = STRATEGY_FACTORY_RUNS_DIR / "latest.json"
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    raw_status = (payload.get("status") or "unknown").strip().lower()
+    return {
+        "started_at": payload.get("started_at"),
+        "finished_at": payload.get("finished_at"),
+        "status": raw_status,
+        "status_normalized": normalize_status(raw_status),
+        "eval_source": payload.get("eval_source"),
+        "generated_count": payload.get("generated_count"),
+        "archived_count": payload.get("archived_count"),
+        "degraded": bool(payload.get("degraded")),
+        "push_ok": bool(payload.get("push_ok")),
+        "heartbeat_ok": bool(payload.get("heartbeat_ok")),
+        "preflight_ok": bool(payload.get("preflight_ok")),
+        "error": payload.get("error"),
+    }
 
 
 PAUSED_STRATEGIES = {"fade_certainty", "weather_edge"}
@@ -339,7 +381,11 @@ def attach_linked_reviews(experiments: list[dict], reviews: dict[str, dict]) -> 
 
 
 def connect_db():
-    return connect_compat()
+    if os.environ.get("DATABASE_URL"):
+        return connect_compat()
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
 
 
 def fetch_runs(conn: object, limit: int = 25) -> list[dict]:
@@ -555,7 +601,7 @@ def load_generated_registry(benchmarks: dict | None = None) -> dict[str, dict]:
     return rows
 
 
-def fetch_overview(conn: object, experiments: list[dict], warnings: list[str], benchmarks: dict | None = None, storage: dict | None = None) -> dict:
+def fetch_overview(conn: object, experiments: list[dict], warnings: list[str], benchmarks: dict | None = None, storage: dict | None = None, strategy_factory: dict | None = None) -> dict:
     latest = conn.execute("SELECT * FROM runs ORDER BY started_at DESC LIMIT 1").fetchone()
     open_active_exposure = scalar(conn, "SELECT COALESCE(SUM(amount_usdc), 0) FROM trades WHERE status='open' AND strategy IN ({})".format(
         ",".join("?" for _ in ACTIVE_STRATEGIES)
@@ -593,6 +639,17 @@ def fetch_overview(conn: object, experiments: list[dict], warnings: list[str], b
         })
     for warning in warnings[:5]:
         alerts.append({"level": "warning", "message": warning})
+    if strategy_factory:
+        if strategy_factory.get("status") == "failed":
+            alerts.append({
+                "level": "error",
+                "message": f"Strategy factory failed: {strategy_factory.get('error') or 'see latest run log'}",
+            })
+        elif strategy_factory.get("degraded"):
+            alerts.append({
+                "level": "warning",
+                "message": f"Strategy factory degraded: using {strategy_factory.get('eval_source') or 'non-primary'} eval source.",
+            })
 
     return {
         "generated_at": utc_now_iso(),
@@ -618,6 +675,7 @@ def fetch_overview(conn: object, experiments: list[dict], warnings: list[str], b
         "benchmark_missing_forward_signal_count_alert_only": missing_alert_only,
         "benchmark_top_strategy_alert_only": top_alert_only.get("strategy") if top_alert_only else None,
         "benchmark_top_score_alert_only": top_alert_only.get("benchmark_score") if top_alert_only else None,
+        "strategy_factory": strategy_factory,
         "alerts": alerts,
     }
 
@@ -1022,7 +1080,8 @@ def main() -> None:
     execution_checks = fetch_execution_checks(conn)
     positions_open = fetch_positions_open(conn)
     storage = fetch_storage(conn)
-    overview = fetch_overview(conn, experiments, warnings, benchmarks, storage)
+    strategy_factory = load_strategy_factory_status()
+    overview = fetch_overview(conn, experiments, warnings, benchmarks, storage, strategy_factory)
 
     write_json(OUTPUT_DIR / "overview.json", overview)
     write_json(OUTPUT_DIR / "runs.json", runs)

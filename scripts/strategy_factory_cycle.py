@@ -18,6 +18,8 @@ import re
 import subprocess
 import sys
 import shutil
+import time
+import urllib.error
 import urllib.request
 from datetime import datetime
 from pathlib import Path
@@ -32,12 +34,16 @@ from factory.claude import call_claude
 # instead of reading local SQLite. Used when running strategy factory on Mac.
 REMOTE_API_URL = os.environ.get("FACTORY_REMOTE_API_URL", "").rstrip("/")
 REMOTE_API_KEY = os.environ.get("FACTORY_API_KEY", "")
+REMOTE_API_RETRY_DELAYS_SECONDS = (2, 5)
+REMOTE_API_DEFAULT_TIMEOUT = 60
 
 GENERATED_DIR = PROJECT_ROOT / "factory" / "strategies" / "generated"
 GENERATED_ARCHIVE_DIR = GENERATED_DIR / "archive"
 PROPOSALS_DIR = PROJECT_ROOT / "improvement" / "proposals"
 DASHBOARD_DATA = PROJECT_ROOT / "dashboard-data"
 EVAL_JSON = DASHBOARD_DATA / "evaluation.json"
+EVAL_REPORT_CACHE = DASHBOARD_DATA / "last_eval_report.txt"
+STRATEGY_FACTORY_META_JSON = DASHBOARD_DATA / "strategy_factory_cycle_meta.json"
 BENCHMARK_DIR = PROJECT_ROOT / "benchmark-data"
 
 GENERATED_RETENTION_GRACE_DAYS = 3
@@ -47,6 +53,9 @@ GENERATED_MIN_LABELED_FOR_GATE = 3
 GENERATED_MIN_OBSERVED_SIGNALS_FOR_GATE = 3
 GENERATED_MIN_OBSERVATION_COVERAGE = 0.30
 GENERATED_MIN_BENCHMARK_SCORE = 0.60
+LAST_EVAL_SOURCE = "unknown"
+LAST_BENCHMARK_FETCHES: list[dict] = []
+LAST_GENERATION_SKIPPED_REASON: str | None = None
 
 
 def now_local() -> datetime:
@@ -60,27 +69,76 @@ def run_cmd(args: list[str], env: dict | None = None) -> str:
     return result.stdout
 
 
-def _api_get(path: str) -> bytes:
+def _api_get(path: str, *, timeout: int = REMOTE_API_DEFAULT_TIMEOUT) -> bytes:
     url = f"{REMOTE_API_URL}{path}"
     req = urllib.request.Request(url, headers={"x-api-key": REMOTE_API_KEY})
-    with urllib.request.urlopen(req, timeout=60) as resp:
-        return resp.read()
+    attempts = len(REMOTE_API_RETRY_DELAYS_SECONDS) + 1
+    for attempt in range(1, attempts + 1):
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                return resp.read()
+        except urllib.error.HTTPError as exc:
+            retryable = exc.code == 429 or exc.code >= 500
+            if attempt >= attempts or not retryable:
+                raise
+            delay = REMOTE_API_RETRY_DELAYS_SECONDS[attempt - 1]
+            print(f"[remote] {path} returned HTTP {exc.code}; retrying in {delay}s ({attempt}/{attempts})")
+            time.sleep(delay)
+        except (TimeoutError, urllib.error.URLError) as exc:
+            if attempt >= attempts:
+                raise
+            delay = REMOTE_API_RETRY_DELAYS_SECONDS[attempt - 1]
+            print(f"[remote] {path} request failed ({exc.__class__.__name__}); retrying in {delay}s ({attempt}/{attempts})")
+            time.sleep(delay)
+    raise RuntimeError(f"remote request failed unexpectedly for {path}")
 
 
 def fetch_benchmarks_remote() -> None:
     """Fetch benchmark JSONs from the VM API and write them to benchmark-data/."""
+    global LAST_BENCHMARK_FETCHES
     BENCHMARK_DIR.mkdir(parents=True, exist_ok=True)
+    LAST_BENCHMARK_FETCHES = []
     for scope in ("alert-only", "generated"):
         data = _api_get(f"/benchmark/{scope}")
         (BENCHMARK_DIR / f"replay-benchmark-{scope}.json").write_bytes(data)
+        LAST_BENCHMARK_FETCHES.append({
+            "scope": scope,
+            "source": "remote",
+            "bytes": len(data),
+            "fetched_at": now_local().isoformat(timespec="seconds"),
+        })
         print(f"[remote] fetched benchmark/{scope} ({len(data)} bytes)")
 
 
 def capture_eval_report() -> str:
+    global LAST_EVAL_SOURCE
     if REMOTE_API_URL:
         print("[remote] fetching eval report from API...")
-        return _api_get("/eval").decode("utf-8")
-    return run_cmd([sys.executable, str(PROJECT_ROOT / "eval" / "report.py")])
+        try:
+            text = _api_get("/eval").decode("utf-8")
+            EVAL_REPORT_CACHE.parent.mkdir(parents=True, exist_ok=True)
+            EVAL_REPORT_CACHE.write_text(text, encoding="utf-8")
+            LAST_EVAL_SOURCE = "remote"
+            return text
+        except Exception as exc:
+            if EVAL_REPORT_CACHE.exists():
+                print(f"[remote] /eval failed ({exc.__class__.__name__}); using cached eval report from {display_path(EVAL_REPORT_CACHE)}")
+                LAST_EVAL_SOURCE = "cache"
+                return EVAL_REPORT_CACHE.read_text(encoding="utf-8")
+            raise
+    text = run_cmd([sys.executable, str(PROJECT_ROOT / "eval" / "report.py")])
+    EVAL_REPORT_CACHE.parent.mkdir(parents=True, exist_ok=True)
+    EVAL_REPORT_CACHE.write_text(text, encoding="utf-8")
+    LAST_EVAL_SOURCE = "local"
+    return text
+
+
+def generation_skip_reason() -> str | None:
+    if REMOTE_API_URL and LAST_EVAL_SOURCE == "cache":
+        return "remote eval unavailable; using cached eval report"
+    if REMOTE_API_URL and len(LAST_BENCHMARK_FETCHES) < 2:
+        return "remote benchmark fetch incomplete"
+    return None
 
 
 def next_daily_sequence(prefix: str) -> int:
@@ -689,6 +747,7 @@ def refresh_dashboard() -> None:
 
 
 def main() -> None:
+    global LAST_GENERATION_SKIPPED_REASON
     if REMOTE_API_URL:
         print(f"[remote] API mode: {REMOTE_API_URL}")
         fetch_benchmarks_remote()
@@ -696,15 +755,30 @@ def main() -> None:
     seq = next_daily_sequence(prefix)
     archived = apply_generated_retention_gate()
     eval_text = capture_eval_report()
-    specs = generate_strategy_specs(eval_text)
     generated = []
-    for idx, spec in enumerate(specs, start=seq):
-        result = write_generated_strategy(spec, prefix, idx)
-        if result is not None:
-            generated.append(result)
+    LAST_GENERATION_SKIPPED_REASON = generation_skip_reason()
+    if LAST_GENERATION_SKIPPED_REASON:
+        print(f"[factory] skipping generation: {LAST_GENERATION_SKIPPED_REASON}")
+    else:
+        specs = generate_strategy_specs(eval_text)
+        for idx, spec in enumerate(specs, start=seq):
+            result = write_generated_strategy(spec, prefix, idx)
+            if result is not None:
+                generated.append(result)
     summary = summarize_eval(eval_text, generated, archived)
     DASHBOARD_DATA.mkdir(parents=True, exist_ok=True)
     EVAL_JSON.write_text(json.dumps(summary, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    STRATEGY_FACTORY_META_JSON.write_text(
+        json.dumps({
+            "generated_at": now_local().isoformat(timespec="seconds"),
+            "eval_source": LAST_EVAL_SOURCE,
+            "benchmark_fetches": LAST_BENCHMARK_FETCHES,
+            "generated_count": len(generated),
+            "archived_count": len(archived),
+            "generation_skipped_reason": LAST_GENERATION_SKIPPED_REASON,
+        }, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
     importlib.invalidate_caches()
     refresh_dashboard()
     print(json.dumps({"generated": generated, "archived": archived, "evaluation": summary}, indent=2, ensure_ascii=False))

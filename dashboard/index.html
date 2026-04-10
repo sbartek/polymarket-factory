@@ -45,6 +45,11 @@
         </article>
 
         <article class="panel">
+          <div class="panel-header"><h2>Strategy factory</h2><span id="strategy-factory-meta" class="muted"></span></div>
+          <div id="strategy-factory-panel" class="stack muted">No strategy-factory run record yet.</div>
+        </article>
+
+        <article class="panel">
           <div class="panel-header"><h2>Strategy snapshot</h2><span id="strategy-summary" class="muted"></span></div>
           <div class="table-wrap">
             <table>
@@ -110,6 +115,21 @@
             ...((evaluation.summary_lines || []).map((line) => `<div>• ${line}</div>`)),
             ((evaluation.new_strategies || []).length ? `<div class="section-gap"><strong>New strategies</strong></div>${(evaluation.new_strategies || []).map((line) => `<div>• ${line}</div>`).join('')}` : ''),
             (evaluation.risk_note ? `<div class="muted section-gap">${evaluation.risk_note}</div>` : ''),
+          ].join('');
+        }
+
+        const strategyFactory = snapshot.overview.strategy_factory;
+        const strategyFactoryPanel = document.getElementById('strategy-factory-panel');
+        const strategyFactoryMeta = document.getElementById('strategy-factory-meta');
+        if (strategyFactory) {
+          strategyFactoryMeta.textContent = Dashboard.fmtDate(strategyFactory.finished_at || strategyFactory.started_at);
+          strategyFactoryPanel.classList.remove('muted');
+          strategyFactoryPanel.innerHTML = [
+            `<div><strong>Latest local strategy-factory run</strong> <span class="${Dashboard.pillClass(strategyFactory.status)}">${strategyFactory.status}</span></div>`,
+            `<div class="muted">Eval source ${strategyFactory.eval_source || 'unknown'} · generated ${Dashboard.fmtInt(strategyFactory.generated_count)} · archived ${Dashboard.fmtInt(strategyFactory.archived_count)}</div>`,
+            `<div class="muted">Preflight ${strategyFactory.preflight_ok ? 'ok' : 'failed'} · push ${strategyFactory.push_ok ? 'ok' : 'failed'} · heartbeat ${strategyFactory.heartbeat_ok ? 'ok' : 'failed'}</div>`,
+            strategyFactory.degraded ? '<div class="muted section-gap">This run completed in degraded mode and used cached evaluation input.</div>' : '',
+            strategyFactory.error ? `<div class="muted section-gap"><strong>Error:</strong> ${Dashboard.cleanSummary(strategyFactory.error)}</div>` : '',
           ].join('');
         }
 

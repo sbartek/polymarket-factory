@@ -134,6 +134,89 @@ def test_fetch_overview_includes_benchmark_coverage_counts(tmp_path, monkeypatch
     assert overview["benchmark_missing_forward_signal_count_alert_only"] == 5
 
 
+def test_load_strategy_factory_status_reads_latest_run(tmp_path, monkeypatch):
+    run_dir = tmp_path / "strategy-factory-runs"
+    run_dir.mkdir(parents=True)
+    (run_dir / "latest.json").write_text(
+        """
+        {
+          "started_at": "2026-04-10T07:30:00+00:00",
+          "finished_at": "2026-04-10T07:31:00+00:00",
+          "status": "degraded",
+          "eval_source": "cache",
+          "generated_count": 2,
+          "archived_count": 1,
+          "degraded": true,
+          "push_ok": true,
+          "heartbeat_ok": true,
+          "preflight_ok": true,
+          "error": null
+        }
+        """,
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(export_dashboard_data, "STRATEGY_FACTORY_RUNS_DIR", run_dir)
+
+    payload = export_dashboard_data.load_strategy_factory_status()
+
+    assert payload["status"] == "degraded"
+    assert payload["status_normalized"] == "warning"
+    assert payload["eval_source"] == "cache"
+    assert payload["generated_count"] == 2
+
+
+def test_fetch_overview_includes_strategy_factory_alert(tmp_path, monkeypatch):
+    class _Row(dict):
+        def __getitem__(self, key):
+            return dict.__getitem__(self, key)
+
+    class _Cursor:
+        def __init__(self, row):
+            self._row = row
+
+        def fetchone(self):
+            return self._row
+
+        def fetchall(self):
+            return []
+
+    class _Conn:
+        def execute(self, sql, params=()):
+            if "SELECT * FROM runs ORDER BY started_at DESC LIMIT 1" in sql:
+                return _Cursor(_Row({
+                    "status": "success",
+                    "started_at": "2026-04-10T09:30:00+00:00",
+                    "finished_at": "2026-04-10T09:31:00+00:00",
+                }))
+            return _Cursor(None)
+
+    monkeypatch.setattr(export_dashboard_data, "scalar", lambda *args, **kwargs: 0)
+    monkeypatch.setattr(export_dashboard_data, "fetch_execution_summary", lambda conn: {
+        "checks_30d": 1,
+        "strategies_with_checks_30d": 1,
+        "avg_ev_after_slippage_50_pp_30d": 1.0,
+        "avg_max_size_positive_ev_30d": 10.0,
+        "source_confidence_counts_30d": {"medium": 1},
+    })
+
+    overview = export_dashboard_data.fetch_overview(
+        _Conn(),
+        experiments=[],
+        warnings=[],
+        benchmarks={},
+        storage=None,
+        strategy_factory={
+            "status": "failed",
+            "degraded": False,
+            "eval_source": "remote",
+            "error": "git push failed",
+        },
+    )
+
+    assert overview["strategy_factory"]["status"] == "failed"
+    assert any("Strategy factory failed" in row["message"] for row in overview["alerts"])
+
+
 def test_load_generated_registry_includes_archived_reason_and_benchmark(tmp_path, monkeypatch):
     generated_dir = tmp_path / "factory" / "strategies" / "generated"
     archive_dir = generated_dir / "archive"
