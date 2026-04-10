@@ -101,6 +101,25 @@ def run_command(args: list[str], *, env: dict[str, str] | None = None) -> subpro
     return subprocess.run(args, cwd=PROJECT_ROOT, env=env, capture_output=True, text=True)
 
 
+def add_generated_outputs() -> None:
+    # Add each path independently so ignored paths like dashboard-data do not fail the whole run.
+    for rel in [
+        "factory/strategies/generated/",
+        "improvement/proposals/",
+        "dashboard-data/",
+        "benchmark-data/",
+    ]:
+        result = run_command(["git", "add", rel])
+        if result.returncode == 0:
+            continue
+        stderr = (result.stderr or "").strip()
+        stdout = (result.stdout or "").strip()
+        message = stderr or stdout or "git add failed"
+        if "ignored by one of your .gitignore files" in message:
+            continue
+        raise RuntimeError(message)
+
+
 def post_heartbeat(remote_url: str, api_key: str, *, success: bool, status: str, detail: str | None = None) -> None:
     params = {"success": "true" if success else "false", "status": status}
     if detail:
@@ -187,9 +206,7 @@ def run() -> int:
             )
 
             push_ok = True
-            add = run_command(["git", "add", "factory/strategies/generated/", "improvement/proposals/", "dashboard-data/", "benchmark-data/"])
-            if add.returncode != 0:
-                raise RuntimeError(add.stderr.strip() or add.stdout.strip() or "git add failed")
+            add_generated_outputs()
             if run_command(["git", "diff", "--staged", "--quiet"]).returncode != 0:
                 commit = run_command(["git", "commit", "-m", f"strategy factory: auto-generated strategies {datetime.now().date()}"])
                 if commit.returncode != 0:
