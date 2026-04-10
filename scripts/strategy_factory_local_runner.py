@@ -125,7 +125,9 @@ def post_heartbeat(remote_url: str, api_key: str, *, success: bool, status: str,
     if detail:
         params["detail"] = detail[:500]
     url = f"{remote_url}/heartbeat/strategy-factory?{urllib.parse.urlencode(params)}"
-    _urlopen(url, headers={"x-api-key": api_key}, timeout=20)
+    req = urllib.request.Request(url, data=b"", headers={"x-api-key": api_key}, method="POST")
+    with urllib.request.urlopen(req, timeout=20) as resp:
+        resp.read()
 
 
 def build_status_message(record: dict) -> str:
