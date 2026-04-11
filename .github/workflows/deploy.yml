@@ -20,7 +20,7 @@ jobs:
             git pull origin main
             pkill -f "uvicorn api.server:app --host 127.0.0.1 --port 8765" || true
             sleep 2
-            nohup ./run_api.sh > factory-api.log 2>&1 < /dev/null &
+            setsid ./run_api.sh > factory-api.log 2>&1 < /dev/null &
 
   deploy-mac:
     name: Deploy to pplayouts (Mac)
