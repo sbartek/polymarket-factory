@@ -123,7 +123,16 @@ def snapshot_open_positions(broker: PaperBroker, market_index: dict[str, dict]) 
     def _event_market(market_id: str) -> tuple[dict | None, dict | None]:
         direct = market_index.get(market_id)
         if direct:
-            return direct.get("event"), direct.get("market")
+            event = direct.get("event")
+            market = direct.get("market")
+            # For bare slugs (no ':'), only trust the price if the event
+            # is binary (single active market).  Multi-outcome events store
+            # the primary market's price which doesn't match the traded token.
+            if ":" not in market_id and event and market:
+                active = [m for m in (event.get("markets") or []) if not m.get("closed")]
+                if len(active) > 1:
+                    return event, None
+            return event, market
         if ":" in market_id:
             event_slug, submarket_id = market_id.split(":", 1)
             event = market_index.get(event_slug, {}).get("event")
@@ -134,7 +143,12 @@ def snapshot_open_positions(broker: PaperBroker, market_index: dict[str, dict]) 
                 return event, None
         event = market_index.get(market_id, {}).get("event")
         if event:
-            return event, market_index.get(market_id, {}).get("market")
+            market = market_index.get(market_id, {}).get("market")
+            if market:
+                active = [m for m in (event.get("markets") or []) if not m.get("closed")]
+                if len(active) > 1:
+                    return event, None
+            return event, market
         return None, None
 
     def _yes_price(market: dict | None) -> float | None:
