@@ -14,6 +14,7 @@ Status: ALERT-ONLY — accumulate 20 signals before enabling paper trading.
 """
 import json
 import re
+import signal as _signal
 from datetime import date
 
 from ddgs import DDGS
@@ -22,6 +23,8 @@ from ..claude import call_claude
 from ..feed import event_url, get_yes_price
 from ..models import Signal
 from .base import Strategy
+
+DDGS_HARD_TIMEOUT = 30
 
 MAX_DAYS = 30
 MIN_DAYS = 1          # v1 was 0 — same-day events resolve too fast
@@ -75,8 +78,16 @@ def _is_excluded(title: str) -> bool:
 
 
 def _fetch_news(query: str, n: int = 4) -> list[dict]:
+    def _handler(signum, frame):
+        raise TimeoutError(f"DDGS hung after {DDGS_HARD_TIMEOUT}s")
     try:
-        return list(DDGS(timeout=15).news(query, max_results=n))
+        old = _signal.signal(_signal.SIGALRM, _handler)
+        _signal.alarm(DDGS_HARD_TIMEOUT)
+        try:
+            return list(DDGS(timeout=15).news(query, max_results=n))
+        finally:
+            _signal.alarm(0)
+            _signal.signal(_signal.SIGALRM, old)
     except Exception:
         return []
 
@@ -119,15 +130,29 @@ class ResolutionHunterV2Strategy(Strategy):
         today = date.today().isoformat()
         market_blocks = []
         for c in candidates:
-            market_blocks.append(
+            block = (
                 f"slug={c['slug']} | price={c['yes_price']*100:.0f}% YES | closes={c['closes']} | score={c['score']:.2f}\n"
-                f"Title: {c['title']}\nRecent news:\n{_news_snippet(c['news'])}"
+                f"Title: {c['title']}"
             )
+            if c.get("description"):
+                block += f"\nResolution criteria: {c['description']}"
+            block += f"\nRecent news:\n{_news_snippet(c['news'])}"
+            market_blocks.append(block)
         prompt = (
             f"Today is {today}. You are checking Polymarket prediction markets about political, "
             f"regulatory, or diplomatic events to find ones where the underlying event has "
-            f"ALREADY HAPPENED but the market still shows a non-trivial price.\n"
-            f"Only flag markets where you are at least 90% confident the event has already resolved.\n"
+            f"ALREADY HAPPENED but the market still shows a non-trivial price.\n\n"
+            f"CRITICAL RULES:\n"
+            f"- Read the resolution criteria carefully. The market title is often vague; the "
+            f"resolution criteria define EXACTLY what must happen for YES/NO.\n"
+            f"- 'Military action by X against Y' means SPECIFICALLY by country X — not by "
+            f"any other country. Do not confuse actors.\n"
+            f"- Verify dates precisely. If an election is scheduled for April 12, news from "
+            f"April 10 about polls/projections does NOT mean the election has happened.\n"
+            f"- If the market is at 5-15%, the market is telling you this event probably "
+            f"hasn't happened. You need VERY strong evidence to override the market.\n"
+            f"- When in doubt, return an empty array. False positives are costly.\n\n"
+            f"Only flag markets where you are at least 95% confident the event has already resolved.\n"
             f"Return JSON array. Each object: {{\"slug\": \"...\", \"outcome\": \"YES or NO\", "
             f"\"confidence\": 0-100, \"reason\": \"one sentence\"}}\n"
             f"If no markets have clearly resolved, return an empty array [].\n"
@@ -144,7 +169,7 @@ class ResolutionHunterV2Strategy(Strategy):
             match = re.search(r'\[.*\]', response, re.DOTALL)
             if match:
                 raw = json.loads(match.group(0))
-                return [r for r in raw if isinstance(r, dict) and r.get("confidence", 0) >= 90]
+                return [r for r in raw if isinstance(r, dict) and r.get("confidence", 0) >= 95]
         except (json.JSONDecodeError, TypeError):
             pass
         return []
@@ -176,6 +201,12 @@ class ResolutionHunterV2Strategy(Strategy):
 
             score = self._candidate_score(title, days, vol, len(news))
             slug = ev.get("slug", "") or str(ev.get("id", ""))
+            # Get resolution criteria from event or primary market description
+            description = (ev.get("description") or "").strip()
+            if not description:
+                primary = next((m for m in (ev.get("markets") or []) if not m.get("closed")), None)
+                if primary:
+                    description = (primary.get("description") or "").strip()
             candidates.append({
                 "slug": slug,
                 "title": title,
@@ -184,6 +215,7 @@ class ResolutionHunterV2Strategy(Strategy):
                 "url": event_url(ev),
                 "score": score,
                 "news": news,
+                "description": description[:300] if description else "",
             })
             self.last_check_details.append({
                 "market_slug": slug,
