@@ -7,6 +7,7 @@ Frequency: 3x/day (same as runner schedule).
 """
 import json
 import re
+import signal as _signal
 from datetime import date
 
 from ddgs import DDGS
@@ -16,6 +17,8 @@ from ..db import FactoryDB
 from ..feed import fetch_by_tag, format_date, format_volume, event_url, get_yes_price, markets_to_text
 from ..models import Signal
 from .base import Strategy
+
+DDGS_HARD_TIMEOUT = 30  # seconds — kill hung DDGS calls
 
 
 def _days_to_close(end_date: str | None) -> int | None:
@@ -44,9 +47,18 @@ class EvNewsStrategy(Strategy):
     fast_dry_run_topics = 1
 
     def _fetch_news(self, query: str, n: int = 5) -> list[dict]:
+        def _handler(signum, frame):
+            raise TimeoutError(f"DDGS hung after {DDGS_HARD_TIMEOUT}s")
         try:
-            return list(DDGS(timeout=15).news(query, max_results=n))
-        except Exception:
+            old = _signal.signal(_signal.SIGALRM, _handler)
+            _signal.alarm(DDGS_HARD_TIMEOUT)
+            try:
+                return list(DDGS(timeout=15).news(query, max_results=n))
+            finally:
+                _signal.alarm(0)
+                _signal.signal(_signal.SIGALRM, old)
+        except Exception as e:
+            print(f"  [{self.name}] news fetch failed: {e}")
             return []
 
     def _news_to_text(self, news: list[dict]) -> str:
