@@ -944,11 +944,11 @@ class FactoryDB:
         with self._conn() as (conn, cur):
             for p in pipelines:
                 cur.execute(
-                    "SELECT finished_at, status FROM runs WHERE mode = %s ORDER BY started_at DESC LIMIT 1",
+                    "SELECT finished_at, status FROM runs WHERE mode = %s AND finished_at IS NOT NULL ORDER BY started_at DESC LIMIT 1",
                     (p["mode_pattern"],),
                 )
                 row = cur.fetchone()
-                if not row or not row["finished_at"]:
+                if not row:
                     results.append({
                         "name": p["name"], "last_run": None, "status": "never_run",
                         "age_minutes": None, "overdue": True,
