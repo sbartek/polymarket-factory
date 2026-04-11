@@ -648,7 +648,8 @@ def run(environment: str = "paper", dry_run: bool = False, send: bool = True, fa
                     print(f"  [{sig.strategy}] skip duplicate: {sig.market_title[:45]}")
                     db.log_decision(run_id, "duplicate_check", "skip", strategy=sig.strategy, market_id=sig.market_id, reason="already_open")
                     continue
-                if db.has_recent_signal(sig.strategy, sig.market_id, hours=24.0):
+                cooldown_consumed_only = execution_decision.action in ("paper", "live")
+                if db.has_recent_signal(sig.strategy, sig.market_id, hours=24.0, consumed_only=cooldown_consumed_only):
                     print(f"  [{sig.strategy}] skip cooldown: {sig.market_title[:45]}")
                     db.log_decision(run_id, "cooldown_check", "skip", strategy=sig.strategy, market_id=sig.market_id, reason="signal_within_24h")
                     continue
@@ -764,7 +765,8 @@ def run(environment: str = "paper", dry_run: bool = False, send: bool = True, fa
                         print(f"  [{strategy.name}] skip duplicate: {sig.market_title[:45]}")
                         db.log_decision(run_id, "duplicate_check", "skip", strategy=strategy.name, market_id=sig.market_id, reason="already_open")
                         continue
-                    if db.has_recent_signal(strategy.name, sig.market_id, hours=24.0):
+                    cooldown_consumed_only = execution_decision.action in ("paper", "live")
+                    if db.has_recent_signal(strategy.name, sig.market_id, hours=24.0, consumed_only=cooldown_consumed_only):
                         print(f"  [{strategy.name}] skip cooldown: {sig.market_title[:45]}")
                         db.log_decision(run_id, "cooldown_check", "skip", strategy=strategy.name, market_id=sig.market_id, reason="signal_within_24h")
                         continue

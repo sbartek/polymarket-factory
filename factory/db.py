@@ -753,13 +753,19 @@ class FactoryDB:
             )
             return [dict(r) for r in cur.fetchall()]
 
-    def has_recent_signal(self, strategy: str, market_id: str, hours: float = 24.0) -> bool:
+    def has_recent_signal(self, strategy: str, market_id: str, hours: float = 24.0, consumed_only: bool = False) -> bool:
         cutoff = (datetime.now(UTC) - timedelta(hours=hours)).isoformat(timespec="seconds")
         with self._conn() as (conn, cur):
-            cur.execute(
-                "SELECT 1 FROM signals WHERE strategy = %s AND market_id = %s AND created_at >= %s LIMIT 1",
-                (strategy, market_id, cutoff),
-            )
+            if consumed_only:
+                cur.execute(
+                    "SELECT 1 FROM signals WHERE strategy = %s AND market_id = %s AND created_at >= %s AND consumed_by_run_id IS NOT NULL LIMIT 1",
+                    (strategy, market_id, cutoff),
+                )
+            else:
+                cur.execute(
+                    "SELECT 1 FROM signals WHERE strategy = %s AND market_id = %s AND created_at >= %s LIMIT 1",
+                    (strategy, market_id, cutoff),
+                )
             return cur.fetchone() is not None
 
     def mark_signals_consumed(self, signal_ids: list[int], run_id: str):

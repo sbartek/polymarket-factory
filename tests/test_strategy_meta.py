@@ -4,10 +4,10 @@ from factory.strategy_meta import strategy_metadata
 def test_alert_only_promotion_metadata_is_exposed_for_candidates():
     meta = strategy_metadata()
 
-    # correlated_laggard and esport48 promoted to paper trading
+    # correlated_laggard demoted back to alert-only (broken matching, -$6.93)
     correlated_laggard = meta["correlated_laggard"]
-    assert correlated_laggard["alert_only"] is False
-    assert correlated_laggard["trading_enabled"] is True
+    assert correlated_laggard["alert_only"] is True
+    assert correlated_laggard["trading_enabled"] is False
 
     esport48 = meta["esport48"]
     assert esport48["alert_only"] is False
