@@ -141,9 +141,9 @@ def _parse_submarket_question(question: str) -> dict | None:
     single_match = re.search(r"be (\d+(?:\.\d+)?)°", q, re.IGNORECASE)
     if single_match:
         val = float(single_match.group(1))
-        if "or below" in ql:
+        if "or below" in ql or "or lower" in ql:
             return {**base, "direction": "below", "threshold": val}
-        if "or above" in ql:
+        if "or above" in ql or "or higher" in ql:
             return {**base, "direction": "above", "threshold": val}
         return {**base, "direction": "range", "threshold_low": val, "threshold_high": val + 1}
 

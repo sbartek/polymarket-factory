@@ -127,7 +127,7 @@ def _parse_bin(question: str) -> dict | None:
     single_match = re.search(r"be (\d+(?:\.\d+)?)°", q)
     if single_match:
         val = float(single_match.group(1))
-        if "or below" in ql or "or above" in ql:
+        if "or below" in ql or "or above" in ql or "or lower" in ql or "or higher" in ql:
             return None  # skip boundary bins — too complex
         return {"location": location, "target_date": target_date, "unit": unit,
                 "lo": val, "hi": val + 1, "mid": val + 0.5}

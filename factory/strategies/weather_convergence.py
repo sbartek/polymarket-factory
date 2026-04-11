@@ -106,10 +106,10 @@ def _parse_bin(question: str) -> dict | None:
     single_match = re.search(r"be (\d+(?:\.\d+)?)°", q)
     if single_match:
         val = float(single_match.group(1))
-        if "or below" in ql:
+        if "or below" in ql or "or lower" in ql:
             return {"location": location, "target_date": target_date, "unit": unit,
                     "lo": -999, "hi": val + 0.5}
-        if "or above" in ql:
+        if "or above" in ql or "or higher" in ql:
             return {"location": location, "target_date": target_date, "unit": unit,
                     "lo": val - 0.5, "hi": 999}
         return {"location": location, "target_date": target_date, "unit": unit,
