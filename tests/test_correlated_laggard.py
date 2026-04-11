@@ -1,5 +1,9 @@
+from datetime import datetime, timedelta, UTC
+
 from factory.runner import format_wa_summary
 from factory.strategies.correlated_laggard import CorrelatedLaggardStrategy
+
+_FUTURE_DATE = (datetime.now(UTC) + timedelta(days=14)).strftime("%Y-%m-%dT12:00:00Z")
 
 
 def _market(slug: str, title: str, price: float, volume: float) -> dict:
@@ -7,7 +11,7 @@ def _market(slug: str, title: str, price: float, volume: float) -> dict:
         "slug": slug,
         "title": title,
         "volume24hr": volume,
-        "endDate": "2026-04-10T12:00:00Z",
+        "endDate": _FUTURE_DATE,
         "markets": [{
             "closed": False,
             "outcomePrices": [price, 1 - price],
