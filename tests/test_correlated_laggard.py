@@ -52,6 +52,26 @@ def test_scan_can_emit_no_alert_when_laggard_is_richer_than_leader():
     assert signals[0].p_hat == 0.68
 
 
+def test_rejects_unrelated_weather_markets():
+    strategy = CorrelatedLaggardStrategy()
+    markets = [
+        _market("shanghai", "Highest temperature in Shanghai on April 12?", 0.45, 50000),
+        _market("seattle", "Highest temperature in Seattle on April 11?", 0.72, 80000),
+    ]
+    signals = strategy.scan(markets)
+    assert len(signals) == 0
+
+
+def test_rejects_unrelated_sports_markets():
+    strategy = CorrelatedLaggardStrategy()
+    markets = [
+        _market("dota", "Dota 2: GLYPH vs PlayTime (BO3) - DreamLeague", 0.45, 30000),
+        _market("cs2", "CS2: Ruby vs Stax (BO3) - PGL Major", 0.72, 60000),
+    ]
+    signals = strategy.scan(markets)
+    assert len(signals) == 0
+
+
 def test_format_wa_summary_includes_alerts():
     strategy = CorrelatedLaggardStrategy()
     signal = strategy.scan([

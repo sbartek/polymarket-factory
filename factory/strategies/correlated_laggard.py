@@ -18,16 +18,42 @@ MIN_VOLUME = 15_000
 MIN_PRICE = 0.12
 MAX_PRICE = 0.88
 MAX_DAYS = 45
-MIN_SHARED_TOKENS = 2
+MIN_SHARED_TOKENS = 3
+MIN_JACCARD = 0.30          # shared tokens must be ≥30% of smaller title's tokens
 MIN_VOLUME_RATIO = 1.5
 MIN_DIVERGENCE_PP = 18.0
 MAX_ALERTS_PER_RUN = 5
 TOPIC_STOPWORDS = {
+    # Grammar / structure
     "will", "the", "this", "that", "with", "from", "have", "into", "after", "before",
     "over", "under", "than", "what", "when", "which", "could", "would", "market",
     "markets", "price", "prices", "polymarket", "reach", "hits", "hit", "end", "by",
-    "for", "and", "its", "their", "they", "them", "year", "election",
+    "for", "and", "its", "their", "they", "them", "year", "election", "more", "next",
+    "down", "between", "above", "below", "higher", "lower", "least", "most",
+    # Months — cause spurious matches across unrelated markets with same deadline
+    "january", "february", "march", "april", "may", "june",
+    "july", "august", "september", "october", "november", "december",
+    "jan", "feb", "mar", "apr", "jun", "jul", "aug", "sep", "oct", "nov", "dec",
+    # Weather structure — different cities are NOT correlated
+    "temperature", "highest", "lowest", "temp", "high", "low", "weather",
+    # Sports/esports structure — different matches are NOT correlated
+    "bo3", "bo5", "game", "match", "round", "group", "stage", "playoffs", "play",
+    "qualification", "qualifier", "prelims", "early", "main", "card", "winner",
+    "league", "super", "premier", "open", "championship", "cup", "series",
+    # Common city fragments
+    "san", "los", "angeles", "new", "york", "city",
 }
+
+# Exclude entire categories where cross-market correlation is meaningless
+EXCLUDED_CATEGORY_KEYWORDS = [
+    "temperature", "highest temp", "lowest temp", "weather",
+    " vs ", " vs. ",
+    "bo3", "bo5",
+    "nba", "nhl", "nfl", "mlb", "mls", "ipl", "ufc",
+    "cricket", "tennis", "atp", "wta", "boxing", "esport",
+    "league of legends", "lol:", "dota", "valorant", "cs2:",
+    "grand prix", "formula",
+]
 
 
 def _days_to_close(end_date: str | None) -> int | None:
@@ -65,6 +91,10 @@ class CorrelatedLaggardStrategy(Strategy):
     last_check_details: list[dict] = []
 
     def _eligible(self, ev: dict) -> bool:
+        title = ev.get("title") or ""
+        title_lower = title.lower()
+        if any(kw in title_lower for kw in EXCLUDED_CATEGORY_KEYWORDS):
+            return False
         volume = float(ev.get("volume24hr") or ev.get("volume") or 0)
         if volume < MIN_VOLUME:
             return False
@@ -74,7 +104,6 @@ class CorrelatedLaggardStrategy(Strategy):
         price = get_yes_price(ev)
         if price is None or not (MIN_PRICE <= price <= MAX_PRICE):
             return False
-        title = ev.get("title") or ""
         return len(_tokenize(title)) >= 3
 
     def _candidate_pairs(self, markets: list[dict]) -> tuple[dict[str, set[str]], list[dict]]:
@@ -96,6 +125,11 @@ class CorrelatedLaggardStrategy(Strategy):
                     continue
                 shared = left_tokens & right_tokens
                 if len(shared) < MIN_SHARED_TOKENS:
+                    continue
+                # Jaccard-like check: shared tokens must be a meaningful
+                # fraction of the smaller title, not just 2 random words
+                smaller = min(len(left_tokens), len(right_tokens))
+                if smaller == 0 or len(shared) / smaller < MIN_JACCARD:
                     continue
                 topic_key = " ".join(sorted(shared)[:3])
                 topic_groups.setdefault(topic_key, set()).update({
