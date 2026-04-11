@@ -12,6 +12,7 @@ This implementation uses recent market_observations:
 """
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 
 from ..db import FactoryDB
@@ -50,7 +51,16 @@ def _extract_active_market_prices(ev: dict) -> dict[str, float]:
     for market in ev.get("markets", []) or []:
         if market.get("closed"):
             continue
-        prices[str(market.get("id", ""))] = float((market.get("outcomePrices") or [0])[0])
+        raw = market.get("outcomePrices") or [0]
+        if isinstance(raw, str):
+            try:
+                raw = json.loads(raw)
+            except (json.JSONDecodeError, TypeError):
+                continue
+        try:
+            prices[str(market.get("id", ""))] = float(raw[0])
+        except (IndexError, ValueError, TypeError):
+            continue
     return prices
 
 
