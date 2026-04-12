@@ -9,9 +9,10 @@ def test_alert_only_promotion_metadata_is_exposed_for_candidates():
     assert correlated_laggard["alert_only"] is True
     assert correlated_laggard["trading_enabled"] is False
 
+    # esport48 rewritten with Pinnacle odds comparison, alert-only pending validation
     esport48 = meta["esport48"]
-    assert esport48["alert_only"] is False
-    assert esport48["trading_enabled"] is True
+    assert esport48["alert_only"] is True
+    assert esport48["trading_enabled"] is False
 
     # price_move_fade promoted to paper trading 2026-04-07
     price_move_fade = meta["price_move_fade"]

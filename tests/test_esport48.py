@@ -1,7 +1,12 @@
 from datetime import UTC, datetime, timedelta
 
-from factory.runner import format_wa_summary
-from factory.strategies.esport48 import Esport48Strategy
+from factory.strategies.esport48 import (
+    Esport48Strategy,
+    _extract_team_names,
+    _normalize_team,
+    _team_match_score,
+    _is_esport_event,
+)
 
 
 def _market(
@@ -9,7 +14,6 @@ def _market(
     title: str,
     price: float,
     volume: float,
-    liquidity: float,
     end_date: str | None = None,
     tags: list[dict] | None = None,
 ) -> dict:
@@ -19,7 +23,6 @@ def _market(
         "slug": slug,
         "title": title,
         "volume24hr": volume,
-        "liquidity": liquidity,
         "endDate": end_date,
         "tags": tags or [{"slug": "esports", "label": "Esports"}],
         "markets": [{
@@ -29,57 +32,60 @@ def _market(
     }
 
 
-def test_scan_emits_alert_for_liquid_esport_market_inside_48h():
-    strategy = Esport48Strategy()
-    signals = strategy.scan([
-        _market("valorant-final", "Valorant Champions Final winner", 0.79, 28000, 9000),
-        _market("macro", "Will CPI rise in May?", 0.61, 50000, 12000, tags=[{"slug": "macro"}]),
-    ])
+class TestTeamNameExtraction:
+    def test_simple_vs(self):
+        assert _extract_team_names("FaZe vs Natus Vincere (BO3)") == ("FaZe", "Natus Vincere")
 
-    assert len(signals) == 1
-    signal = signals[0]
-    assert signal.strategy == "esport48"
-    assert signal.market_id == "valorant-final"
-    assert signal.outcome == "NO"
-    assert signal.ev_pp >= strategy.min_ev_pp
-    assert "overreaction/underreaction_edge" in signal.rationale
-    assert strategy.last_check_details[0]["decision"] == "alert"
+    def test_vs_dot(self):
+        assert _extract_team_names("Team Liquid vs. Cloud9") == ("Team Liquid", "Cloud9")
+
+    def test_with_tournament_suffix(self):
+        assert _extract_team_names("NRG vs Legacy (BO3) - PGL Bucharest Major") == ("NRG", "Legacy")
+
+    def test_no_vs(self):
+        assert _extract_team_names("Valorant Champions Final winner") is None
 
 
-def test_scan_skips_dead_or_non_esport_books():
-    strategy = Esport48Strategy()
-    signals = strategy.scan([
-        _market("thin", "CS2 semifinal winner", 0.75, 3000, 800),
-        _market(
-            "long-dated",
-            "League of Legends finals winner",
-            0.76,
-            20000,
-            9000,
-            end_date=(datetime.now(UTC) + timedelta(days=7)).isoformat().replace("+00:00", "Z"),
-        ),
-        _market("sports", "Will Barcelona win El Clasico?", 0.73, 24000, 9000, tags=[{"slug": "soccer", "label": "Soccer"}]),
-    ])
+class TestTeamMatching:
+    def test_exact(self):
+        assert _team_match_score("FaZe", "FaZe") == 1.0
 
-    assert signals == []
-    assert strategy.last_check_details == []
+    def test_with_esports_suffix(self):
+        assert _team_match_score("FaZe Esports", "FaZe") >= 0.8
+
+    def test_unrelated(self):
+        assert _team_match_score("FaZe", "Cloud9") < 0.5
 
 
-def test_format_wa_summary_includes_esport48_alerts():
-    strategy = Esport48Strategy()
-    signal = strategy.scan([
-        _market("cs2-major", "CS2 Major grand final winner", 0.78, 25000, 7000),
-    ])[0]
-    stats = {
-        "by_strategy": {},
-        "by_status_group": {},
-        "total_pnl": 0.0,
-        "total_staked": 0.0,
-        "roi": 0.0,
-        "open": 0,
-    }
+class TestEsportDetection:
+    def test_esport_event(self):
+        ev = _market("cs2-match", "CS2: NRG vs Legacy (BO3)", 0.6, 20000)
+        assert _is_esport_event(ev) is True
 
-    text = format_wa_summary([], [signal], 0, stats, "2026-04-01 19:30", [])
+    def test_non_esport_event(self):
+        ev = _market("soccer", "Will Barcelona win?", 0.6, 20000, tags=[{"slug": "soccer"}])
+        assert _is_esport_event(ev) is False
 
-    assert "Alerts:" in text
-    assert "esport48" in text
+
+class TestStrategy:
+    def test_is_alert_only(self):
+        s = Esport48Strategy()
+        assert s.alert_only is True
+        assert s.trading_enabled is False
+
+    def test_no_api_key_returns_empty(self):
+        import os
+        old = os.environ.pop("ODDSPAPI_API_KEY", None)
+        try:
+            s = Esport48Strategy()
+            signals = s.scan([_market("cs2", "CS2: FaZe vs NaVi (BO3)", 0.65, 20000)])
+            assert signals == []
+        finally:
+            if old:
+                os.environ["ODDSPAPI_API_KEY"] = old
+
+    def test_skips_non_esport(self):
+        s = Esport48Strategy()
+        # Even with API key, non-esport markets should be filtered before API calls
+        ev = _market("macro", "Will CPI rise?", 0.6, 50000, tags=[{"slug": "macro"}])
+        assert not _is_esport_event(ev)
