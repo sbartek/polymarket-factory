@@ -174,10 +174,14 @@ class SpreadArbV2Strategy(Strategy):
             })
 
         signals: list[Signal] = []
+        seen_market_ids: set[str] = set()
         for basket in selected:
             n_total = len(basket.legs)
             for leg in basket.best_no_legs:
                 market_id = f"{basket.event_slug}:{leg['id']}"
+                if market_id in seen_market_ids:
+                    continue
+                seen_market_ids.add(market_id)
                 no_price = 1.0 - leg["yes_price"]
                 # p_hat for NO: probability this leg resolves NO
                 # With sum < 0.90, each leg's implied YES prob is inflated
