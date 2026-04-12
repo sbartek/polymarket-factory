@@ -23,7 +23,10 @@ from .weather_edge_v4 import WeatherEdgeV4Strategy
 from .weather_oversum import WeatherOversumStrategy
 from .weather_convergence import WeatherConvergenceStrategy
 from .weather_autocorrelation import WeatherAutocorrelationStrategy
+from .overnight_gap_fade import OvernightGapFadeStrategy
+from .thin_market_impact_fade import ThinMarketImpactFadeStrategy
 from .price_move_fade import PriceMoveFadeStrategy
+from .volume_divergence_stale import VolumeDivergenceStaleStrategy
 
 
 def _load_generated_strategies():
@@ -82,4 +85,7 @@ STRATEGIES = [
     WeatherConvergenceStrategy(),
     WeatherAutocorrelationStrategy(),
     PriceMoveFadeStrategy(),
+    OvernightGapFadeStrategy(),
+    ThinMarketImpactFadeStrategy(),
+    VolumeDivergenceStaleStrategy(),
 ] + _load_generated_strategies()
