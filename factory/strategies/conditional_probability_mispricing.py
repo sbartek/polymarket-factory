@@ -1,76 +1,62 @@
 """
 Strategy: conditional_probability_mispricing
-Hypothesis: When market A is a necessary condition for market B,
-P(B) can never exceed P(A). If it does, B is overpriced → bet NO on B.
+Hypothesis: When market A logically implies market B, P(B) >= P(A) must
+            hold. Violations are pure logical arbitrage.
 
-Pure structural/logical edge — no LLM needed.
-Restricted to short-term markets (closing within 14 days) for fast learning.
+Three violation patterns:
+1. Nested thresholds (same event): "above $220" implies "above $215",
+   so P($215) >= P($220). If violated, buy the underpriced lower threshold.
+2. Nested deadlines (related events): "X by April" implies "X by June",
+   so P(June) >= P(April). If violated, buy the underpriced later deadline.
+3. Stage chains: "wins semifinal" implies "wins final" is possible,
+   so P(final) <= P(semifinal). If violated, sell the overpriced downstream.
 
-Examples:
-- "Team X wins semifinal" (A) is required for "Team X wins final" (B)
-- "Candidate wins primary" (A) is required for "Candidate wins general" (B)
-- If P(final) > P(semifinal), the final is overpriced.
+Method: Deterministic — parse thresholds/dates/stages from titles,
+check for ordering violations, signal when gap > fee threshold.
+No LLM, no external API.
 """
+from __future__ import annotations
+
 import json
 import re
-from dataclasses import dataclass
+from collections import defaultdict
 from datetime import date
 
-from ..feed import event_url
+from ..feed import event_url, get_yes_price
 from ..models import Signal
 from .base import Strategy
 
 MIN_VOLUME = 5_000
-MIN_PRICE = 0.08
-MAX_PRICE = 0.85
-MAX_DAYS_TO_CLOSE = 14
-MIN_DAYS_TO_CLOSE = 0
-MAX_SIGNALS_PER_RUN = 3
-MIN_VIOLATION_PP = 5.0  # minimum mispricing to trigger
+MIN_GAP_PP = 3.0
+MAX_ALERTS_PER_RUN = 5
 
-# Ordered stages: earlier stage is prerequisite for later stage
+MONTH_MAP = {
+    "january": 1, "february": 2, "march": 3, "april": 4,
+    "may": 5, "june": 6, "july": 7, "august": 8,
+    "september": 9, "october": 10, "november": 11, "december": 12,
+}
+
+# Stage chains: earlier stage is prerequisite for later stage
 STAGE_CHAINS = [
-    # Sports tournaments
     ["qualify", "group stage", "round of 16", "quarterfinal", "semifinal", "final", "winner", "champion"],
     ["make playoffs", "win first round", "win second round", "conference finals", "win championship"],
     ["wild card", "divisional", "championship", "super bowl"],
     ["play-in", "first round", "second round", "conference", "finals", "champion"],
-    # Political
     ["primary", "nomination", "nominee", "general election", "win election", "president"],
-    ["qualify", "advance", "win"],
 ]
 
-# Flatten to a lookup: keyword → (chain_index, stage_index)
 _STAGE_LOOKUP: dict[str, list[tuple[int, int]]] = {}
 for _ci, _chain in enumerate(STAGE_CHAINS):
     for _si, _stage in enumerate(_chain):
         _STAGE_LOOKUP.setdefault(_stage, []).append((_ci, _si))
 
-# Keywords for grouping related markets by topic
 TOPIC_KEYWORDS = [
-    "trump", "newsom", "vance", "rubio", "desantis", "harris", "biden",
+    "trump", "vance", "rubio", "desantis", "harris", "biden",
     "fed", "iran", "china", "tariff", "ukraine", "russia",
-    "nba", "nhl", "mlb", "nfl", "mls", "uefa", "champions league",
-    "world cup", "copa", "euro", "olympics",
-    "lakers", "celtics", "warriors", "knicks", "nuggets", "thunder",
-    "yankees", "dodgers", "mets", "braves",
-    "chiefs", "eagles", "bills", "lions", "ravens",
-    "real madrid", "barcelona", "manchester", "arsenal", "liverpool",
-    "bitcoin", "ethereum", "crypto",
+    "nba", "nhl", "mlb", "nfl", "uefa", "champions league",
+    "lakers", "celtics", "warriors", "real madrid", "barcelona", "arsenal",
+    "bitcoin", "ethereum",
 ]
-
-
-@dataclass
-class MarketInfo:
-    slug: str
-    title: str
-    yes_price: float
-    volume: float
-    days_to_close: int
-    closes: str
-    url: str
-    event: dict
-    stages: list[tuple[int, int]]  # (chain_index, stage_index) matches
 
 
 def _days_to_close(end_date: str | None) -> int | None:
@@ -82,8 +68,53 @@ def _days_to_close(end_date: str | None) -> int | None:
         return None
 
 
+def _get_market_price(market: dict) -> float | None:
+    raw = market.get("outcomePrices", "[]")
+    try:
+        prices = json.loads(raw) if isinstance(raw, str) else raw
+        return float(prices[0]) if prices else None
+    except (ValueError, TypeError, IndexError):
+        return None
+
+
+def _parse_threshold(title: str) -> float | None:
+    """Extract numeric threshold from 'above $X' or 'X or higher' patterns."""
+    for pattern in [
+        r"above \$?([\d,]+(?:\.\d+)?)\s*([BMK])?",
+        r"at least \$?([\d,]+(?:\.\d+)?)\s*([BMK])?",
+        r"(\d+(?:\.\d+)?)°[FCfc]\s+or (?:higher|above)",
+    ]:
+        m = re.search(pattern, title, re.IGNORECASE)
+        if m:
+            raw = m.group(1).replace(",", "")
+            val = float(raw)
+            if m.lastindex and m.lastindex >= 2 and m.group(2):
+                s = m.group(2).upper()
+                if s == "B": val *= 1e9
+                elif s == "M": val *= 1e6
+                elif s == "K": val *= 1e3
+            return val
+    return None
+
+
+def _parse_deadline_rank(title: str) -> int | None:
+    """Sortable rank from 'by <date>'. Higher = later deadline."""
+    m = re.search(
+        r"by\s+(?:end of\s+)?(january|february|march|april|may|june|july|"
+        r"august|september|october|november|december)\s*(\d{1,2})?",
+        title, re.IGNORECASE,
+    )
+    if m:
+        month = MONTH_MAP.get(m.group(1).lower(), 0)
+        day = int(m.group(2)) if m.group(2) else 28
+        return month * 100 + day
+    m = re.search(r"by\s+end of\s+(\d{4})", title, re.IGNORECASE)
+    if m:
+        return 13 * 100
+    return None
+
+
 def _extract_stages(title: str) -> list[tuple[int, int]]:
-    """Find which stage chain positions this title matches."""
     tl = title.lower()
     matches = []
     for keyword, positions in _STAGE_LOOKUP.items():
@@ -101,177 +132,246 @@ def _topic_keys(title: str) -> set[str]:
     return keys
 
 
-def _get_yes_price(ev: dict) -> float | None:
-    for m in ev.get("markets", []):
-        if m.get("closed"):
-            continue
-        prices_raw = m.get("outcomePrices", "[]")
-        try:
-            prices = json.loads(prices_raw) if isinstance(prices_raw, str) else prices_raw
-            if prices:
-                return float(prices[0])
-        except (ValueError, TypeError, IndexError):
-            continue
-    return None
-
-
 class ConditionalProbabilityMispricingStrategy(Strategy):
     name = "conditional_probability_mispricing"
-    last_check_details: list[dict] = []
     edge_type = "logical_inconsistency"
     time_window = "short"
-    target_hold_min_days = 0
-    target_hold_max_days = 14
-    scan_frequency = "daily"
-    max_position_usdc = 8.0
-    min_ev_pp = MIN_VIOLATION_PP
-    min_position_usdc = 2.0
+    target_hold_min_days = 0.5
+    target_hold_max_days = 14.0
+    scan_frequency = "3x/day"
+    max_position_usdc = 10.0
+    min_ev_pp = MIN_GAP_PP
     alert_only = True
     trading_enabled = False
+    promotable = True
+    promotion_criteria = "20 signals with >70% profit (violations should revert reliably)"
+    signal_cooldown_hours = 12.0
+    last_check_details: list[dict] = []
 
-    def _eligible(self, ev: dict) -> MarketInfo | None:
-        vol = float(ev.get("volume24hr") or ev.get("volume") or 0)
-        if vol < MIN_VOLUME:
-            return None
-        days = _days_to_close(ev.get("endDate"))
-        if days is None or days < MIN_DAYS_TO_CLOSE or days > MAX_DAYS_TO_CLOSE:
-            return None
-        price = _get_yes_price(ev)
-        if price is None or not (MIN_PRICE <= price <= MAX_PRICE):
-            return None
-        title = ev.get("title") or ""
-        stages = _extract_stages(title)
-        if not stages:
-            return None
-        slug = ev.get("slug") or str(ev.get("id", ""))
-        closes = (ev.get("endDate") or "")[:10]
-        return MarketInfo(
-            slug=slug, title=title, yes_price=price, volume=vol,
-            days_to_close=days, closes=closes, url=event_url(ev),
-            event=ev, stages=stages,
-        )
+    def _find_threshold_violations(self, ev: dict) -> list[dict]:
+        """Nested threshold violations within a single event."""
+        markets_list = ev.get("markets") or []
+        parsed = []
+        for m in markets_list:
+            if m.get("closed"):
+                continue
+            q = m.get("question") or ""
+            threshold = _parse_threshold(q)
+            if threshold is None:
+                continue
+            price = _get_market_price(m)
+            if price is None or price < 0.02 or price > 0.98:
+                continue
+            parsed.append({
+                "question": q, "market_id": str(m.get("id", "")),
+                "threshold": threshold, "price": price,
+            })
 
-    def _find_violations(self, markets: list[dict]) -> list[dict]:
-        """Find pairs where downstream P(YES) > prerequisite P(YES)."""
-        eligible = [info for ev in markets if (info := self._eligible(ev))]
+        if len(parsed) < 2:
+            return []
 
-        # Group by topic
-        by_topic: dict[str, list[MarketInfo]] = {}
+        parsed.sort(key=lambda x: x["threshold"])
+        violations = []
+        for i in range(len(parsed)):
+            for j in range(i + 1, len(parsed)):
+                lo = parsed[i]  # lower threshold → should have HIGHER price
+                hi = parsed[j]
+                if hi["price"] > lo["price"] + MIN_GAP_PP / 100:
+                    gap = round((hi["price"] - lo["price"]) * 100, 1)
+                    violations.append({
+                        "type": "threshold",
+                        "buy_id": f"{ev.get('slug', '')}:{lo['market_id']}",
+                        "buy_title": lo["question"],
+                        "buy_price": lo["price"],
+                        "sell_id": f"{ev.get('slug', '')}:{hi['market_id']}",
+                        "sell_title": hi["question"],
+                        "sell_price": hi["price"],
+                        "gap_pp": gap,
+                        "closes": (ev.get("endDate") or "")[:10],
+                        "url": event_url(ev),
+                        "rationale": f"threshold:${lo['threshold']:,.0f}@{lo['price']:.0%}<${hi['threshold']:,.0f}@{hi['price']:.0%}",
+                    })
+        return violations
+
+    def _find_deadline_violations(self, markets: list[dict]) -> list[dict]:
+        """Nested deadline violations across related events."""
+        families: dict[str, list[dict]] = defaultdict(list)
+        for ev in markets:
+            title = ev.get("title", "")
+            price = get_yes_price(ev)
+            if price is None or price < 0.02 or price > 0.98:
+                continue
+            vol = float(ev.get("volume24hr") or ev.get("volume") or 0)
+            if vol < MIN_VOLUME:
+                continue
+            m = re.match(r"(.{15,}?)\s+by\b", title, re.IGNORECASE)
+            if not m:
+                continue
+            base = re.sub(r"\s+", " ", m.group(1).strip().lower())
+            rank = _parse_deadline_rank(title)
+            if rank is None:
+                continue
+            families[base].append({
+                "title": title, "slug": ev.get("slug", ""), "price": price,
+                "rank": rank, "url": event_url(ev),
+                "closes": (ev.get("endDate") or "")[:10],
+            })
+
+        violations = []
+        for base, members in families.items():
+            if len(members) < 2:
+                continue
+            members.sort(key=lambda x: x["rank"])
+            for i in range(len(members)):
+                for j in range(i + 1, len(members)):
+                    earlier = members[i]
+                    later = members[j]
+                    # Earlier deadline should have LOWER price
+                    if earlier["price"] > later["price"] + MIN_GAP_PP / 100:
+                        gap = round((earlier["price"] - later["price"]) * 100, 1)
+                        violations.append({
+                            "type": "deadline",
+                            "buy_id": later["slug"],
+                            "buy_title": later["title"],
+                            "buy_price": later["price"],
+                            "sell_id": earlier["slug"],
+                            "sell_title": earlier["title"],
+                            "sell_price": earlier["price"],
+                            "gap_pp": gap,
+                            "closes": later["closes"],
+                            "url": later["url"],
+                            "rationale": f"deadline:{earlier['title'][:30]}@{earlier['price']:.0%}>{later['title'][:30]}@{later['price']:.0%}",
+                        })
+        return violations
+
+    def _find_stage_violations(self, markets: list[dict]) -> list[dict]:
+        """Stage chain violations across related events."""
+        eligible = []
+        for ev in markets:
+            vol = float(ev.get("volume24hr") or ev.get("volume") or 0)
+            if vol < MIN_VOLUME:
+                continue
+            days = _days_to_close(ev.get("endDate"))
+            if days is None or days < 0 or days > 30:
+                continue
+            price = get_yes_price(ev)
+            if price is None or price < 0.08 or price > 0.92:
+                continue
+            title = ev.get("title") or ""
+            stages = _extract_stages(title)
+            if not stages:
+                continue
+            eligible.append({
+                "title": title, "slug": ev.get("slug", ""), "price": price,
+                "stages": stages, "url": event_url(ev),
+                "closes": (ev.get("endDate") or "")[:10],
+            })
+
+        by_topic: dict[str, list[dict]] = defaultdict(list)
         for info in eligible:
-            for key in _topic_keys(info.title):
-                by_topic.setdefault(key, []).append(info)
+            for key in _topic_keys(info["title"]):
+                by_topic[key].append(info)
 
         violations = []
         seen_pairs: set[tuple[str, str]] = set()
-
-        for topic, group in sorted(by_topic.items(), key=lambda x: -len(x[1])):
+        for topic, group in by_topic.items():
             if len(group) < 2:
                 continue
-            # Check all pairs for prerequisite violations
             for i, a in enumerate(group):
                 for b in group[i + 1:]:
-                    pair_key = tuple(sorted([a.slug, b.slug]))
-                    if pair_key in seen_pairs:
+                    pair = tuple(sorted([a["slug"], b["slug"]]))
+                    if pair in seen_pairs:
                         continue
-                    seen_pairs.add(pair_key)
-
-                    violation = self._check_pair(a, b, topic)
-                    if violation:
-                        violations.append(violation)
-
-        # Sort by violation magnitude
-        violations.sort(key=lambda v: v["violation_pp"], reverse=True)
+                    seen_pairs.add(pair)
+                    for ca, sa in a["stages"]:
+                        for cb, sb in b["stages"]:
+                            if ca != cb or sa == sb:
+                                continue
+                            if sa < sb:
+                                prereq, downstream = a, b
+                            else:
+                                prereq, downstream = b, a
+                            if downstream["price"] > prereq["price"] + MIN_GAP_PP / 100:
+                                gap = round((downstream["price"] - prereq["price"]) * 100, 1)
+                                violations.append({
+                                    "type": "stage",
+                                    "buy_id": prereq["slug"],
+                                    "buy_title": prereq["title"],
+                                    "buy_price": prereq["price"],
+                                    "sell_id": downstream["slug"],
+                                    "sell_title": downstream["title"],
+                                    "sell_price": downstream["price"],
+                                    "gap_pp": gap,
+                                    "closes": downstream["closes"],
+                                    "url": downstream["url"],
+                                    "rationale": f"stage:{prereq['title'][:25]}@{prereq['price']:.0%}<{downstream['title'][:25]}@{downstream['price']:.0%}",
+                                })
         return violations
-
-    def _check_pair(self, a: MarketInfo, b: MarketInfo, topic: str) -> dict | None:
-        """Check if one market is a prerequisite of the other and prices violate logic."""
-        # Find shared chain where one is earlier stage than the other
-        for chain_a, stage_a in a.stages:
-            for chain_b, stage_b in b.stages:
-                if chain_a != chain_b:
-                    continue
-                if stage_a == stage_b:
-                    continue
-                # Earlier stage is the prerequisite
-                if stage_a < stage_b:
-                    prereq, downstream = a, b
-                else:
-                    prereq, downstream = b, a
-
-                # Violation: downstream priced higher than prerequisite
-                violation_pp = round((downstream.yes_price - prereq.yes_price) * 100, 1)
-                if violation_pp < MIN_VIOLATION_PP:
-                    continue
-
-                return {
-                    "topic": topic,
-                    "prereq_slug": prereq.slug,
-                    "prereq_title": prereq.title,
-                    "prereq_price": prereq.yes_price,
-                    "downstream_slug": downstream.slug,
-                    "downstream_title": downstream.title,
-                    "downstream_price": downstream.yes_price,
-                    "violation_pp": violation_pp,
-                    "prereq_closes": prereq.closes,
-                    "downstream_closes": downstream.closes,
-                    "downstream_url": downstream.url,
-                    "downstream_days": downstream.days_to_close,
-                    "downstream_event": downstream.event,
-                }
-        return None
 
     def scan(self, markets: list[dict]) -> list[Signal]:
         self.last_check_details = []
-        violations = self._find_violations(markets)
+        all_violations: list[dict] = []
+
+        # Pattern 1: Threshold violations within same event
+        for ev in markets:
+            if len(ev.get("markets") or []) < 2:
+                continue
+            vol = float(ev.get("volume24hr") or ev.get("volume") or 0)
+            if vol < MIN_VOLUME:
+                continue
+            all_violations.extend(self._find_threshold_violations(ev))
+
+        # Pattern 2: Deadline violations across related events
+        all_violations.extend(self._find_deadline_violations(markets))
+
+        # Pattern 3: Stage chain violations
+        all_violations.extend(self._find_stage_violations(markets))
+
+        all_violations.sort(key=lambda v: v["gap_pp"], reverse=True)
 
         signals: list[Signal] = []
-        for v in violations[:MAX_SIGNALS_PER_RUN]:
-            downstream_no_price = 1.0 - v["downstream_price"]
-            # P(NO on downstream) >= 1 - P(prereq) since downstream requires prereq
-            p_no = 1.0 - v["prereq_price"]
-            ev_pp = round((p_no - downstream_no_price) * 100, 1)
+        seen: set[str] = set()
+
+        n_threshold = sum(1 for v in all_violations if v["type"] == "threshold")
+        n_deadline = sum(1 for v in all_violations if v["type"] == "deadline")
+        n_stage = sum(1 for v in all_violations if v["type"] == "stage")
+
+        for v in all_violations:
+            buy_id = v["buy_id"]
+            if buy_id in seen:
+                continue
+            seen.add(buy_id)
 
             self.last_check_details.append({
-                "topic": v["topic"],
-                "prereq": f"{v['prereq_title'][:40]} ({v['prereq_price']:.0%})",
-                "downstream": f"{v['downstream_title'][:40]} ({v['downstream_price']:.0%})",
-                "violation_pp": v["violation_pp"],
-                "decision": "signal",
+                "market_slug": buy_id,
+                "title": v["buy_title"][:80],
+                "violation_type": v["type"],
+                "gap_pp": v["gap_pp"],
+                "buy_price": round(v["buy_price"], 4),
+                "sell_price": round(v["sell_price"], 4),
+                "decision": "alert",
+                "reason": v["rationale"][:80],
             })
 
-            print(
-                f"  [{self.name}] NO {v['downstream_title'][:44]} | "
-                f"downstream={v['downstream_price']:.0%} > prereq={v['prereq_price']:.0%} | "
-                f"violation={v['violation_pp']}pp | topic={v['topic']}"
-            )
+            # Signal: buy the underpriced side
             signals.append(Signal(
                 strategy=self.name,
-                market_id=v["downstream_slug"],
-                market_title=v["downstream_title"][:100],
-                outcome="NO",
-                market_price=round(v["downstream_price"], 4),
-                p_hat=round(min(p_no, 0.99), 4),
-                ev_pp=ev_pp,
-                confidence="high",
-                closes=v["downstream_closes"],
-                url=v["downstream_url"],
-                rationale=(
-                    f"cond-prob:downstream({v['downstream_price']:.0%})>"
-                    f"prereq({v['prereq_price']:.0%}),"
-                    f"gap={v['violation_pp']}pp,"
-                    f"topic={v['topic']}"
-                ),
+                market_id=buy_id,
+                market_title=v["buy_title"][:100],
+                outcome="YES",
+                market_price=round(v["buy_price"], 4),
+                p_hat=round(min(v["sell_price"] + 0.01, 0.99), 4),
+                ev_pp=v["gap_pp"],
+                confidence="high" if v["gap_pp"] >= 5 else "medium",
+                closes=v.get("closes", ""),
+                url=v.get("url", ""),
+                rationale=v["rationale"][:180],
             ))
 
-        # Log remaining violations as skipped
-        for v in violations[MAX_SIGNALS_PER_RUN:]:
-            self.last_check_details.append({
-                "topic": v["topic"],
-                "prereq": f"{v['prereq_title'][:40]} ({v['prereq_price']:.0%})",
-                "downstream": f"{v['downstream_title'][:40]} ({v['downstream_price']:.0%})",
-                "violation_pp": v["violation_pp"],
-                "decision": "skip",
-            })
+            if len(signals) >= MAX_ALERTS_PER_RUN:
+                break
 
-        print(f"  [{self.name}] {len(signals)} signals from {len(violations)} violations")
+        print(f"  [{self.name}] {len(all_violations)} violations "
+              f"({n_threshold} threshold, {n_deadline} deadline, {n_stage} stage), "
+              f"{len(signals)} alerts")
         return signals
