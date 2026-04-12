@@ -1,11 +1,19 @@
 """
-Strategy: base_rate_anchor
+Strategy: base_rate_anchor (registered as base_rate_knn)
 Hypothesis: New Polymarket markets often open near 50c regardless of the
 historical base rate for that event type. Using kNN over resolved market
 titles, we estimate the base rate and fade the mispricing.
 
 Uses TF-IDF + cosine similarity over thousands of resolved market titles.
 No LLM needed — pure statistical edge.
+
+IMPORTANT: Only works for political/policy/regulatory "Will X happen?"
+markets. Sports, weather, price-target, and esport markets have
+meaningless base rates (the title doesn't capture the probability).
+
+Future (Phase 2): replace TF-IDF with Voyage AI / OpenAI embeddings +
+pgvector in Cloud SQL for semantic similarity. See memory:
+"base_rate_knn Phase 2" for details.
 """
 from __future__ import annotations
 
@@ -21,11 +29,29 @@ MIN_VOLUME = 5_000
 MIN_PRICE = 0.15
 MAX_PRICE = 0.85
 MAX_DAYS_TO_CLOSE = 14
-MIN_DAYS_TO_CLOSE = 0
+MIN_DAYS_TO_CLOSE = 1       # skip same-day — too late for base rate edge
 MAX_SIGNALS_PER_RUN = 3
-MIN_GAP_PP = 15.0      # minimum |base_rate - price| to trigger
+MIN_GAP_PP = 18.0      # raised from 15 — need stronger signal
 MIN_NEIGHBORS = 5       # need enough data for confidence
-MIN_AVG_SIMILARITY = 0.05  # neighbors must be somewhat relevant
+MIN_AVG_SIMILARITY = 0.08  # raised from 0.05 — neighbors must be relevant
+
+# Categories where base rates from title similarity are meaningless
+EXCLUDED_KEYWORDS = [
+    # Sports — base rate ~50% for any "team vs team", doesn't predict winner
+    " vs ", " vs. ", "nba", "nhl", "nfl", "mlb", "mls", "ipl",
+    "cricket", "tennis", "atp", "wta", "ufc", "boxing", "premier league",
+    "champions league", "serie a", "la liga", "bundesliga", "ligue 1",
+    # Esports — same problem
+    "esport", "valorant", "cs2", "counter-strike", "dota", "league of legends",
+    "lol:", "bo3", "bo5",
+    # Weather — "highest temperature in X" always matches other cities, not useful
+    "temperature", "highest temp", "lowest temp", "weather",
+    # Price targets — "bitcoin above $X" base rate depends on $X, not the title
+    "above $", "below $", "price will", "hit $", "trading above", "trading below",
+    "up or down",
+    # Time-specific — "what will X say" is unique per event
+    "what will", "how many",
+]
 
 
 def _days_to_close(end_date: str | None) -> int | None:
@@ -50,6 +76,8 @@ class BaseRateAnchorStrategy(Strategy):
     min_position_usdc = 2.0
     alert_only = True
     trading_enabled = False
+    promotable = True
+    promotion_criteria = "20 signals with >55% directional accuracy on political/policy markets"
 
     _index: BaseRateIndex | None = None
 
@@ -68,6 +96,12 @@ class BaseRateAnchorStrategy(Strategy):
 
         candidates = []
         for ev in markets:
+            title = ev.get("title") or ""
+            if not title:
+                continue
+            title_lower = title.lower()
+            if any(kw in title_lower for kw in EXCLUDED_KEYWORDS):
+                continue
             vol = float(ev.get("volume24hr") or ev.get("volume") or 0)
             if vol < MIN_VOLUME:
                 continue
@@ -78,10 +112,7 @@ class BaseRateAnchorStrategy(Strategy):
             if price is None or not (MIN_PRICE <= price <= MAX_PRICE):
                 continue
 
-            title = ev.get("title") or ""
             slug = ev.get("slug") or str(ev.get("id", ""))
-            if not title:
-                continue
 
             result = index.query_base_rate(title, k=10)
             if result["n_neighbors"] < MIN_NEIGHBORS:
