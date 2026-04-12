@@ -8,7 +8,7 @@ from .models import Signal, Trade
 from .notify import send_notification
 from .strategy_meta import ACTIVE_STRATEGIES, strategy_metadata
 
-LIVE_EXPOSURE_CAP_USDC = 100.0
+LIVE_EXPOSURE_CAP_USDC = 25.0  # conservative — testing stale_market live
 
 
 class LiveBroker:

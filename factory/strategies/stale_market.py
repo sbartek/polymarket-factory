@@ -7,6 +7,7 @@ Method: Filter for liquid, near/medium-term markets with non-extreme prices, fet
 """
 import json
 import re
+import signal as _signal
 from datetime import date
 
 from ddgs import DDGS
@@ -15,6 +16,8 @@ from ..claude import call_claude
 from ..feed import event_url, get_yes_price, markets_to_text
 from ..models import Signal
 from .base import Strategy
+
+DDGS_HARD_TIMEOUT = 30
 
 MIN_DAYS = 3
 MAX_DAYS = 21
@@ -39,8 +42,16 @@ def _days_to_close(end_date: str | None) -> int | None:
 
 
 def _fetch_news(query: str, n: int = 4) -> list[dict]:
+    def _handler(signum, frame):
+        raise TimeoutError(f"DDGS hung after {DDGS_HARD_TIMEOUT}s")
     try:
-        return list(DDGS(timeout=15).news(query, max_results=n))
+        old = _signal.signal(_signal.SIGALRM, _handler)
+        _signal.alarm(DDGS_HARD_TIMEOUT)
+        try:
+            return list(DDGS(timeout=15).news(query, max_results=n))
+        finally:
+            _signal.alarm(0)
+            _signal.signal(_signal.SIGALRM, old)
     except Exception:
         return []
 
@@ -73,9 +84,11 @@ class StaleMarketStrategy(Strategy):
     target_hold_min_days = 0.5
     target_hold_max_days = 7
     scan_frequency = "3x/day"
-    max_position_usdc = 12.0
+    max_position_usdc = 5.0   # conservative for live — was 12 for paper
     min_ev_pp = 12.0
     min_position_usdc = 2.0
+    mode = "live"
+    live_ready = True
     fast_dry_run_candidates = 4
 
     def _candidate_score(self, ev: dict, days: int, price: float, news_count: int) -> float:
