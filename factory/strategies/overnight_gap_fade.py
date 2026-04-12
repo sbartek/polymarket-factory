@@ -120,8 +120,13 @@ class OvernightGapFadeStrategy(Strategy):
                     slug_map[mid] = ev
 
         signals: list[Signal] = []
+        seen_market_ids: set[str] = set()
         for row in rows:
             market_id = row["market_id"]
+            if market_id in seen_market_ids:
+                continue
+            seen_market_ids.add(market_id)
+
             title = row.get("market_title") or ""
 
             # Skip sports/esports

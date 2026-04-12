@@ -23,6 +23,17 @@ MIN_PRICE = 0.10       # avoid near-zero/near-one markets
 MAX_PRICE = 0.90
 MAX_ALERTS_PER_RUN = 5
 
+# Exclude categories where price moves are legitimate (game results, weather)
+EXCLUDED_KEYWORDS = [
+    " vs ", " vs. ", "nba", "nhl", "nfl", "mlb", "mls", "ipl", "ufc",
+    "cricket", "tennis", "atp", "wta", "boxing", "esport",
+    "league of legends", "lol:", "dota", "valorant", "cs2:",
+    "grand prix", "formula",
+    "temperature", "highest temp", "lowest temp", "weather",
+    "bo3", "bo5", "game 1", "game 2", "game 3",
+    "total kills", "over/under", "spread:",
+]
+
 
 def _days_to_close(close_time: str | None) -> int | None:
     if not close_time:
@@ -61,9 +72,19 @@ class PriceMoveFadeStrategy(Strategy):
 
         moves = db.get_recent_price_moves(min_move=MIN_PRICE_MOVE, max_hours=6.0)
         signals: list[Signal] = []
+        seen_market_ids: set[str] = set()
 
         for move in moves:
             market_id = move["market_id"]
+            if market_id in seen_market_ids:
+                continue
+            seen_market_ids.add(market_id)
+
+            title = move.get("market_title") or market_id
+            # Filter: exclude sports/esports/weather where moves are legitimate
+            if any(kw in title.lower() for kw in EXCLUDED_KEYWORDS):
+                continue
+
             price_move = move["price_move"]
             cur_price = move["cur_price"]
             volume = move.get("volume") or move.get("volume_24hr") or 0
@@ -99,7 +120,6 @@ class PriceMoveFadeStrategy(Strategy):
             # Get event URL from market snapshot
             ev = market_lookup.get(market_id, {})
             url = event_url(ev) if ev else ""
-            title = move.get("market_title") or market_id
 
             self.last_check_details.append({
                 "market_slug": market_id,

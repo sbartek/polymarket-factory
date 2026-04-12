@@ -109,6 +109,7 @@ class ThinMarketImpactFadeStrategy(Strategy):
 
         moves = self._get_moves_with_liquidity(db)
         signals: list[Signal] = []
+        seen_market_ids: set[str] = set()
 
         for move in moves:
             market_id = move["market_id"]
@@ -117,6 +118,11 @@ class ThinMarketImpactFadeStrategy(Strategy):
             liquidity = move.get("liquidity") or 0
             volume = move.get("volume") or move.get("volume_24hr") or 0
             title = move.get("market_title") or market_id
+
+            # Dedup by market_id
+            if market_id in seen_market_ids:
+                continue
+            seen_market_ids.add(market_id)
 
             # Filter: exclude sports/esports/weather
             if _is_excluded(title):
