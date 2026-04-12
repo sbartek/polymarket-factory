@@ -156,7 +156,8 @@ def _discover_sport_ids(api_key: str) -> list[int]:
     try:
         resp = requests.get(f"{ODDSPAPI_BASE}/sports", params={"apiKey": api_key}, timeout=10)
         resp.raise_for_status()
-        sports = resp.json().get("data", [])
+        raw = resp.json()
+        sports = raw if isinstance(raw, list) else raw.get("data", [])
         esport_ids = []
         for s in sports:
             name = (s.get("sportName") or "").lower()
@@ -172,90 +173,131 @@ def _discover_sport_ids(api_key: str) -> list[int]:
 
 
 def _fetch_pinnacle_odds(api_key: str, sport_ids: list[int]) -> dict[str, dict]:
-    """Fetch Pinnacle odds for all esport fixtures. Returns {normalized_key: odds_info}."""
+    """Fetch Pinnacle odds for upcoming esport fixtures.
+
+    Strategy: fetch fixtures list (1 call per sport), then batch-query odds
+    only for fixtures that have odds (1 call per fixture with odds).
+    Uses ~2-4 API calls per sport with matches, vs 1 bulk call.
+    """
     global _pinnacle_cache
     if _pinnacle_cache:
         return _pinnacle_cache
 
+    from datetime import timedelta
+    now = datetime.now(UTC)
+    from_date = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+    to_date = (now + timedelta(hours=MAX_HOURS_TO_CLOSE)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
     odds_by_key: dict[str, dict] = {}
+
+    # Step 1: get fixtures across all esport sports (1 call per sport)
+    all_fixtures: list[dict] = []
     for sport_id in sport_ids:
         try:
             resp = requests.get(
-                f"{ODDSPAPI_BASE}/odds-by-tournaments",
+                f"{ODDSPAPI_BASE}/fixtures",
                 params={
                     "sportId": sport_id,
-                    "bookmaker": "pinnacle",
+                    "from": from_date,
+                    "to": to_date,
                     "apiKey": api_key,
                 },
-                timeout=15,
+                timeout=10,
             )
-            resp.raise_for_status()
-            data = resp.json().get("data", [])
-            for tournament in data:
-                for fixture in tournament.get("fixtures", []):
-                    p1 = fixture.get("participant1", {})
-                    p2 = fixture.get("participant2", {})
-                    p1_name = p1.get("participantName", "")
-                    p2_name = p2.get("participantName", "")
-                    start_time = fixture.get("startTime", "")
-
-                    # Extract moneyline odds (market 101 = moneyline)
-                    bookmakers = fixture.get("bookmakers", {})
-                    pinnacle = bookmakers.get("pinnacle", {})
-                    markets = pinnacle.get("markets", {})
-                    moneyline = markets.get("101", {})  # 101 = moneyline
-                    if not moneyline:
-                        # Try other common market IDs
-                        for mid in ["1", "101", "match_winner"]:
-                            if mid in markets:
-                                moneyline = markets[mid]
-                                break
-                    if not moneyline:
-                        continue
-
-                    outcomes = moneyline.get("outcomes", {})
-                    players = moneyline.get("players", {})
-
-                    # Extract odds for each side
-                    home_odds = None
-                    away_odds = None
-                    for player_id, player_data in players.items():
-                        price = player_data.get("price")
-                        if price and price > 1.0:
-                            # Determine if home or away
-                            if str(player_id) == str(p1.get("participantId", "")):
-                                home_odds = float(price)
-                            elif str(player_id) == str(p2.get("participantId", "")):
-                                away_odds = float(price)
-                            elif not home_odds:
-                                home_odds = float(price)
-                            elif not away_odds:
-                                away_odds = float(price)
-
-                    if home_odds and away_odds:
-                        # Convert decimal odds to implied probability (with overround removal)
-                        raw_p1 = 1.0 / home_odds
-                        raw_p2 = 1.0 / away_odds
-                        overround = raw_p1 + raw_p2
-                        if overround > 0:
-                            p1_prob = raw_p1 / overround
-                            p2_prob = raw_p2 / overround
-                        else:
-                            continue
-
-                        key = f"{_normalize_team(p1_name)}|{_normalize_team(p2_name)}"
-                        odds_by_key[key] = {
-                            "p1_name": p1_name,
-                            "p2_name": p2_name,
-                            "p1_prob": round(p1_prob, 4),
-                            "p2_prob": round(p2_prob, 4),
-                            "home_odds": home_odds,
-                            "away_odds": away_odds,
-                            "start_time": start_time,
-                            "fixture_id": fixture.get("fixtureId", ""),
-                        }
+            if resp.status_code != 200:
+                continue
+            raw = resp.json()
+            fixtures = raw if isinstance(raw, list) else raw.get("data", [])
+            for f in fixtures:
+                if f.get("hasOdds"):
+                    f["_sportId"] = sport_id
+                    all_fixtures.append(f)
         except Exception as e:
-            print(f"  [esport48] odds fetch failed for sport {sport_id}: {e}")
+            print(f"  [esport48] fixtures fetch failed for sport {sport_id}: {e}")
+
+    # Step 2: get odds for each fixture with odds (1 call per fixture)
+    # Limit to avoid burning API quota
+    MAX_ODDS_QUERIES = 10
+    for fixture in all_fixtures[:MAX_ODDS_QUERIES]:
+        fid = fixture.get("fixtureId", "")
+        p1_name = fixture.get("participant1Name", "")
+        p2_name = fixture.get("participant2Name", "")
+        p1_id = str(fixture.get("participant1Id", ""))
+        p2_id = str(fixture.get("participant2Id", ""))
+        start_time = fixture.get("startTime", "")
+
+        if not p1_name or not p2_name:
+            continue
+
+        try:
+            resp = requests.get(
+                f"{ODDSPAPI_BASE}/odds",
+                params={"fixtureId": fid, "bookmakers": "pinnacle", "apiKey": api_key},
+                timeout=10,
+            )
+            if resp.status_code != 200:
+                continue
+            odds_data = resp.json()
+            bookmakers = odds_data.get("bookmakers", {})
+            pinnacle = bookmakers.get("pinnacle", {})
+            if not pinnacle:
+                continue
+            markets = pinnacle.get("markets", {})
+            if not markets:
+                continue
+
+            # Find moneyline market (try common IDs)
+            moneyline = None
+            for mid in markets:
+                mdata = markets[mid]
+                players = mdata.get("players", {})
+                if len(players) >= 2:
+                    moneyline = mdata
+                    break
+            if not moneyline:
+                continue
+
+            players = moneyline.get("players", {})
+            home_odds = None
+            away_odds = None
+            for player_id, player_data in players.items():
+                price = player_data.get("price")
+                if not price or float(price) <= 1.0:
+                    continue
+                if str(player_id) == p1_id:
+                    home_odds = float(price)
+                elif str(player_id) == p2_id:
+                    away_odds = float(price)
+                elif not home_odds:
+                    home_odds = float(price)
+                elif not away_odds:
+                    away_odds = float(price)
+
+            if not home_odds or not away_odds:
+                continue
+
+            # Convert decimal odds to fair probability (remove overround)
+            raw_p1 = 1.0 / home_odds
+            raw_p2 = 1.0 / away_odds
+            overround = raw_p1 + raw_p2
+            if overround <= 0:
+                continue
+            p1_prob = raw_p1 / overround
+            p2_prob = raw_p2 / overround
+
+            key = f"{_normalize_team(p1_name)}|{_normalize_team(p2_name)}"
+            odds_by_key[key] = {
+                "p1_name": p1_name,
+                "p2_name": p2_name,
+                "p1_prob": round(p1_prob, 4),
+                "p2_prob": round(p2_prob, 4),
+                "home_odds": home_odds,
+                "away_odds": away_odds,
+                "start_time": start_time,
+                "fixture_id": fid,
+            }
+        except Exception as e:
+            print(f"  [esport48] odds fetch failed for {fid}: {e}")
 
     _pinnacle_cache = odds_by_key
     return odds_by_key
