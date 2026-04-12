@@ -1,9 +1,9 @@
 # Strategy Proposal
 
-    - **proposal_id:** PR-20260408-002
-    - **date:** 2026-04-08
+    - **proposal_id:** PR-20260412-002
+    - **date:** 2026-04-12
     - **proposed_by:** strategy_factory_cycle
-    - **status:** archived
+    - **status:** pending_benchmark_review
 
     ## Plain-language idea
 
@@ -15,7 +15,7 @@
 
     ## Candidate metadata
 
-    - **proposed_name:** resolution_hunter_conservative_20260408
+    - **proposed_name:** resolution_hunter_conservative_20260412
     - **edge_type:** resolution_lag
     - **time_window:** short
     - **market_types:** near-resolution event markets
@@ -50,7 +50,3 @@
 
     Generated automatically under the aggressive strategy experiment.
     Retention now depends on replay-benchmark evidence or explicit review.
-
-## Benchmark gate note
-
-Archived by benchmark gate: no generated benchmark evidence after 3 days
