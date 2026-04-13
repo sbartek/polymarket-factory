@@ -2,6 +2,7 @@
 import json
 
 from .broker import PaperBroker
+from .db import FactoryDB
 from .strategy_meta import ACTIVE_STRATEGIES, TIME_WINDOW_EXPOSURE_CAPS, strategy_metadata
 
 
@@ -163,6 +164,20 @@ def snapshot_open_positions(broker: PaperBroker, market_index: dict[str, dict]) 
             return None
         return None
 
+    def _obs_yes_price(market_id: str) -> float | None:
+        """Fallback: get latest yes_price from market_observations DB."""
+        try:
+            db = FactoryDB()
+            with db._conn() as (conn, cur):
+                cur.execute(
+                    "SELECT yes_price FROM market_observations WHERE market_id = %s ORDER BY created_at DESC LIMIT 1",
+                    (market_id,),
+                )
+                row = cur.fetchone()
+                return float(row[0]) if row and row[0] is not None else None
+        except Exception:
+            return None
+
     open_positions = broker.get_open_positions()
     total_cost = 0.0
     total_value = 0.0
@@ -172,8 +187,12 @@ def snapshot_open_positions(broker: PaperBroker, market_index: dict[str, dict]) 
         amount = float(trade.get("amount_usdc") or 0)
         shares = float(trade.get("shares") or 0)
         total_cost += amount
-        _, market = _event_market(str(trade.get("market_id") or ""))
+        market_id = str(trade.get("market_id") or "")
+        _, market = _event_market(market_id)
         yes_price = _yes_price(market)
+        if yes_price is None:
+            # Fallback to latest DB observation
+            yes_price = _obs_yes_price(market_id)
         if yes_price is None:
             price = float(trade.get("entry_price") or 0)
             missing += 1
