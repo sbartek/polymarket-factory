@@ -1,16 +1,15 @@
 """
 Strategy: carry_rewards
-Hypothesis: Binary Polymarket markets offer ~4% APY via Polymarket Holding Rewards
-            when you hold a market-neutral full set (YES + NO tokens). Regardless of
-            outcome, a full set always resolves to exactly $1.00, so the only return
-            is the holding yield.
-Method: Scan binary markets with sufficient duration and volume. Rank by carry yield
-        (= days_remaining / 365 * 4%). Alert-only — no directional view, signals are
-        full-set purchase candidates for live deployment.
+Hypothesis: Polymarket pays ~4% APY Holding Rewards on select long-dated political
+            and geopolitical markets. Buying a full set (YES + NO) on these markets
+            earns the carry with zero directional risk (full set always resolves to $1).
 
-Paper-trading note: alert_only because resolution P&L is always ~$0 (neutral by
-construction), and Holding Rewards accrue off-chain and can't be tracked by the
-paper broker. Real yield only materialises in live trading.
+Note: Holding Rewards only apply to eligible markets (2028 presidential race,
+2026 midterms, leadership outcomes in major countries, etc.) — NOT all markets.
+The strategy filters for these by checking category tags and long time horizons.
+
+Demoted to paper-only (2026-04-14): zero signals historically because the eligible
+markets are mostly multi-outcome (not binary). Relaxed filters to observe signal flow.
 """
 from datetime import date
 
@@ -19,13 +18,19 @@ from ..models import Signal
 from .base import Strategy
 
 HOLDING_REWARDS_APY = 0.04    # ~4% per year from Polymarket Holding Rewards
-MIN_CARRY_PP = 3.0            # min expected yield in pp (~27 days at 4% APY)
-MIN_VOLUME = 20_000           # 24h volume floor — need enough liquidity to enter/exit
-MIN_DAYS = 25                 # too short → negligible carry
-MAX_DAYS = 180                # too long → capital tied up, higher tail risk
+MIN_CARRY_PP = 0.5            # relaxed to observe signal flow
+MIN_VOLUME = 10_000           # lowered — eligible long-dated markets may have less daily volume
+MIN_DAYS = 30                 # eligible markets are long-dated
+MAX_DAYS = 900                # some eligible markets are 2+ years out (e.g. 2028 presidential)
 MAX_SIGNALS_PER_RUN = 4
-MIN_YES_PRICE = 0.10          # filter out near-certain markets (not interesting for carry)
-MAX_YES_PRICE = 0.90
+MIN_YES_PRICE = 0.05          # wider range for long-dated markets
+MAX_YES_PRICE = 0.95
+
+# Keywords in titles/categories that suggest Holding Rewards eligibility
+ELIGIBLE_KEYWORDS = [
+    "president", "election", "midterm", "congress", "senate", "governor",
+    "prime minister", "leadership", "regime", "head of state",
+]
 
 
 def _days_to_close(end_date: str | None) -> int | None:
@@ -43,9 +48,22 @@ def _is_binary(ev: dict) -> bool:
     return len(active) == 1
 
 
+def _looks_eligible(ev: dict) -> bool:
+    """Heuristic: does this market look like a Holding Rewards eligible market?"""
+    title = (ev.get("title") or "").lower()
+    category = (ev.get("category") or "").lower()
+    raw_tags = ev.get("tags") or []
+    tags = " ".join(
+        str(t).lower() if isinstance(t, str) else str(t.get("label", "")).lower()
+        for t in raw_tags
+    )
+    text = f"{title} {category} {tags}"
+    return any(kw in text for kw in ELIGIBLE_KEYWORDS)
+
+
 class CarryRewardsStrategy(Strategy):
     name = "carry_rewards"
-    mode = "live"
+    mode = "paper"
     edge_type = "structural"
     time_window = "long"
     target_hold_min_days = MIN_DAYS
@@ -55,7 +73,7 @@ class CarryRewardsStrategy(Strategy):
     min_ev_pp = MIN_CARRY_PP
     alert_only = False
     trading_enabled = True
-    live_ready = True
+    live_ready = False
 
     def size(self, signal) -> float:
         # Carry is not a directional bet — Kelly gives 0. Always use max_position_usdc.
@@ -65,6 +83,8 @@ class CarryRewardsStrategy(Strategy):
         candidates = []
         for ev in markets:
             if not _is_binary(ev):
+                continue
+            if not _looks_eligible(ev):
                 continue
             vol = float(ev.get("volume24hr") or ev.get("volume") or 0)
             if vol < MIN_VOLUME:
@@ -103,5 +123,5 @@ class CarryRewardsStrategy(Strategy):
                 rationale=f"carry:full-set,days={days},apy={HOLDING_REWARDS_APY*100:.0f}%,yield={carry_pp:.1f}pp",
             ))
 
-        print(f"  [{self.name}] {len(signals)} carry signals ({len(candidates)} candidates, live-only)")
+        print(f"  [{self.name}] {len(signals)} carry signals ({len(candidates)} candidates)")
         return signals
