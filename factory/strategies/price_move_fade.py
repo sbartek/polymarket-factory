@@ -51,9 +51,11 @@ class PriceMoveFadeStrategy(Strategy):
     target_hold_min_days = 0.5
     target_hold_max_days = 7
     scan_frequency = "3x/day"
-    max_position_usdc = 8.0
+    max_position_usdc = 5.0   # conservative for live — was 8 for paper
     min_ev_pp = 10.0
     alert_only = False
+    mode = "live"
+    live_ready = True
     trading_enabled = True
     promotable = False
     promotion_candidate = False
