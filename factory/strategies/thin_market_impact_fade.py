@@ -54,11 +54,11 @@ def _is_excluded(title: str) -> bool:
 
 class ThinMarketImpactFadeStrategy(Strategy):
     name = "thin_market_impact_fade"
-    alert_only = True
-    trading_enabled = False
+    alert_only = False
+    trading_enabled = True
     promotable = True
     live_ready = False
-    promotion_criteria = "20 signals with >55% reversion within 6h"
+    promotion_criteria = "20 signals with >55% reversion within 6h — PROMOTED 2026-04-14 at 77% accuracy (20/26)"
     edge_type = "structural"
     time_window = "intraday"
     target_hold_min_days = 0.1
