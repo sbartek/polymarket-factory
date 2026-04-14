@@ -176,6 +176,11 @@ h3 {
 }
 
 .pill-neutral { color: var(--muted); }
+.pill-live { color: #000; background: var(--ok); border-color: var(--ok); box-shadow: 0 0 10px rgba(0, 255, 65, 0.5); text-shadow: none; }
+.pill-paper { color: #000; background: var(--info); border-color: var(--info); box-shadow: 0 0 10px rgba(0, 234, 255, 0.4); text-shadow: none; }
+.pill-alert { color: #000; background: var(--warn); border-color: var(--warn); box-shadow: 0 0 8px rgba(255, 230, 0, 0.4); text-shadow: none; }
+td.positive { color: var(--ok); }
+td.negative { color: var(--error); }
 
 .pill-info {
   color: #000;

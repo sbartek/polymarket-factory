@@ -38,6 +38,8 @@
 
       <section class="grid kpi-grid" id="overview-cards"></section>
 
+      <section class="grid two-up section-gap" id="execution-mode-section"></section>
+
       <section class="grid two-up section-gap">
         <article class="panel">
           <div class="panel-header"><h2>Evaluation summary</h2><span id="evaluation-meta" class="muted"></span></div>
@@ -104,6 +106,25 @@
           ['Latest run duration', Dashboard.fmtDuration(snapshot.overview.latest_run_duration_seconds), Dashboard.fmtDate(snapshot.overview.latest_run_started_at)],
         ];
         document.getElementById('overview-cards').innerHTML = cards.map(([label, value, sub]) => `<article class="kpi-card"><div class="kpi-label">${label}</div><div class="kpi-value">${value}</div><div class="kpi-sub">${sub}</div></article>`).join('');
+
+        // --- Execution mode tables ---
+        const strats = snapshot.strategies.filter(s => s.status === 'active' && !s.is_generated);
+        const groups = {
+          'Paper + Live': strats.filter(s => !s.alert_only && s.trading_enabled && s.live_ready),
+          'Paper trading': strats.filter(s => !s.alert_only && s.trading_enabled && !s.live_ready),
+          'Alert (collecting signals)': strats.filter(s => (s.alert_only || !s.trading_enabled) && s.recent_signals_count > 0),
+          'Alert (no signals)': strats.filter(s => (s.alert_only || !s.trading_enabled) && s.recent_signals_count === 0),
+        };
+        const modeSection = document.getElementById('execution-mode-section');
+        modeSection.innerHTML = Object.entries(groups).map(([label, items]) => {
+          const pillCls = label.includes('Live') ? 'pill-live' : label.includes('Paper trading') ? 'pill-paper' : label.includes('collecting') ? 'pill-alert' : 'pill-neutral';
+          const rows = items.map(s => {
+            const pnl = s.realized_pnl_all_time || 0;
+            const pnlCls = pnl > 0 ? 'positive' : pnl < 0 ? 'negative' : '';
+            return `<tr><td>${s.strategy_name}</td><td>${Dashboard.fmtInt(s.open_positions)}</td><td>${Dashboard.fmtNumber(s.open_exposure)} USDC</td><td class="${pnlCls}">${Dashboard.fmtNumber(pnl)} USDC</td><td>${Dashboard.fmtInt(s.recent_signals_count)}</td></tr>`;
+          }).join('');
+          return `<article class="panel"><div class="panel-header"><h2>${label}</h2><span class="pill ${pillCls}">${items.length}</span></div>${items.length ? `<div class="table-wrap"><table><thead><tr><th>Strategy</th><th>Open</th><th>Exposure</th><th>PnL (all)</th><th>Signals (7d)</th></tr></thead><tbody>${rows}</tbody></table></div>` : '<div class="muted">None</div>'}</article>`;
+        }).join('');
 
         const evaluation = snapshot.evaluation;
         const evaluationPanel = document.getElementById('evaluation-panel');
