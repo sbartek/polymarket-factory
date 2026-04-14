@@ -123,10 +123,11 @@
         const allPaper = [...classified.paper_and_live, ...classified.paper];
         const paperRows = allPaper.map(s => {
           const paper = (s.by_mode || {}).paper || {};
-          const pnl = s.live_ready ? (paper.realized_pnl_all_time || 0) : (s.realized_pnl_all_time || 0);
-          const open = s.live_ready ? (paper.open_positions || 0) : s.open_positions;
-          const exposure = s.live_ready ? (paper.open_exposure || 0) : s.open_exposure;
-          return `<tr><td>${s.strategy_name}<div class="muted">${twAbbr(s.time_window)}${s.live_ready ? ' · live' : ''}</div></td><td>${Dashboard.fmtInt(open)}</td><td>${Dashboard.fmtNumber(exposure)} USDC</td><td class="${pnl > 0 ? 'positive' : pnl < 0 ? 'negative' : ''}">${Dashboard.fmtNumber(pnl)} USDC</td><td>${Dashboard.fmtInt(s.recent_signals_count)}</td></tr>`;
+          const pnl = paper.realized_pnl_all_time || 0;
+          const open = paper.open_positions || 0;
+          const closed = paper.closed_positions || 0;
+          const exposure = paper.open_exposure || 0;
+          return `<tr><td>${s.strategy_name}<div class="muted">${twAbbr(s.time_window)}${s.live_ready ? ' · live' : ''}</div></td><td>${Dashboard.fmtInt(open)}</td><td>${Dashboard.fmtInt(closed)}</td><td>${Dashboard.fmtNumber(exposure)} USDC</td><td class="${pnl > 0 ? 'positive' : pnl < 0 ? 'negative' : ''}">${Dashboard.fmtNumber(pnl)} USDC</td><td>${Dashboard.fmtInt(s.recent_signals_count)}</td></tr>`;
         }).join('');
 
         const otherGroups = {
@@ -135,7 +136,7 @@
         };
         const modeSection = document.getElementById('execution-mode-section');
         const livePanel = `<article class="panel"><div class="panel-header"><h2>Live</h2><span class="pill pill-live">${classified.paper_and_live.length}</span></div>${classified.paper_and_live.length ? `<div class="table-wrap"><table><thead><tr><th>Strategy</th><th>Open</th><th>Closed</th><th>Exposure</th><th>PnL (all)</th></tr></thead><tbody>${liveRows}</tbody></table></div>` : '<div class="muted">None</div>'}</article>`;
-        const paperPanel = `<article class="panel"><div class="panel-header"><h2>Paper trading</h2><span class="pill pill-paper">${allPaper.length}</span></div><div class="table-wrap"><table><thead><tr><th>Strategy</th><th>Open</th><th>Exposure</th><th>PnL (all)</th><th>Signals (7d)</th></tr></thead><tbody>${paperRows}</tbody></table></div></article>`;
+        const paperPanel = `<article class="panel"><div class="panel-header"><h2>Paper trading</h2><span class="pill pill-paper">${allPaper.length}</span></div><div class="table-wrap"><table><thead><tr><th>Strategy</th><th>Open</th><th>Closed</th><th>Exposure</th><th>PnL (all)</th><th>Signals (7d)</th></tr></thead><tbody>${paperRows}</tbody></table></div></article>`;
         const otherPanels = Object.entries(otherGroups).map(([label, items]) => {
           const pillCls = label.includes('collecting') ? 'pill-alert' : 'pill-neutral';
           const rows = items.map(s => {
