@@ -123,7 +123,18 @@ function uniqueValues(items, key) {
   return [...new Set(items.map((item) => item[key]).filter(Boolean))].sort();
 }
 
+function classifyStrategies(strategies) {
+  const active = strategies.filter(s => s.status === 'active' && !s.is_generated);
+  return {
+    paper_and_live: active.filter(s => !s.alert_only && s.trading_enabled && s.live_ready),
+    paper: active.filter(s => !s.alert_only && s.trading_enabled && !s.live_ready),
+    alert_active: active.filter(s => (s.alert_only || !s.trading_enabled) && s.recent_signals_count > 0),
+    alert_dead: active.filter(s => (s.alert_only || !s.trading_enabled) && s.recent_signals_count === 0),
+  };
+}
+
 window.Dashboard = {
   fmtNumber, fmtInt, fmtDate, fmtDuration, fmtBytes, pillClass, cleanSummary,
   loadJson, loadSnapshot, renderChrome, renderAlerts, renderNav, uniqueValues, dataPath,
+  classifyStrategies,
 };

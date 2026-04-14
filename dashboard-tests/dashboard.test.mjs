@@ -51,6 +51,28 @@ describe('dashboard.js', () => {
     expect(window.Dashboard.loadJson).toBeTypeOf('function');
     expect(window.Dashboard.loadSnapshot).toBeTypeOf('function');
     expect(window.Dashboard.dataPath).toBeTypeOf('function');
+    expect(window.Dashboard.classifyStrategies).toBeTypeOf('function');
+  });
+
+  it('classifyStrategies groups strategies by execution mode', () => {
+    const window = bootDashboard();
+    const strategies = [
+      { strategy_name: 'stale_market', status: 'active', is_generated: false, alert_only: false, trading_enabled: true, live_ready: true, recent_signals_count: 5 },
+      { strategy_name: 'ev_news', status: 'active', is_generated: false, alert_only: false, trading_enabled: true, live_ready: false, recent_signals_count: 10 },
+      { strategy_name: 'spread_arb_v2', status: 'active', is_generated: false, alert_only: false, trading_enabled: true, live_ready: false, recent_signals_count: 3 },
+      { strategy_name: 'fade_certainty_v2', status: 'active', is_generated: false, alert_only: true, trading_enabled: false, live_ready: false, recent_signals_count: 22 },
+      { strategy_name: 'base_rate_knn', status: 'active', is_generated: false, alert_only: true, trading_enabled: false, live_ready: false, recent_signals_count: 0 },
+      { strategy_name: 'volume_divergence', status: 'active', is_generated: false, alert_only: false, trading_enabled: false, live_ready: false, recent_signals_count: 0 },
+      { strategy_name: 'auto_stub', status: 'active', is_generated: true, alert_only: false, trading_enabled: true, live_ready: false, recent_signals_count: 0 },
+      { strategy_name: 'killed_one', status: 'paused', is_generated: false, alert_only: false, trading_enabled: true, live_ready: false, recent_signals_count: 0 },
+    ];
+
+    const result = window.Dashboard.classifyStrategies(strategies);
+
+    expect(result.paper_and_live.map(s => s.strategy_name)).toEqual(['stale_market']);
+    expect(result.paper.map(s => s.strategy_name)).toEqual(['ev_news', 'spread_arb_v2']);
+    expect(result.alert_active.map(s => s.strategy_name)).toEqual(['fade_certainty_v2']);
+    expect(result.alert_dead.map(s => s.strategy_name)).toEqual(['base_rate_knn', 'volume_divergence']);
   });
 
   it('uses bundled data paths on hosted or bundled pages', () => {

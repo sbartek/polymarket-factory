@@ -108,12 +108,12 @@
         document.getElementById('overview-cards').innerHTML = cards.map(([label, value, sub]) => `<article class="kpi-card"><div class="kpi-label">${label}</div><div class="kpi-value">${value}</div><div class="kpi-sub">${sub}</div></article>`).join('');
 
         // --- Execution mode tables ---
-        const strats = snapshot.strategies.filter(s => s.status === 'active' && !s.is_generated);
+        const classified = Dashboard.classifyStrategies(snapshot.strategies);
         const groups = {
-          'Paper + Live': strats.filter(s => !s.alert_only && s.trading_enabled && s.live_ready),
-          'Paper trading': strats.filter(s => !s.alert_only && s.trading_enabled && !s.live_ready),
-          'Alert (collecting signals)': strats.filter(s => (s.alert_only || !s.trading_enabled) && s.recent_signals_count > 0),
-          'Alert (no signals)': strats.filter(s => (s.alert_only || !s.trading_enabled) && s.recent_signals_count === 0),
+          'Paper + Live': classified.paper_and_live,
+          'Paper trading': classified.paper,
+          'Alert (collecting signals)': classified.alert_active,
+          'Alert (no signals)': classified.alert_dead,
         };
         const modeSection = document.getElementById('execution-mode-section');
         modeSection.innerHTML = Object.entries(groups).map(([label, items]) => {
