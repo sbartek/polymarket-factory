@@ -27,6 +27,7 @@ from .overnight_gap_fade import OvernightGapFadeStrategy
 from .thin_market_impact_fade import ThinMarketImpactFadeStrategy
 from .price_move_fade import PriceMoveFadeStrategy
 from .volume_divergence_stale import VolumeDivergenceStaleStrategy
+from .expiry_convergence_buy import ExpiryConvergenceBuyStrategy
 
 
 def _load_generated_strategies():
@@ -88,4 +89,5 @@ STRATEGIES = [
     OvernightGapFadeStrategy(),
     ThinMarketImpactFadeStrategy(),
     VolumeDivergenceStaleStrategy(),
+    ExpiryConvergenceBuyStrategy(),
 ] + _load_generated_strategies()
