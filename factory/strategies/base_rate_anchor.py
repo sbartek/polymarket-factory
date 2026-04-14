@@ -21,6 +21,7 @@ import json
 from datetime import date
 
 from ..base_rate_index import BaseRateIndex
+from ..embedding_index import EmbeddingIndex
 from ..feed import event_url, get_yes_price
 from ..models import Signal
 from .base import Strategy
@@ -80,19 +81,90 @@ class BaseRateAnchorStrategy(Strategy):
     promotion_criteria = "20 signals with >55% directional accuracy on political/policy markets"
 
     _index: BaseRateIndex | None = None
+    _emb_index: EmbeddingIndex | None = None
 
     def _get_index(self) -> BaseRateIndex:
         if self._index is None:
             self._index = BaseRateIndex.load()
         return self._index
 
+    def _get_emb_index(self) -> EmbeddingIndex | None:
+        if self._emb_index is None:
+            try:
+                idx = EmbeddingIndex()
+                if idx.size >= 50:
+                    self._emb_index = idx
+            except Exception:
+                pass
+        return self._emb_index
+
     def scan(self, markets: list[dict]) -> list[Signal]:
         self.last_check_details = []
-        index = self._get_index()
+        emb_index = self._get_emb_index()
+        if emb_index:
+            print(f"  [{self.name}] using embedding index ({emb_index.size} entries)")
+            return self._scan_with_index(markets, emb_index)
 
+        # Fallback to TF-IDF
+        index = self._get_index()
         if index.size < 100:
-            print(f"  [{self.name}] index too small ({index.size} entries), skipping. Run backfill_base_rates.py first.")
+            print(f"  [{self.name}] index too small ({index.size} entries), skipping.")
             return []
+        print(f"  [{self.name}] using TF-IDF fallback ({index.size} entries)")
+        return self._scan_with_tfidf(markets, index)
+
+    def _scan_with_index(self, markets: list[dict], index: EmbeddingIndex) -> list[Signal]:
+        candidates = []
+        for ev in markets:
+            title = ev.get("title") or ""
+            if not title:
+                continue
+            title_lower = title.lower()
+            if any(kw in title_lower for kw in EXCLUDED_KEYWORDS):
+                continue
+            vol = float(ev.get("volume24hr") or ev.get("volume") or 0)
+            if vol < MIN_VOLUME:
+                continue
+            days = _days_to_close(ev.get("endDate"))
+            if days is None or days < MIN_DAYS_TO_CLOSE or days > MAX_DAYS_TO_CLOSE:
+                continue
+            price = get_yes_price(ev)
+            if price is None or not (MIN_PRICE <= price <= MAX_PRICE):
+                continue
+            slug = ev.get("slug") or str(ev.get("id", ""))
+
+            result = index.query_base_rate(title, k=10)
+            if result["n_neighbors"] < MIN_NEIGHBORS:
+                continue
+
+            avg_sim = sum(n["similarity"] for n in result["neighbors"]) / result["n_neighbors"]
+            if avg_sim < MIN_AVG_SIMILARITY:
+                continue
+
+            base_rate = result["base_rate"]
+            gap_pp = round((base_rate - price) * 100, 1)
+
+            self.last_check_details.append({
+                "slug": slug, "title": title[:50], "price": round(price, 3),
+                "base_rate": base_rate, "gap_pp": gap_pp,
+                "n_neighbors": result["n_neighbors"], "avg_similarity": round(avg_sim, 3),
+                "decision": "signal" if abs(gap_pp) >= MIN_GAP_PP else "skip",
+                "index_type": "embedding",
+            })
+
+            if abs(gap_pp) >= MIN_GAP_PP:
+                candidates.append({
+                    "slug": slug, "title": title, "price": price,
+                    "base_rate": base_rate, "gap_pp": gap_pp, "abs_gap": abs(gap_pp),
+                    "days": days, "closes": (ev.get("endDate") or "")[:10],
+                    "url": event_url(ev), "neighbors": result["neighbors"][:3],
+                    "avg_similarity": avg_sim,
+                })
+
+        candidates.sort(key=lambda c: c["abs_gap"], reverse=True)
+        return self._build_signals(candidates[:MAX_SIGNALS_PER_RUN])
+
+    def _scan_with_tfidf(self, markets: list[dict], index: BaseRateIndex) -> list[Signal]:
 
         candidates = []
         for ev in markets:
@@ -151,14 +223,12 @@ class BaseRateAnchorStrategy(Strategy):
                     "avg_similarity": avg_sim,
                 })
 
-        # Sort by gap magnitude, take top N
         candidates.sort(key=lambda c: c["abs_gap"], reverse=True)
-        selected = candidates[:MAX_SIGNALS_PER_RUN]
+        return self._build_signals(candidates[:MAX_SIGNALS_PER_RUN])
 
+    def _build_signals(self, selected: list[dict]) -> list[Signal]:
         signals: list[Signal] = []
         for c in selected:
-            # Positive gap = base_rate > price → market underpriced → YES
-            # Negative gap = base_rate < price → market overpriced → NO
             if c["gap_pp"] > 0:
                 outcome = "YES"
                 market_price = c["price"]
@@ -192,5 +262,5 @@ class BaseRateAnchorStrategy(Strategy):
                 rationale=f"base-rate:{c['base_rate']:.0%} vs mkt:{c['price']:.0%},gap={c['gap_pp']:+.0f}pp,nn={neighbor_summary[:120]}",
             ))
 
-        print(f"  [{self.name}] {len(signals)} signals (index={index.size}, checked={len(self.last_check_details)})")
+        print(f"  [{self.name}] {len(signals)} signals (checked={len(self.last_check_details)})")
         return signals
