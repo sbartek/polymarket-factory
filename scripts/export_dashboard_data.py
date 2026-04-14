@@ -725,6 +725,35 @@ def fetch_strategy_rows(conn: object) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def fetch_strategy_rows_by_mode(conn: object) -> dict[str, dict[str, dict]]:
+    """Returns {strategy: {mode: {open_exposure, open_positions, closed_positions, realized_pnl_all_time}}}."""
+    rows = conn.execute(
+        """
+        SELECT
+            strategy,
+            mode,
+            SUM(CASE WHEN status='open' THEN amount_usdc ELSE 0 END) AS open_exposure,
+            SUM(CASE WHEN status='open' THEN 1 ELSE 0 END) AS open_positions,
+            SUM(CASE WHEN status='closed' AND COALESCE(resolved_outcome, '') != 'CANCELLED' THEN 1 ELSE 0 END) AS closed_positions,
+            SUM(CASE WHEN status='closed' AND COALESCE(resolved_outcome, '') != 'CANCELLED' THEN pnl_usdc ELSE 0 END) AS realized_pnl_all_time
+        FROM trades
+        WHERE mode IN ('paper', 'live')
+        GROUP BY strategy, mode
+        ORDER BY strategy, mode
+        """
+    ).fetchall()
+    result: dict[str, dict[str, dict]] = {}
+    for r in rows:
+        d = dict(r)
+        result.setdefault(d["strategy"], {})[d["mode"]] = {
+            "open_exposure": round(float(d.get("open_exposure") or 0.0), 2),
+            "open_positions": int(d.get("open_positions") or 0),
+            "closed_positions": int(d.get("closed_positions") or 0),
+            "realized_pnl_all_time": round(float(d.get("realized_pnl_all_time") or 0.0), 2),
+        }
+    return result
+
+
 def fetch_positions_open(conn: object) -> list[dict]:
     rows = conn.execute(
         """
@@ -770,6 +799,7 @@ def fetch_strategies(conn: object, warnings: list[str], benchmarks: dict | None 
         row.get("strategy"): row for row in (benchmark_scopes.get("alert-only", {}) or {}).get("strategies", []) if row.get("strategy")
     }
     base = {row["strategy"]: row for row in fetch_strategy_rows(conn)}
+    by_mode = fetch_strategy_rows_by_mode(conn)
     generated_registry = load_generated_registry(benchmarks)
     signal_counts = dict(conn.execute(
         "SELECT strategy, COUNT(*) FROM signals WHERE created_at >= datetime('now', '-30 day') GROUP BY strategy"
@@ -865,6 +895,8 @@ def fetch_strategies(conn: object, warnings: list[str], benchmarks: dict | None 
             "trading_enabled": bool(meta.get("trading_enabled", True)),
             "promotable": bool(meta.get("promotable", False)),
             "live_ready": bool(meta.get("live_ready", False)),
+            "time_window": meta.get("time_window") or None,
+            "edge_type": meta.get("edge_type") or None,
             "promotion_candidate": bool(meta.get("promotion_candidate", False)),
             "promotion_criteria": meta.get("promotion_criteria") or None,
             "open_exposure": round(float(row.get("open_exposure") or 0.0), 2),
@@ -873,6 +905,7 @@ def fetch_strategies(conn: object, warnings: list[str], benchmarks: dict | None 
             "recent_decisions_count": int(decision_counts.get(name, 0) or 0),
             "realized_pnl_30d": round(float(row.get("realized_pnl_30d") or 0.0), 2),
             "realized_pnl_all_time": round(float(row.get("realized_pnl_all_time") or 0.0), 2),
+            "by_mode": by_mode.get(name, {}),
             "execution_checks_count_30d": int(execution.get("execution_checks_count") or 0),
             "avg_ev_after_slippage_10_pp_30d": round(float(execution["avg_ev_after_slippage_10_pp"]), 2) if execution.get("avg_ev_after_slippage_10_pp") is not None else None,
             "avg_ev_after_slippage_50_pp_30d": round(float(execution["avg_ev_after_slippage_50_pp"]), 2) if execution.get("avg_ev_after_slippage_50_pp") is not None else None,
