@@ -446,51 +446,84 @@ def _extract_json_block(raw: str, starts_with: str) -> str:
 
 
 def fallback_strategy_specs() -> list[dict]:
-    prefix = now_local().strftime("%Y%m%d")
-    return [
-        {
-            "name": f"stale_market_micro_{prefix}",
-            "title": "Stale-market microcap variation with tighter repricing window",
-            "edge_type": "stale_repricing",
-            "time_window": "intraday",
-            "thesis": "Some smaller but still tradable markets may lag repricing longer than the current stale_market filter allows, especially when topic overlap is obvious but liquidity is only moderate.",
-            "market_types": "headline-driven binary markets",
-            "likely_inputs": "Gamma top snapshot, title matching, basic price/volume filters",
-            "entry_logic": "Look for moderate-volume markets with obvious topic overlap, non-extreme prices, and a narrower hold window than stale_market.",
-            "exit_logic": "Alert-only initially; later review whether these should mean-revert quickly or hold into the next repricing leg.",
-            "failure_modes": ["dead-book false positives", "topic matching too loose", "low capacity despite decent edge", "overlap with stale_market causing duplicate alerts"],
-            "validation_plan": "Alert-only for first month; compare alert quality against stale_market and inspect Phase A execution checks before any promotion.",
-        },
-        {
-            "name": f"resolution_hunter_conservative_{prefix}",
-            "title": "Resolution-hunter conservative variation with stricter certainty gating",
-            "edge_type": "resolution_lag",
-            "time_window": "short",
-            "thesis": "The current resolution_hunter may be too permissive; a stricter version could surface fewer but cleaner near-resolution opportunities where the market lags obvious settlement direction.",
-            "market_types": "near-resolution event markets",
-            "likely_inputs": "closed/open market snapshot, title filters, simple certainty screens",
-            "entry_logic": "Require stronger evidence and narrower market states before raising an alert; prefer cases where ambiguity appears materially lower than price implies.",
-            "exit_logic": "Hold logic remains resolution-focused; promotion only if alerts are materially cleaner than the base strategy.",
-            "failure_modes": ["too few opportunities", "false sense of certainty", "headline ambiguity near resolution", "better precision but negligible capacity"],
-            "validation_plan": "Run side-by-side with resolution_hunter as alert-only for one month; compare alert precision and Phase A execution realism.",
-        },
-    ]
+    """Fallback when Claude fails to generate specs. Returns empty list to avoid
+    generating the same stale_market_micro/resolution_hunter_conservative stubs
+    that have been rejected dozens of times."""
+    print("  [factory] LLM spec generation failed — skipping (no fallback stubs)")
+    return []
+
+
+def _build_strategy_history_context() -> str:
+    """Build context about previously generated, rejected, and manually-built strategies."""
+    # Previously generated names (from generated/ dir including archive)
+    generated_dir = PROJECT_ROOT / "factory" / "strategies" / "generated"
+    archive_dir = generated_dir / "archive"
+    previously_generated = set()
+    for d in [generated_dir, archive_dir]:
+        if d.exists():
+            for p in d.glob("auto_*.py"):
+                name_match = re.search(r'name\s*=\s*"([^"]+)"', p.read_text(encoding="utf-8"))
+                if name_match:
+                    previously_generated.add(name_match.group(1))
+
+    # Proposals dir — count how many times each base idea appeared
+    proposals_dir = PROJECT_ROOT / "improvement" / "proposals"
+    idea_counts: dict[str, int] = {}
+    if proposals_dir.exists():
+        for p in proposals_dir.glob("PR-*.md"):
+            name = p.stem.split("-", 3)[-1] if "-" in p.stem else p.stem
+            # Normalize: strip date suffixes like _20260414
+            base = re.sub(r"_\d{8}(_gen)?$", "", name)
+            idea_counts[base] = idea_counts.get(base, 0) + 1
+
+    repeated = {k: v for k, v in idea_counts.items() if v >= 3}
+
+    lines = []
+    if repeated:
+        lines.append("REJECTED IDEAS (generated 3+ times, always empty stubs, do NOT propose again):")
+        for name, count in sorted(repeated.items(), key=lambda x: -x[1]):
+            lines.append(f"  - {name} ({count} times)")
+
+    lines.append("\nMANUALLY BUILT strategies (working, do not duplicate their concepts):")
+    lines.append("  - stale_market: LLM judges if market lags news (profitable, +$10)")
+    lines.append("  - ev_news: LLM estimates p_hat from DuckDuckGo news (profitable)")
+    lines.append("  - spread_arb_v2: multi-outcome oversum arbitrage (profitable, +$15)")
+    lines.append("  - price_move_fade: fade large price moves on short-term markets (80% WR)")
+    lines.append("  - thin_market_impact_fade: fade transient impact on thin books (77% accuracy)")
+    lines.append("  - conditional_probability_mispricing: nested threshold/deadline/stage violations (100% so far)")
+    lines.append("  - expiry_convergence_buy: buy 75-92% leaders 3-7 days from expiry (new)")
+    lines.append("  - overnight_gap_fade: fade overnight thin-book moves (20% accuracy — failing)")
+    lines.append("  - volume_divergence_stale: triple-confirmation stale detection (0 signals — too strict)")
+    lines.append("  - esport48: Pinnacle odds comparison via OddsPapi (new, awaiting data)")
+    lines.append("  - base_rate_knn: semantic embedding kNN base rate estimation (new)")
+    lines.append("  - weather strategies (6): ECMWF ensemble temperature forecasts (parsing fixed)")
+    lines.append("  - correlated_laggard: token-overlap market pairing (improved matching)")
+    lines.append("  - resolution_hunter_v2: LLM resolution detection (50% accuracy)")
+    lines.append("  - celebrity_tabloid: gossip corroboration from tabloid sites")
+    lines.append("  - polling_vs_market: polling data vs market price (+$20, tiny sample)")
+
+    return "\n".join(lines)
 
 
 def generate_strategy_specs(eval_text: str) -> list[dict]:
     existing = ", ".join(load_existing_strategy_names())
+    history_context = _build_strategy_history_context()
     prompt = dedent(f"""
     You are generating two NEW Polymarket strategy ideas for an experimental research repo.
 
     Existing strategies:
     {existing}
 
+    {history_context}
+
     Recent evaluation report:
-    {eval_text[:12000]}
+    {eval_text[:8000]}
 
     Requirements:
     - Return EXACTLY 2 strategy specs as JSON array.
-    - New ideas can be variations of existing ideas, but must be distinct.
+    - DO NOT propose strategies that overlap with the manually-built ones listed above.
+    - DO NOT propose ideas from the REJECTED list — they have been tried and failed.
+    - Each idea must be genuinely novel — a different edge type, data source, or market segment.
     - Prefer concrete, auditable ideas over vague LLM fantasies.
     - Include realistic caveats about fillability/capacity when relevant.
     - Keep them suitable for initial ALERT-ONLY implementation.
