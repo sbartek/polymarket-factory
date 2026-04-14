@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 RunEnvironment = Literal["research", "paper", "live"]
-ExecutionAction = Literal["skip", "alert", "paper", "live"]
+ExecutionAction = Literal["skip", "alert", "paper", "live", "paper_and_live"]
 
 
 @dataclass(frozen=True)
@@ -65,6 +65,9 @@ def classify_strategy_execution(policy: EnvironmentPolicy, strategy, strategy_me
 
     if policy.name == "paper":
         if strategy_mode == "live":
+            live_ready = bool(strategy_meta.get("live_ready", getattr(strategy, "live_ready", False)))
+            if trading_enabled and live_ready:
+                return EnvironmentDecision("paper_and_live", "live_strategy_dual_execution")
             return EnvironmentDecision("alert", "live_only_strategy")
         if not trading_enabled:
             return EnvironmentDecision("alert", "trading_disabled")

@@ -16,10 +16,18 @@ def test_research_environment_turns_tradeable_strategy_into_alert_only():
     assert decision.reason == "research_environment"
 
 
-def test_paper_environment_keeps_live_only_strategy_out_of_paper_positions():
+def test_paper_environment_dual_executes_live_ready_strategy():
     policy = get_environment_policy("paper")
     strategy = DummyStrategy(mode="live", live_ready=True)
     decision = classify_strategy_execution(policy, strategy, {"trading_enabled": True, "live_ready": True})
+    assert decision.action == "paper_and_live"
+    assert decision.reason == "live_strategy_dual_execution"
+
+
+def test_paper_environment_alerts_live_strategy_not_ready():
+    policy = get_environment_policy("paper")
+    strategy = DummyStrategy(mode="live", live_ready=False)
+    decision = classify_strategy_execution(policy, strategy, {"trading_enabled": True, "live_ready": False})
     assert decision.action == "alert"
     assert decision.reason == "live_only_strategy"
 

@@ -294,16 +294,6 @@ uv run python scripts/backfill_trade_metadata.py
 uv run openclaw-skill/scripts/strategy_details.py fade
 ```
 
-## SQLite logging (Phase 1)
-
-Runner executions also log to `data/factory.sqlite3`:
-- `runs`
-- `signals`
-- `decisions`
-- `run_logs`
-
-Trade state is now SQLite-backed in `data/factory.sqlite3`. The runner/broker still exports `data/trades.csv` during the migration period for compatibility and easy inspection.
-
 ## Dashboard
 
 Build the private static dashboard snapshot + bundle:
@@ -499,4 +489,3 @@ Tests use temporary directories and never touch the real database or backups.
 - Polymarket Gamma API: https://gamma-api.polymarket.com/markets
 - Polymarket CLOB API: https://clob.polymarket.com
 - Deribit API: https://docs.deribit.com
-# test
