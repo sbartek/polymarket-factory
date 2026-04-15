@@ -8,7 +8,7 @@ from .models import Signal, Trade
 from .notify import send_notification
 from .strategy_meta import ACTIVE_STRATEGIES, strategy_metadata
 
-LIVE_EXPOSURE_CAP_USDC = 50.0  # fits $48 USDC balance — stale_market + price_move_fade
+LIVE_EXPOSURE_CAP_USDC = 150.0  # ~$200 USDC balance, keep $50 buffer
 
 
 class LiveBroker:

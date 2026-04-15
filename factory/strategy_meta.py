@@ -35,7 +35,7 @@ STRATEGY_EXPOSURE_CAPS = {
     "spread_arb": 0.0,
     "spread_arb_v2": 80.0,
     "ev_news": 40.0,
-    "stale_market": 35.0,
+    "stale_market": 50.0,
     "correlated_pairs": 30.0,
     "correlated_laggard": 25.0,
     "esport48": 25.0,
