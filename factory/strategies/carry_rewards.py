@@ -71,8 +71,8 @@ class CarryRewardsStrategy(Strategy):
     scan_frequency = "daily"
     max_position_usdc = 10.0
     min_ev_pp = MIN_CARRY_PP
-    alert_only = False
-    trading_enabled = True
+    alert_only = True
+    trading_enabled = False
     live_ready = False
 
     def size(self, signal) -> float:
@@ -82,8 +82,6 @@ class CarryRewardsStrategy(Strategy):
     def scan(self, markets: list[dict]) -> list[Signal]:
         candidates = []
         for ev in markets:
-            if not _is_binary(ev):
-                continue
             if not _looks_eligible(ev):
                 continue
             vol = float(ev.get("volume24hr") or ev.get("volume") or 0)

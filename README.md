@@ -143,7 +143,7 @@ Generated strategies are blocked from `live` by environment policy.
 
 ### Live trading
 
-- [x] **`carry_rewards`** — Full-set purchases for ~4% APY Holding Rewards. `live_ready=True`, `mode=live`. Runs at 19:30 cycle. First live orders 2026-04-03.
+- [x] **`carry_rewards`** — Full-set purchases for ~4% APY Holding Rewards on eligible political markets. `mode=paper`, `live_ready=False`. Demoted 2026-04-14 (zero signals historically, filters relaxed).
 
 ### Active (paper trading)
 

@@ -73,6 +73,32 @@ describe('dashboard.js', () => {
     expect(result.paper.map(s => s.strategy_name)).toEqual(['ev_news', 'spread_arb_v2']);
     expect(result.alert_active.map(s => s.strategy_name)).toEqual(['fade_certainty_v2']);
     expect(result.alert_dead.map(s => s.strategy_name)).toEqual(['base_rate_knn', 'volume_divergence']);
+
+    // Exhaustiveness: all active non-generated strategies accounted for
+    const activeNonGenerated = strategies.filter(s => s.status === 'active' && !s.is_generated);
+    const totalClassified = result.paper_and_live.length + result.paper.length + result.alert_active.length + result.alert_dead.length;
+    expect(totalClassified).toBe(activeNonGenerated.length);
+  });
+
+  it('classifyStrategies treats null/undefined recent_signals_count as dead', () => {
+    const window = bootDashboard();
+    const strategies = [
+      { strategy_name: 'null_signals', status: 'active', is_generated: false, alert_only: true, trading_enabled: false, live_ready: false, recent_signals_count: null },
+      { strategy_name: 'undef_signals', status: 'active', is_generated: false, alert_only: true, trading_enabled: false, live_ready: false },
+    ];
+    const result = window.Dashboard.classifyStrategies(strategies);
+    expect(result.alert_dead.map(s => s.strategy_name)).toEqual(['null_signals', 'undef_signals']);
+    expect(result.alert_active).toEqual([]);
+  });
+
+  it('classifyStrategies puts alert_only+trading_enabled into alert bucket', () => {
+    const window = bootDashboard();
+    const strategies = [
+      { strategy_name: 'contradictory', status: 'active', is_generated: false, alert_only: true, trading_enabled: true, live_ready: false, recent_signals_count: 5 },
+    ];
+    const result = window.Dashboard.classifyStrategies(strategies);
+    expect(result.alert_active.map(s => s.strategy_name)).toEqual(['contradictory']);
+    expect(result.paper).toEqual([]);
   });
 
   it('uses bundled data paths on hosted or bundled pages', () => {

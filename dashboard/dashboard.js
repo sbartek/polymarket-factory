@@ -128,8 +128,8 @@ function classifyStrategies(strategies) {
   return {
     paper_and_live: active.filter(s => !s.alert_only && s.trading_enabled && s.live_ready),
     paper: active.filter(s => !s.alert_only && s.trading_enabled && !s.live_ready),
-    alert_active: active.filter(s => (s.alert_only || !s.trading_enabled) && s.recent_signals_count > 0),
-    alert_dead: active.filter(s => (s.alert_only || !s.trading_enabled) && s.recent_signals_count === 0),
+    alert_active: active.filter(s => (s.alert_only || !s.trading_enabled) && (s.recent_signals_count || 0) > 0),
+    alert_dead: active.filter(s => (s.alert_only || !s.trading_enabled) && !(s.recent_signals_count > 0)),
   };
 }
 

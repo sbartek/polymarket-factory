@@ -136,7 +136,7 @@
         };
         const modeSection = document.getElementById('execution-mode-section');
         const livePanel = `<article class="panel"><div class="panel-header"><h2>Live</h2><span class="pill pill-live">${classified.paper_and_live.length}</span></div>${classified.paper_and_live.length ? `<div class="table-wrap"><table><thead><tr><th>Strategy</th><th>Open</th><th>Closed</th><th>Exposure</th><th>PnL (all)</th></tr></thead><tbody>${liveRows}</tbody></table></div>` : '<div class="muted">None</div>'}</article>`;
-        const paperPanel = `<article class="panel"><div class="panel-header"><h2>Paper trading</h2><span class="pill pill-paper">${allPaper.length}</span></div><div class="table-wrap"><table><thead><tr><th>Strategy</th><th>Open</th><th>Closed</th><th>Exposure</th><th>PnL (all)</th><th>Signals (7d)</th></tr></thead><tbody>${paperRows}</tbody></table></div></article>`;
+        const paperPanel = `<article class="panel"><div class="panel-header"><h2>Paper trading</h2><span class="pill pill-paper">${allPaper.length}</span></div><div class="table-wrap"><table><thead><tr><th>Strategy</th><th>Open</th><th>Closed</th><th>Exposure</th><th>PnL (all)</th><th>Signals (30d)</th></tr></thead><tbody>${paperRows}</tbody></table></div></article>`;
         const otherPanels = Object.entries(otherGroups).map(([label, items]) => {
           const pillCls = label.includes('collecting') ? 'pill-alert' : 'pill-neutral';
           const rows = items.map(s => {
@@ -144,7 +144,7 @@
             const pnlCls = pnl > 0 ? 'positive' : pnl < 0 ? 'negative' : '';
             return `<tr><td>${s.strategy_name}<div class="muted">${twAbbr(s.time_window)}</div></td><td>${Dashboard.fmtInt(s.open_positions)}</td><td>${Dashboard.fmtNumber(s.open_exposure)} USDC</td><td class="${pnlCls}">${Dashboard.fmtNumber(pnl)} USDC</td><td>${Dashboard.fmtInt(s.recent_signals_count)}</td></tr>`;
           }).join('');
-          return `<article class="panel"><div class="panel-header"><h2>${label}</h2><span class="pill ${pillCls}">${items.length}</span></div>${items.length ? `<div class="table-wrap"><table><thead><tr><th>Strategy</th><th>Open</th><th>Exposure</th><th>PnL (all)</th><th>Signals (7d)</th></tr></thead><tbody>${rows}</tbody></table></div>` : '<div class="muted">None</div>'}</article>`;
+          return `<article class="panel"><div class="panel-header"><h2>${label}</h2><span class="pill ${pillCls}">${items.length}</span></div>${items.length ? `<div class="table-wrap"><table><thead><tr><th>Strategy</th><th>Open</th><th>Exposure</th><th>PnL (all)</th><th>Signals (30d)</th></tr></thead><tbody>${rows}</tbody></table></div>` : '<div class="muted">None</div>'}</article>`;
         }).join('');
         modeSection.innerHTML = livePanel + paperPanel + otherPanels;
 

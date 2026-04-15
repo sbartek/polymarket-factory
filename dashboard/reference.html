@@ -288,19 +288,19 @@ uv run python scripts/publish_dashboard.py ~/path/to/repo --commit --push</div>
 
           </div>
 
-          <h3 style="margin-top:24px;">Live-only strategies</h3>
+          <h3 style="margin-top:24px;">Demoted strategies (formerly live)</h3>
           <div class="strategy-grid">
             <div class="strategy-card">
               <h3><span class="tag-active">●</span> carry_rewards</h3>
               <div class="sc-meta">
-                <span class="pill pill-ok">live-only</span>
+                <span class="pill pill-neutral">paper</span>
                 <span class="pill pill-neutral">structural</span>
                 <span class="pill pill-neutral">long</span>
                 <span class="pill pill-neutral">daily</span>
               </div>
-              <p><strong>Thesis:</strong> Binary Polymarket markets can offer holding-yield carry by buying a market-neutral full set (YES + NO) and collecting rewards.</p>
-              <p><strong>Method:</strong> Scan binary markets with enough duration and liquidity, rank by carry yield, and only execute in the <code>live</code> environment.</p>
-              <p style="font-size:0.82rem;color:var(--muted);">mode="live" · live_ready=True · blocked from paper by environment policy</p>
+              <p><strong>Thesis:</strong> Eligible political markets offer ~4% APY Holding Rewards via full-set (YES + NO) purchases.</p>
+              <p><strong>Method:</strong> Scan eligible long-dated political/geopolitical markets, rank by carry yield. Demoted to paper 2026-04-14 (zero signals historically).</p>
+              <p style="font-size:0.82rem;color:var(--muted);">mode="paper" · live_ready=False · filters relaxed, eligibility keyword filter added</p>
             </div>
           </div>
 
@@ -709,7 +709,7 @@ uv run python scripts/backup_db.py --keep 14</div>
               <tr><td>every 30m</td><td>Observer</td><td>Price snapshots for 1000 markets (no LLM)</td></tr>
               <tr><td>every 30m</td><td>Trade fetcher</td><td>CLOB trade data from Polymarket Data API (no auth)</td></tr>
               <tr><td>10:40 / 22:40</td><td>Strategy factory</td><td>Evaluation + auto-generate strategy proposals</td></tr>
-              <tr><td>19:30</td><td>Live run</td><td>Live environment (carry_rewards)</td></tr>
+              <tr><td>19:30</td><td>Live run</td><td>Live environment (stale_market, price_move_fade via dual execution)</td></tr>
               <tr><td>07:30</td><td>Research</td><td>Research-only scan (no trades)</td></tr>
               <tr><td>03:45</td><td>DB backup</td><td>Local + GCS (gs://pplayouts-factory-backups, 30-day retention)</td></tr>
               <tr><td>04:15</td><td>Retention cleanup</td><td>Prune rows older than 730 days</td></tr>
