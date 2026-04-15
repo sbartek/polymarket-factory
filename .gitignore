@@ -12,8 +12,7 @@ backups/*.csv
 factory.log
 factory-strategy-factory.log
 factory-strategy-factory-local.log
-factory-live.log
-factory-research.log
+factory-review.log
 factory_observer.log
 factory_scan.log
 factory_trade_fetcher.log

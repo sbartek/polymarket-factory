@@ -3,12 +3,12 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.polymarket.factory.research</string>
+    <string>com.polymarket.factory.review</string>
 
     <key>ProgramArguments</key>
     <array>
         <string>/bin/bash</string>
-        <string>/Users/barteks/workai/projects/polymarket-factory/run_factory_research.sh</string>
+        <string>/Users/barteks/workai/projects/polymarket-factory/run_review.sh</string>
     </array>
 
     <key>WorkingDirectory</key>
@@ -23,10 +23,10 @@
     </array>
 
     <key>StandardOutPath</key>
-    <string>/Users/barteks/workai/projects/polymarket-factory/factory-research.log</string>
+    <string>/Users/barteks/workai/projects/polymarket-factory/factory-review.log</string>
 
     <key>StandardErrorPath</key>
-    <string>/Users/barteks/workai/projects/polymarket-factory/factory-research.log</string>
+    <string>/Users/barteks/workai/projects/polymarket-factory/factory-review.log</string>
 
     <key>RunAtLoad</key>
     <false/>

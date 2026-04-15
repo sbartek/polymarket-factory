@@ -493,7 +493,7 @@ def _extract_market_observations(events: list[dict]) -> list[dict]:
     return rows
 
 
-def format_wa_summary(new_trades: list[tuple], closed_trades: list[dict], alert_signals: list[Signal], closed_count: int, stats: dict, now: str, skipped: list[str] | None = None, hour: int = 9, dry_run: bool = False, fast_dry_run: bool = False, hourly_delta: str | None = None, loss_streaks: dict | None = None, pipeline_health: list[dict] | None = None) -> str:
+def format_wa_summary(new_trades: list[tuple], closed_trades: list[dict], alert_signals: list[Signal], closed_count: int, stats: dict, now: str, skipped: list[str] | None = None, hour: int = 9, dry_run: bool = False, fast_dry_run: bool = False, hourly_delta: str | None = None, loss_streaks: dict | None = None, pipeline_health: list[dict] | None = None, environment: str = "paper", phase: str = "combined") -> str:
     if not isinstance(stats, dict) and isinstance(closed_count, dict):
         old_alert_signals = closed_trades
         old_closed_count = alert_signals if isinstance(alert_signals, int) else 0
@@ -511,11 +511,18 @@ def format_wa_summary(new_trades: list[tuple], closed_trades: list[dict], alert_
     new_by_strategy: dict[str, int] = {}
     for sig, _ in new_trades:
         new_by_strategy[sig.strategy] = new_by_strategy.get(sig.strategy, 0) + 1
-    title = f"*PPLayouts — {now}*"
+    # Build environment/phase label for the notification title
+    env_labels = []
+    if environment == "research":
+        env_labels.append("RESEARCH")
+    elif phase == "execute":
+        env_labels.append("EXECUTE")
     if dry_run:
-        title += " [DRY RUN]"
+        env_labels.append("DRY RUN")
     if fast_dry_run:
-        title += " [FAST]"
+        env_labels.append("FAST")
+    env_suffix = f" [{' / '.join(env_labels)}]" if env_labels else ""
+    title = f"*PPLayouts — {now}{env_suffix}*"
 
     full_summary_window = hour == 9
     lines = [title + "\n"]
@@ -883,7 +890,7 @@ def run(environment: str = "paper", dry_run: bool = False, send: bool = True, fa
             db.log_event(run_id, "info", "portfolio_snapshot", payload=portfolio_snapshot)
         print(format_summary(stats))
         pipeline_health = db.get_pipeline_health()
-        wa_msg = format_wa_summary(new_trades, closed_trades, alert_signals, closed_count, stats, now, skipped_this_cycle, now_dt.hour, dry_run=dry_run, fast_dry_run=fast_dry_run, hourly_delta=hourly_delta, loss_streaks=loss_streaks, pipeline_health=pipeline_health)
+        wa_msg = format_wa_summary(new_trades, closed_trades, alert_signals, closed_count, stats, now, skipped_this_cycle, now_dt.hour, dry_run=dry_run, fast_dry_run=fast_dry_run, hourly_delta=hourly_delta, loss_streaks=loss_streaks, pipeline_health=pipeline_health, environment=policy.name, phase=phase)
         if dry_run or not send:
             print("\n--- WHATSAPP PREVIEW ---")
             print(wa_msg)
