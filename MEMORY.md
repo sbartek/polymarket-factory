@@ -17,17 +17,20 @@ This file is the canonical durable project memory for both Claude and Codex. Kee
 ## Architecture
 
 ```
-gpplayouts runtime:
+gpplayouts runtime (Linux, cron):
   paper scan   (:30 every 2h) -> fetch markets, run strategies, cache signals
   paper execute(:00 every 2h) -> read cached signals, open/skip, close resolved
-  observer / trade_fetcher / live / API run as separate services
+  24h review   (07:30 daily)  -> DB-only briefing, no LLM/market fetch
+  observer / trade_fetcher / API run as separate services
 
-pplayouts runtime:
+pplayouts runtime (macOS, launchd):
   strategy-factory-local (09:30 daily) -> pull repo, fetch remote eval/benchmarks,
   generate candidates, refresh dashboard artifacts, push repo changes
 ```
 
-**Runtime environments:** `research` (signals only) · `paper` (default) · `live` (explicit `mode="live"` plus `live_ready=True` only; currently `carry_rewards`)
+**Runtime environments:** `paper` (default) · `live` (explicit `mode="live"` plus `live_ready=True`) · `review` (DB-only 24h briefing)
+
+**Removed 2026-04-16:** standalone `live` run (redundant with paper_and_live dual execution) and `research` run (replaced by 24h review).
 
 **Key files:**
 - `factory/runner.py` — main loop
@@ -45,36 +48,35 @@ pplayouts runtime:
 
 ---
 
-## Strategy status
+## Strategy status (2026-04-16)
 
-### Live trading
-| Strategy | Edge | Window | Notes |
-|----------|------|--------|-------|
-| `carry_rewards` | structural | long | Full-set YES+NO for ~4% APY. First live orders 2026-04-03. `live_ready=True`, `mode=live` |
+### Paper + Live (2)
+| Strategy | Cap | 7d WR | Notes |
+|----------|-----|-------|-------|
+| `stale_market` | $50 | 50% | Claude judges stale markets vs news. |
+| `price_move_fade` | $40 | 83% | Star performer. Cap raised $25→$40 on 2026-04-16. |
 
-### Active paper trading
-| Strategy | Edge | Window | Status |
-|----------|------|--------|--------|
-| `ev_news` | information | medium | Claude scans news → p̂ estimate. 14 open, 1 closed (+77% ROI). LLM-heavy. |
-| `spread_arb` | structural | medium | Buy all legs when Σ(YES) < 0.90. 0 open (clean retest 2026-04-04), 79 closed pre-fix (-89.1% ROI, bug-driven). MAX_DAYS 30. Awaiting fresh data. |
-| `stale_market` | information | short | Claude judges stale markets vs news. 3 open, 2 closed (-100% ROI). Watch. |
-| `correlated_pairs` | logical_inconsistency | medium | Logically inconsistent pairs. 0 trades. Early stage. |
-| `celebrity_tabloid` | information | short | Tabloid corroboration. 17 open, 0 closed. Tag-feed fix working (6 candidates/run). |
-| `polling_vs_market` | model_vs_market | medium | DDGS polls + LLM gap analysis. MIN_GAP_PP=10pp. Daily cadence. 0 trades. Added 2026-04-04. |
+### Active paper trading (8)
+| Strategy | Cap | Notes |
+|----------|-----|-------|
+| `spread_arb_v2` | $100 | Cap raised $80→$100. 8 open. |
+| `polling_vs_market` | $30 | +$20.12 on 1 trade. Needs more data. |
+| `ev_news_v2` | $40 | Replaces v1. 7 consecutive loss streak — review needed. |
+| `thin_market_impact_fade` | $35 | Cap raised $25→$35. 19 open. |
+| `mutually_exclusive_oversum` | $25 | 38% WR. Borderline. |
+| `correlated_pairs` | $30 | 3 open, no closures. |
+| `celebrity_tabloid` | $25 | 1 open. |
+| `weather_edge_v4` | $20 | NEW paper 2026-04-16. 99 signals/30d, avg EV 62pp. |
 
-### Alert-only (needs graduation checklist before paper trading)
-| Strategy | Notes |
-|----------|-------|
-| `correlated_laggard` | Liquid leader/laggard divergence. `promotable=True`. See EX-20260401-006. |
-| `esport48` | Esport markets <48h. `promotable=True`. See EX-20260401-007. |
-| `mutually_exclusive_oversum` | Oversum NO-fade. `promotable=True`. Promote after 20 alerts, >60% revert. Added 2026-04-04. |
+### Alert-only
+- correlated_laggard, carry_rewards, weather_convergence, weather_autocorrelation, weather_oversum, weather_edge_v3, conditional_probability_mispricing, base_rate_knn, overnight_gap_fade, news_impact_fade_by_recency, esport48, and others
 
 ### Killed
 | Strategy | Verdict | Root cause |
 |----------|---------|------------|
 | `resolution_hunter` | KILL 2026-04-03 | -92.3% ROI / 12 trades. CLOB prices resolve within hours; LLM too slow. |
-| `fade_certainty` | KILL | 0% WR, -100% ROI / 10 trades. |
-| `weather_edge` | KILL | 43% WR, -12.7% ROI / 136 trades. Payoff asymmetry. |
+| `fade_certainty` | KILL | 0% WR. 24 positions force-closed 2026-04-16 ($48 exposure freed). |
+| `weather_edge` v1 | KILL | 43% WR, -12.7% ROI / 136 trades. Payoff asymmetry. |
 
 ---
 
@@ -100,27 +102,31 @@ Run: `uv run eval/report.py`
 
 ---
 
-## Runtime schedule
+## Runtime schedule (2026-04-16)
 
-### `gpplayouts` (primary runtime)
+### `gpplayouts` (primary runtime, Linux, **cron**)
 
 | Job | Schedule |
 |-----|----------|
 | `paper_scan` | Every 2h at `:30` |
 | `paper_execute` | Every 2h at `:00` |
-| `live` | 19:30 daily |
-| `research` | 07:30 daily |
-| `observer` | separate launchd job |
+| `24h_review` | 07:30 daily (`run_review.sh`) |
+| `observer` | Every 30 min |
+| `trade_fetcher` | Every 30 min (offset 5m) |
+| `backup` | 03:45 daily |
+| `watchdog` | Every 10 min |
 | `factory-api` | systemd service on port 8765 behind `factory.pplayouts.trade` |
 
-### `pplayouts` (strategy-factory only)
+**Removed 2026-04-16:** standalone `live` (19:30) and `research` (07:30) cron entries.
+
+### `pplayouts` (strategy-factory only, macOS, **launchd**)
 
 | Job | Schedule |
 |-----|----------|
 | `com.polymarket.factory.strategy-factory-local` | 09:30 daily |
 
 Important:
-- `pplayouts` should not run the paper combined/scan/execute/live/research/observer jobs.
+- `pplayouts` should not run the paper combined/scan/execute/observer jobs.
 - On 2026-04-10 those stale launch agents were unloaded, disabled, and removed from `~/Library/LaunchAgents`.
 
 ---
