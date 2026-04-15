@@ -35,7 +35,7 @@ def test_check_heartbeats_all_fresh(tmp_path):
     now = datetime.now(UTC).isoformat(timespec="seconds")
     with patch("factory.healthcheck.HEARTBEAT_DIR", tmp_path):
         for slug in ("scan", "execute", "observer", "trade-fetcher",
-                     "strategy-factory", "live", "research", "backup"):
+                     "strategy-factory", "review", "backup"):
             (tmp_path / f"{slug}.json").write_text(
                 json.dumps({"slug": slug, "success": True, "timestamp": now})
             )
@@ -53,7 +53,7 @@ def test_check_heartbeats_detects_overdue(tmp_path):
         )
         # all others are fresh
         for slug in ("execute", "observer", "trade-fetcher",
-                     "strategy-factory", "live", "research", "backup"):
+                     "strategy-factory", "review", "backup"):
             (tmp_path / f"{slug}.json").write_text(
                 json.dumps({"slug": slug, "success": True, "timestamp": now})
             )
@@ -76,7 +76,7 @@ def test_check_heartbeats_detects_failure(tmp_path):
     now = datetime.now(UTC).isoformat(timespec="seconds")
     with patch("factory.healthcheck.HEARTBEAT_DIR", tmp_path):
         for slug in ("scan", "execute", "observer", "trade-fetcher",
-                     "strategy-factory", "live", "research", "backup"):
+                     "strategy-factory", "review", "backup"):
             success = slug != "backup"  # backup failed
             (tmp_path / f"{slug}.json").write_text(
                 json.dumps({"slug": slug, "success": success, "timestamp": now})
@@ -91,7 +91,7 @@ def test_check_heartbeats_detects_degraded(tmp_path):
     now = datetime.now(UTC).isoformat(timespec="seconds")
     with patch("factory.healthcheck.HEARTBEAT_DIR", tmp_path):
         for slug in ("scan", "execute", "observer", "trade-fetcher",
-                     "strategy-factory", "live", "research", "backup"):
+                     "strategy-factory", "review", "backup"):
             payload = {"slug": slug, "success": True, "timestamp": now}
             if slug == "strategy-factory":
                 payload["status"] = "degraded"

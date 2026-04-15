@@ -188,10 +188,8 @@ class WeatherEdgeV4Strategy(Strategy):
     scan_frequency = "1x/day"
     max_position_usdc = 10.0
     min_ev_pp = 18.0
-    alert_only = True
-    trading_enabled = False
-    promotable = True
-    promotion_criteria = "30 signals with >60% accuracy tracked separately for YES and NO"
+    alert_only = False
+    trading_enabled = True
     last_check_details: list[dict] = []
 
     def __init__(self) -> None:

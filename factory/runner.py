@@ -273,10 +273,11 @@ def _execute_signal(
     live_dup = is_dual and live_broker and live_broker.has_position(sig.market_id, strategy_name)
 
     if not skip_cooldown:
+        cooldown_hours = getattr(strategy, "signal_cooldown_hours", 24.0)
         cooldown_consumed_only = execution_decision.action in ("paper", "live", "paper_and_live")
-        if db.has_recent_signal(strategy_name, sig.market_id, hours=24.0, consumed_only=cooldown_consumed_only):
-            print(f"  [{strategy_name}] skip cooldown: {sig.market_title[:45]}")
-            db.log_decision(run_id, "cooldown_check", "skip", strategy=strategy_name, market_id=sig.market_id, reason="signal_within_24h")
+        if db.has_recent_signal(strategy_name, sig.market_id, hours=cooldown_hours, consumed_only=cooldown_consumed_only):
+            print(f"  [{strategy_name}] skip cooldown ({cooldown_hours}h): {sig.market_title[:45]}")
+            db.log_decision(run_id, "cooldown_check", "skip", strategy=strategy_name, market_id=sig.market_id, reason=f"signal_within_{cooldown_hours:.0f}h")
             return _ExecuteResult("skip")
 
     current_price = _current_yes_price(market_index, sig.market_id)
