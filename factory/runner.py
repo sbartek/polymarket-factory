@@ -14,7 +14,7 @@ Includes live-run locking + strategy detail logging.
 import argparse
 import os
 import json
-from dataclasses import asdict, is_dataclass
+from dataclasses import asdict, dataclass, is_dataclass
 from datetime import datetime, timedelta
 
 from .broker import PaperBroker
@@ -212,6 +212,148 @@ def _can_open(amount: float, strategy_name: str, meta: dict, exposure_by_strateg
     if window_cap is not None and current_window + amount > window_cap:
         return False, f"{window} window cap ${window_cap:.0f} hit ({current_window:.1f} open)"
     return True, ""
+
+
+@dataclass
+class _ExecuteResult:
+    action: str  # "skip", "alert", "opened", "failed"
+    amount: float = 0.0
+    is_live_open: bool = False
+
+
+def _execute_signal(
+    sig: Signal,
+    strategy_name: str,
+    strategy,
+    strategy_meta_item: dict,
+    execution_decision,
+    policy,
+    broker,
+    live_broker,
+    db: FactoryDB,
+    run_id: str,
+    meta: dict,
+    market_index: dict,
+    exposure_by_strategy: dict,
+    exposure_by_window: dict,
+    alert_signals: list,
+    dry_run: bool,
+    skip_cooldown: bool = False,
+    extra_log_details: dict | None = None,
+) -> _ExecuteResult:
+    """Shared execution logic for a single signal. Returns result indicating what happened."""
+    log_details = extra_log_details or {}
+
+    if execution_decision.action == "skip":
+        db.log_decision(run_id, "environment", "skip", strategy=strategy_name, market_id=sig.market_id, reason=execution_decision.reason)
+        return _ExecuteResult("skip")
+
+    if execution_decision.action == "alert":
+        alert_signals.append(sig)
+        print(f"  [{strategy_name}] ALERT {sig.outcome} {sig.market_title[:45]} | gap {sig.ev_pp:.0f}pp | {sig.confidence}")
+        alert_details = {"ev_pp": sig.ev_pp, "confidence": sig.confidence, **log_details}
+        if strategy_meta_item.get("alert_only") is not None:
+            alert_details.update({
+                "alert_only": strategy_meta_item.get("alert_only", False),
+                "promotable": strategy_meta_item.get("promotable", False),
+                "live_ready": strategy_meta_item.get("live_ready", False),
+            })
+        db.log_decision(run_id, "alert", "alert_only", strategy=strategy_name, market_id=sig.market_id,
+                        reason=execution_decision.reason, details=alert_details)
+        return _ExecuteResult("alert")
+
+    is_live = execution_decision.action == "live"
+    is_dual = execution_decision.action == "paper_and_live"
+
+    if broker.has_position(sig.market_id, strategy_name):
+        print(f"  [{strategy_name}] skip duplicate: {sig.market_title[:45]}")
+        db.log_decision(run_id, "duplicate_check", "skip", strategy=strategy_name, market_id=sig.market_id, reason="already_open")
+        return _ExecuteResult("skip")
+
+    live_dup = is_dual and live_broker and live_broker.has_position(sig.market_id, strategy_name)
+
+    if not skip_cooldown:
+        cooldown_consumed_only = execution_decision.action in ("paper", "live", "paper_and_live")
+        if db.has_recent_signal(strategy_name, sig.market_id, hours=24.0, consumed_only=cooldown_consumed_only):
+            print(f"  [{strategy_name}] skip cooldown: {sig.market_title[:45]}")
+            db.log_decision(run_id, "cooldown_check", "skip", strategy=strategy_name, market_id=sig.market_id, reason="signal_within_24h")
+            return _ExecuteResult("skip")
+
+    current_price = _current_yes_price(market_index, sig.market_id)
+    if current_price is not None:
+        drift = abs(current_price - sig.market_price)
+        if drift > SIGNAL_PRICE_DRIFT_THRESHOLD:
+            print(f"  [{strategy_name}] skip price_drift: {sig.market_title[:45]} | scan {sig.market_price:.2f} → now {current_price:.2f} ({drift:.2f})")
+            db.log_decision(run_id, "price_drift", "skip", strategy=strategy_name, market_id=sig.market_id,
+                            reason=f"price moved {drift:.2f} (scan {sig.market_price:.2f} → now {current_price:.2f})",
+                            details={"scan_price": sig.market_price, "current_price": current_price, "drift": round(drift, 4), "threshold": SIGNAL_PRICE_DRIFT_THRESHOLD})
+            return _ExecuteResult("skip")
+
+    amount = strategy.size(sig)
+    if amount < 1.0:
+        db.log_decision(run_id, "size_check", "skip", strategy=strategy_name, market_id=sig.market_id, reason="tiny_size", details={"amount": amount})
+        return _ExecuteResult("skip")
+
+    allowed, reason = _can_open(amount, strategy_name, meta, exposure_by_strategy, exposure_by_window)
+    if not allowed:
+        print(f"  [{strategy_name}] skip capped: {sig.market_title[:45]} | {reason}")
+        db.log_decision(run_id, "cap_check", "skip", strategy=strategy_name, market_id=sig.market_id, reason=reason,
+                        details={"amount": amount, "strategy_exposure": exposure_by_strategy.get(strategy_name, 0.0),
+                                 "window_exposure": exposure_by_window.get(strategy_meta_item.get("time_window", "unknown"), 0.0)})
+        return _ExecuteResult("skip")
+
+    # --- Open position ---
+    def _get_market_dict():
+        entry = market_index.get(sig.market_id, {})
+        return entry.get("market") or (entry.get("event", {}).get("markets") or [None])[0]
+
+    def _try_live_open():
+        if not live_broker or dry_run or live_dup:
+            return
+        try:
+            market_dict = _get_market_dict()
+            live_trade = live_broker.open_position(sig, amount, market=market_dict)
+            if live_trade:
+                print(f"  [{strategy_name}] LIVE {sig.outcome} {sig.market_title[:45]} | EV +{sig.ev_pp:.0f}pp | ${amount} | {sig.confidence}")
+                db.log_decision(run_id, "execution", "live_open", strategy=strategy_name, market_id=sig.market_id, reason="dual_execution",
+                                details={"amount": amount, "ev_pp": sig.ev_pp, "confidence": sig.confidence, **log_details})
+            else:
+                print(f"  [{strategy_name}] LIVE FAILED {sig.outcome} {sig.market_title[:45]} | ${amount}")
+                db.log_decision(run_id, "execution", "live_open_failed", strategy=strategy_name, market_id=sig.market_id, reason="broker_returned_none",
+                                details={"amount": amount, "ev_pp": sig.ev_pp, "confidence": sig.confidence, **log_details})
+        except Exception as e:
+            print(f"  [{strategy_name}] LIVE ERROR {sig.market_title[:45]} | {e}")
+            db.log_decision(run_id, "execution", "live_open_failed", strategy=strategy_name, market_id=sig.market_id, reason=f"exception: {e}",
+                            details={"amount": amount, "ev_pp": sig.ev_pp, "confidence": sig.confidence, **log_details})
+
+    if is_live:
+        market_dict = _get_market_dict()
+        trade = broker.open_position(sig, amount, market=market_dict)
+        track = trade is not None
+    elif is_dual:
+        broker.open_position(sig, amount)
+        track = True
+        _try_live_open()
+    else:
+        broker.open_position(sig, amount)
+        track = True
+
+    if track:
+        exposure_by_strategy[strategy_name] = exposure_by_strategy.get(strategy_name, 0.0) + amount
+        window = strategy_meta_item.get("time_window", "unknown")
+        exposure_by_window[window] = exposure_by_window.get(window, 0.0) + amount
+        mode_label = "LIVE" if is_live else ("WOULD OPEN" if dry_run else "OPEN")
+        print(f"  [{strategy_name}] {mode_label} {sig.outcome} {sig.market_title[:45]} | EV +{sig.ev_pp:.0f}pp | ${amount} | {sig.confidence}")
+        db.log_decision(run_id, "execution", "live_open" if is_live else ("dry_open" if dry_run else "open"),
+                        strategy=strategy_name, market_id=sig.market_id, reason=execution_decision.reason,
+                        details={"amount": amount, "ev_pp": sig.ev_pp, "confidence": sig.confidence, **log_details})
+        return _ExecuteResult("opened", amount=amount, is_live_open=is_live)
+    elif is_live:
+        print(f"  [{strategy_name}] LIVE FAILED {sig.outcome} {sig.market_title[:45]} | ${amount}")
+        db.log_decision(run_id, "execution", "live_open_failed", strategy=strategy_name, market_id=sig.market_id, reason="broker_returned_none",
+                        details={"amount": amount, "ev_pp": sig.ev_pp, "confidence": sig.confidence, **log_details})
+        return _ExecuteResult("failed")
+    return _ExecuteResult("skip")
 
 
 def _apply_fast_dry_run_overrides(strategies: list, enabled: bool) -> list[tuple[object, dict]]:
@@ -652,93 +794,17 @@ def run(environment: str = "paper", dry_run: bool = False, send: bool = True, fa
 
                 strategy_meta_item = meta.get(sig.strategy, {})
                 execution_decision = classify_strategy_execution(policy, strategy, strategy_meta_item)
-
-                if execution_decision.action == "skip":
-                    db.log_decision(run_id, "environment", "skip", strategy=sig.strategy, market_id=sig.market_id, reason=execution_decision.reason)
-                    continue
-
-                if execution_decision.action == "alert":
-                    alert_signals.append(sig)
-                    print(f"  [{sig.strategy}] ALERT {sig.outcome} {sig.market_title[:45]} | gap {sig.ev_pp:.0f}pp | {sig.confidence}")
-                    db.log_decision(run_id, "alert", "alert_only", strategy=sig.strategy, market_id=sig.market_id, reason=execution_decision.reason,
-                                    details={"ev_pp": sig.ev_pp, "confidence": sig.confidence, "phase": "execute"})
-                    continue
-
-                is_live = execution_decision.action == "live"
-                is_dual = execution_decision.action == "paper_and_live"
-                if broker.has_position(sig.market_id, sig.strategy):
-                    print(f"  [{sig.strategy}] skip duplicate: {sig.market_title[:45]}")
-                    db.log_decision(run_id, "duplicate_check", "skip", strategy=sig.strategy, market_id=sig.market_id, reason="already_open")
-                    continue
-                live_dup = is_dual and live_broker and live_broker.has_position(sig.market_id, sig.strategy)
-                cooldown_consumed_only = execution_decision.action in ("paper", "live", "paper_and_live")
-                if db.has_recent_signal(sig.strategy, sig.market_id, hours=24.0, consumed_only=cooldown_consumed_only):
-                    print(f"  [{sig.strategy}] skip cooldown: {sig.market_title[:45]}")
-                    db.log_decision(run_id, "cooldown_check", "skip", strategy=sig.strategy, market_id=sig.market_id, reason="signal_within_24h")
-                    continue
-                current_price = _current_yes_price(market_index, sig.market_id)
-                if current_price is not None:
-                    drift = abs(current_price - sig.market_price)
-                    if drift > SIGNAL_PRICE_DRIFT_THRESHOLD:
-                        print(f"  [{sig.strategy}] skip price_drift: {sig.market_title[:45]} | scan {sig.market_price:.2f} → now {current_price:.2f} ({drift:.2f})")
-                        db.log_decision(run_id, "price_drift", "skip", strategy=sig.strategy, market_id=sig.market_id,
-                                        reason=f"price moved {drift:.2f} (scan {sig.market_price:.2f} → now {current_price:.2f})",
-                                        details={"scan_price": sig.market_price, "current_price": current_price, "drift": round(drift, 4), "threshold": SIGNAL_PRICE_DRIFT_THRESHOLD})
-                        continue
-                amount = strategy.size(sig)
-                if amount < 1.0:
-                    db.log_decision(run_id, "size_check", "skip", strategy=sig.strategy, market_id=sig.market_id, reason="tiny_size", details={"amount": amount})
-                    continue
-                allowed, reason = _can_open(amount, sig.strategy, meta, exposure_by_strategy, exposure_by_window)
-                if not allowed:
-                    print(f"  [{sig.strategy}] skip capped: {sig.market_title[:45]} | {reason}")
-                    db.log_decision(run_id, "cap_check", "skip", strategy=sig.strategy, market_id=sig.market_id, reason=reason, details={"amount": amount})
-                    continue
-
-                if is_live:
-                    market_entry = market_index.get(sig.market_id, {})
-                    market_dict = market_entry.get("market") or (market_entry.get("event", {}).get("markets") or [None])[0]
-                    trade = broker.open_position(sig, amount, market=market_dict)
-                    track = trade is not None
-                elif is_dual:
-                    # Dual execution: open paper position + attempt live position
-                    broker.open_position(sig, amount)
-                    track = True
-                    if live_broker and not dry_run and not live_dup:
-                        try:
-                            market_entry = market_index.get(sig.market_id, {})
-                            market_dict = market_entry.get("market") or (market_entry.get("event", {}).get("markets") or [None])[0]
-                            live_trade = live_broker.open_position(sig, amount, market=market_dict)
-                            if live_trade:
-                                print(f"  [{sig.strategy}] LIVE {sig.outcome} {sig.market_title[:45]} | EV +{sig.ev_pp:.0f}pp | ${amount} | {sig.confidence}")
-                                db.log_decision(run_id, "execution", "live_open", strategy=sig.strategy, market_id=sig.market_id, reason="dual_execution",
-                                                details={"amount": amount, "ev_pp": sig.ev_pp, "confidence": sig.confidence, "phase": "execute"})
-                            else:
-                                print(f"  [{sig.strategy}] LIVE FAILED {sig.outcome} {sig.market_title[:45]} | ${amount}")
-                                db.log_decision(run_id, "execution", "live_open_failed", strategy=sig.strategy, market_id=sig.market_id, reason="broker_returned_none",
-                                                details={"amount": amount, "ev_pp": sig.ev_pp, "confidence": sig.confidence, "phase": "execute"})
-                        except Exception as e:
-                            print(f"  [{sig.strategy}] LIVE ERROR {sig.market_title[:45]} | {e}")
-                            db.log_decision(run_id, "execution", "live_open_failed", strategy=sig.strategy, market_id=sig.market_id, reason=f"exception: {e}",
-                                            details={"amount": amount, "ev_pp": sig.ev_pp, "confidence": sig.confidence, "phase": "execute"})
-                else:
-                    broker.open_position(sig, amount)
-                    track = True
-
-                if track:
-                    exposure_by_strategy[sig.strategy] = exposure_by_strategy.get(sig.strategy, 0.0) + amount
-                    window = strategy_meta_item.get("time_window", "unknown")
-                    exposure_by_window[window] = exposure_by_window.get(window, 0.0) + amount
-                    new_trades.append((sig, amount))
+                result = _execute_signal(
+                    sig=sig, strategy_name=sig.strategy, strategy=strategy, strategy_meta_item=strategy_meta_item,
+                    execution_decision=execution_decision, policy=policy, broker=broker, live_broker=live_broker,
+                    db=db, run_id=run_id, meta=meta, market_index=market_index,
+                    exposure_by_strategy=exposure_by_strategy, exposure_by_window=exposure_by_window,
+                    alert_signals=alert_signals, dry_run=dry_run,
+                    extra_log_details={"phase": "execute"},
+                )
+                if result.action == "opened":
+                    new_trades.append((sig, result.amount))
                     new_positions_count += 1
-                    mode_label = "LIVE" if is_live else ("WOULD OPEN" if dry_run else "OPEN")
-                    print(f"  [{sig.strategy}] {mode_label} {sig.outcome} {sig.market_title[:45]} | EV +{sig.ev_pp:.0f}pp | ${amount} | {sig.confidence}")
-                    db.log_decision(run_id, "execution", "live_open" if is_live else ("dry_open" if dry_run else "open"), strategy=sig.strategy, market_id=sig.market_id, reason=execution_decision.reason,
-                                    details={"amount": amount, "ev_pp": sig.ev_pp, "confidence": sig.confidence, "phase": "execute"})
-                elif is_live:
-                    print(f"  [{sig.strategy}] LIVE FAILED {sig.outcome} {sig.market_title[:45]} | ${amount}")
-                    db.log_decision(run_id, "execution", "live_open_failed", strategy=sig.strategy, market_id=sig.market_id, reason="broker_returned_none",
-                                    details={"amount": amount, "ev_pp": sig.ev_pp, "confidence": sig.confidence, "phase": "execute"})
 
             if consumed_ids and not dry_run:
                 db.mark_signals_consumed(consumed_ids, run_id)
@@ -782,101 +848,19 @@ def run(environment: str = "paper", dry_run: bool = False, send: bool = True, fa
                     db.log_signal_execution_check(run_id, execution_snapshot.as_dict())
 
                     execution_decision = classify_strategy_execution(policy, strategy, strategy_meta_item)
-
-                    if execution_decision.action == "skip":
-                        db.log_decision(run_id, "environment", "skip", strategy=strategy.name, market_id=sig.market_id, reason=execution_decision.reason)
-                        continue
-
-                    if execution_decision.action == "alert":
-                        alert_signals.append(sig)
-                        print(f"  [{strategy.name}] ALERT {sig.outcome} {sig.market_title[:45]} | gap {sig.ev_pp:.0f}pp | {sig.confidence}")
-                        db.log_decision(
-                            run_id,
-                            "alert",
-                            "alert_only",
-                            strategy=strategy.name,
-                            market_id=sig.market_id,
-                            reason=execution_decision.reason,
-                            details={
-                                "ev_pp": sig.ev_pp,
-                                "confidence": sig.confidence,
-                                "alert_only": strategy_meta_item.get("alert_only", False),
-                                "promotable": strategy_meta_item.get("promotable", False),
-                                "live_ready": strategy_meta_item.get("live_ready", False),
-                            },
-                        )
-                        continue
-
-                    is_live = execution_decision.action == "live"
-                    is_dual = execution_decision.action == "paper_and_live"
-                    active_broker = broker
-
-                    if active_broker.has_position(sig.market_id, strategy.name):
-                        print(f"  [{strategy.name}] skip duplicate: {sig.market_title[:45]}")
-                        db.log_decision(run_id, "duplicate_check", "skip", strategy=strategy.name, market_id=sig.market_id, reason="already_open")
-                        continue
-                    live_dup = is_dual and live_broker and live_broker.has_position(sig.market_id, strategy.name)
-                    # Live/dual strategies in combined mode: skip cooldown — signal was just
-                    # generated in this run.  Paper-scan signals should not block live execution.
-                    if not is_live and not is_dual:
-                        cooldown_consumed_only = execution_decision.action == "paper"
-                        if db.has_recent_signal(strategy.name, sig.market_id, hours=24.0, consumed_only=cooldown_consumed_only):
-                            print(f"  [{strategy.name}] skip cooldown: {sig.market_title[:45]}")
-                            db.log_decision(run_id, "cooldown_check", "skip", strategy=strategy.name, market_id=sig.market_id, reason="signal_within_24h")
-                            continue
-                    amount = strategy.size(sig)
-                    if amount < 1.0:
-                        print(f"  [{strategy.name}] skip tiny size (${amount}): {sig.market_title[:45]}")
-                        db.log_decision(run_id, "size_check", "skip", strategy=strategy.name, market_id=sig.market_id, reason="tiny_size", details={"amount": amount})
-                        continue
-                    allowed, reason = _can_open(amount, strategy.name, meta, exposure_by_strategy, exposure_by_window)
-                    if not allowed:
-                        print(f"  [{strategy.name}] skip capped: {sig.market_title[:45]} | {reason}")
-                        db.log_decision(run_id, "cap_check", "skip", strategy=strategy.name, market_id=sig.market_id, reason=reason, details={"amount": amount, "strategy_exposure": exposure_by_strategy.get(strategy.name, 0.0), "window_exposure": exposure_by_window.get(strategy_meta_item.get("time_window", "unknown"), 0.0)})
-                        continue
-
-                    if is_live:
-                        market_entry = market_index.get(sig.market_id, {})
-                        market_dict = market_entry.get("market") or (market_entry.get("event", {}).get("markets") or [None])[0]
-                        trade = active_broker.open_position(sig, amount, market=market_dict)
-                        track = trade is not None
-                    elif is_dual:
-                        # Dual execution: open paper position + attempt live position
-                        active_broker.open_position(sig, amount)
-                        track = True
-                        if live_broker and not dry_run and not live_dup:
-                            try:
-                                market_entry = market_index.get(sig.market_id, {})
-                                market_dict = market_entry.get("market") or (market_entry.get("event", {}).get("markets") or [None])[0]
-                                live_trade = live_broker.open_position(sig, amount, market=market_dict)
-                                if live_trade:
-                                    print(f"  [{strategy.name}] LIVE {sig.outcome} {sig.market_title[:45]} | EV +{sig.ev_pp:.0f}pp | ${amount} | {sig.confidence}")
-                                    db.log_decision(run_id, "execution", "live_open", strategy=strategy.name, market_id=sig.market_id, reason="dual_execution",
-                                                    details={"amount": amount, "ev_pp": sig.ev_pp, "confidence": sig.confidence, "mode": "live", "environment": policy.name})
-                                else:
-                                    print(f"  [{strategy.name}] LIVE FAILED {sig.outcome} {sig.market_title[:45]} | ${amount}")
-                                    db.log_decision(run_id, "execution", "live_open_failed", strategy=strategy.name, market_id=sig.market_id, reason="broker_returned_none",
-                                                    details={"amount": amount, "ev_pp": sig.ev_pp, "confidence": sig.confidence, "mode": "live", "environment": policy.name})
-                            except Exception as e:
-                                print(f"  [{strategy.name}] LIVE ERROR {sig.market_title[:45]} | {e}")
-                                db.log_decision(run_id, "execution", "live_open_failed", strategy=strategy.name, market_id=sig.market_id, reason=f"exception: {e}",
-                                                details={"amount": amount, "ev_pp": sig.ev_pp, "confidence": sig.confidence, "mode": "live", "environment": policy.name})
-                    else:
-                        active_broker.open_position(sig, amount)
-                        track = True
-
-                    if track:
-                        exposure_by_strategy[strategy.name] = exposure_by_strategy.get(strategy.name, 0.0) + amount
-                        exposure_by_window[strategy_meta_item.get("time_window", "unknown")] = exposure_by_window.get(strategy_meta_item.get("time_window", "unknown"), 0.0) + amount
-                        new_trades.append((sig, amount))
+                    is_live_or_dual = execution_decision.action in ("live", "paper_and_live")
+                    result = _execute_signal(
+                        sig=sig, strategy_name=strategy.name, strategy=strategy, strategy_meta_item=strategy_meta_item,
+                        execution_decision=execution_decision, policy=policy, broker=broker, live_broker=live_broker,
+                        db=db, run_id=run_id, meta=meta, market_index=market_index,
+                        exposure_by_strategy=exposure_by_strategy, exposure_by_window=exposure_by_window,
+                        alert_signals=alert_signals, dry_run=dry_run,
+                        skip_cooldown=is_live_or_dual,
+                        extra_log_details={"mode": "live" if execution_decision.action == "live" else "paper", "environment": policy.name},
+                    )
+                    if result.action == "opened":
+                        new_trades.append((sig, result.amount))
                         new_positions_count += 1
-                        mode_label = "LIVE" if is_live else ("WOULD OPEN" if dry_run else "OPEN")
-                        print(f"  [{strategy.name}] {mode_label} {sig.outcome} {sig.market_title[:45]} | EV +{sig.ev_pp:.0f}pp | ${amount} | {sig.confidence}")
-                        db.log_decision(run_id, "execution", "live_open" if is_live else ("dry_open" if dry_run else "open"), strategy=strategy.name, market_id=sig.market_id, reason=execution_decision.reason, details={"amount": amount, "ev_pp": sig.ev_pp, "confidence": sig.confidence, "mode": "live" if is_live else "paper", "environment": policy.name})
-                    elif is_live:
-                        print(f"  [{strategy.name}] LIVE FAILED {sig.outcome} {sig.market_title[:45]} | ${amount}")
-                        db.log_decision(run_id, "execution", "live_open_failed", strategy=strategy.name, market_id=sig.market_id, reason="broker_returned_none",
-                                        details={"amount": amount, "ev_pp": sig.ev_pp, "confidence": sig.confidence, "mode": "live", "environment": policy.name})
 
                 print()
                 _log_strategy_details(db, run_id, strategy)
