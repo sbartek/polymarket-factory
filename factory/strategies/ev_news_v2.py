@@ -1,9 +1,13 @@
 """
-Strategy: ev_news
+Strategy: ev_news_v2
 Hypothesis: Recent news contains information not yet priced into prediction markets.
 Method: Use Claude to scan top markets + headlines, identify topics with likely EV,
         then estimate p̂ per market from news snippets.
-Frequency: 3x/day (same as runner schedule).
+
+v2 changes (2026-04-15):
+- MIN_ENTRY_PRICE = 0.05 — no more $0.005 lottery tickets
+- Category exclusion — no sports matches, no "what price will X hit" crypto markets
+- Stricter confidence filter — only "high" confidence signals
 """
 import json
 import re
@@ -19,6 +23,17 @@ from ..models import Signal
 from .base import Strategy
 
 DDGS_HARD_TIMEOUT = 30  # seconds — kill hung DDGS calls
+MIN_ENTRY_PRICE = 0.05  # reject signals where outcome price < 5%
+EXCLUDED_TITLE_KEYWORDS = [
+    # Sports — Claude has no edge on match outcomes
+    " vs ", " vs. ", "bo3", "bo5",
+    "nba", "nhl", "nfl", "mlb", "mls", "ipl", "ufc",
+    "cricket", "boxing", "grand prix", "formula 1",
+    # Esports
+    "league of legends", "lol:", "dota", "valorant", "counter-strike", "cs2:",
+    # Crypto price targets — "What price will X hit?" is pure gambling
+    "what price will", "what will the price",
+]
 
 
 def _days_to_close(end_date: str | None) -> int | None:
@@ -30,21 +45,25 @@ def _days_to_close(end_date: str | None) -> int | None:
         return None
 
 
-class EvNewsStrategy(Strategy):
-    name = "ev_news"
-    paused = True  # superseded by ev_news_v2 (2026-04-15)
+def _is_excluded(title: str) -> bool:
+    lower = title.lower()
+    return any(kw in lower for kw in EXCLUDED_TITLE_KEYWORDS)
+
+
+class EvNewsV2Strategy(Strategy):
+    name = "ev_news_v2"
     edge_type = "information"
     time_window = "short"
     target_hold_min_days = 1
     target_hold_max_days = 14
     scan_frequency = "3x/day"
-    max_position_usdc = 15.0
-    min_ev_pp = 10.0
+    max_position_usdc = 10.0
+    min_ev_pp = 12.0
     n_topics = 3
-    min_volume = 10_000
+    min_volume = 15_000
     min_days_to_close = 1
     max_days_to_close = 14
-    max_trades_per_run = 3
+    max_trades_per_run = 2
     fast_dry_run_topics = 1
 
     def _fetch_news(self, query: str, n: int = 5) -> list[dict]:
@@ -76,6 +95,9 @@ class EvNewsStrategy(Strategy):
         broad_news = self._fetch_news("world news politics economy finance", n=10)
         prompt = f"""From these Polymarket markets and today's news, pick the {self.n_topics} topics most likely to have a news-based mispricing right now.
 
+IMPORTANT: Only pick topics related to politics, geopolitics, economics, or major world events.
+Do NOT pick sports, esports, crypto price predictions, or celebrity gossip — we have no edge there.
+
 MARKETS (top by volume):
 {markets_to_text(markets[:20])}
 
@@ -83,7 +105,7 @@ TODAY'S NEWS:
 {self._news_to_text(broad_news)}
 
 Return ONLY a JSON array of {self.n_topics} single lowercase words that work as Polymarket tag slugs.
-Example: ["iran","fed","bitcoin"]"""
+Example: ["iran","fed","hungary"]"""
 
         response = call_claude(prompt)
         match = re.search(r'\[.*?\]', response, re.DOTALL)
@@ -92,10 +114,9 @@ Example: ["iran","fed","bitcoin"]"""
                 return [str(q) for q in json.loads(match.group())[:self.n_topics]]
             except (json.JSONDecodeError, TypeError):
                 pass
-        return ["iran", "fed", "bitcoin"]
+        return ["iran", "fed", "ukraine"]
 
     def _analyze_topic(self, query: str, markets: list[dict], db: FactoryDB | None = None) -> list[Signal]:
-        # Find relevant markets
         slug_words = query.replace("-", " ").split()
         topic_markets = fetch_by_tag(query, limit=5)
         if not topic_markets:
@@ -106,7 +127,12 @@ Example: ["iran","fed","bitcoin"]"""
         if not topic_markets:
             return []
 
-        # Strategy-level dedup: drop markets that already had a signal in the last 24h
+        # Filter out excluded categories
+        topic_markets = [m for m in topic_markets if not _is_excluded(m.get("title") or "")]
+        if not topic_markets:
+            return []
+
+        # Strategy-level dedup
         if db is not None:
             before = len(topic_markets)
             topic_markets = [
@@ -122,6 +148,12 @@ Example: ["iran","fed","bitcoin"]"""
         news = self._fetch_news(query, n=5)
 
         prompt = f"""You are a prediction market analyst. Find mispricings for "{query}".
+
+IMPORTANT RULES:
+- Only signal markets where news gives a CLEAR, SPECIFIC informational edge
+- Do NOT signal sports/esports matches — you have no edge on game outcomes
+- Do NOT signal crypto price targets ("will X hit $Y?") — these are pure speculation
+- Be conservative: only "high" confidence if the news strongly contradicts the current price
 
 MARKETS:
 {markets_to_text(topic_markets)}
@@ -159,7 +191,7 @@ Only include markets where |ev_pp| >= {self.min_ev_pp}. Return <signals>[]</sign
                     continue
 
                 confidence = (s.get("confidence", "medium") or "medium").lower()
-                if confidence not in ("medium", "high"):
+                if confidence != "high":
                     continue
 
                 closes = s.get("closes") or ""
@@ -170,9 +202,15 @@ Only include markets where |ev_pp| >= {self.min_ev_pp}. Return <signals>[]</sign
                 outcome = s.get("outcome", "YES").upper()
                 mp_pct = float(s.get("market_price", 50))
                 ph_pct = float(s.get("p_hat", 50))
-                # Normalize to price of the stated outcome
                 mp = (100 - mp_pct) / 100 if outcome == "NO" else mp_pct / 100
                 ph = (100 - ph_pct) / 100 if outcome == "NO" else ph_pct / 100
+
+                # Reject extreme longshots
+                entry_price = mp if outcome == "YES" else (1 - mp)
+                if entry_price < MIN_ENTRY_PRICE:
+                    print(f"  [{self.name}] skip low entry price ({entry_price:.3f}): {s.get('title', '?')[:45]}")
+                    continue
+
                 signals.append(Signal(
                     strategy=self.name,
                     market_id=s.get("slug", ""),
@@ -200,9 +238,10 @@ Only include markets where |ev_pp| >= {self.min_ev_pp}. Return <signals>[]</sign
             days = _days_to_close(m.get("endDate"))
             if days is None or not (self.min_days_to_close <= days <= self.max_days_to_close):
                 continue
+            if _is_excluded(m.get("title") or ""):
+                continue
             filtered_markets.append(m)
 
-        # Prioritize near-term markets (closer closing date first)
         filtered_markets.sort(key=lambda m: _days_to_close(m.get("endDate")) or 999)
 
         try:

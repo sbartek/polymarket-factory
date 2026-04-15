@@ -9,6 +9,7 @@ from .correlated_laggard import CorrelatedLaggardStrategy
 from .correlated_pairs import CorrelatedPairsStrategy
 from .esport48 import Esport48Strategy
 from .ev_news import EvNewsStrategy
+from .ev_news_v2 import EvNewsV2Strategy
 from .fade_certainty_v2 import FadeCertaintyV2Strategy
 from .news_impact_fade_by_recency import NewsImpactFadeByRecencyStrategy
 from .mutually_exclusive_oversum import MutuallyExclusiveOversumStrategy
@@ -62,7 +63,8 @@ def _load_generated_strategies():
 # Registry — add new strategies here
 STRATEGIES = [
     BaseRateAnchorStrategy(),
-    EvNewsStrategy(),
+    EvNewsStrategy(),  # paused — superseded by ev_news_v2
+    EvNewsV2Strategy(),
     SpreadArbStrategy(),
     SpreadArbV2Strategy(),
     StaleMarketStrategy(),
