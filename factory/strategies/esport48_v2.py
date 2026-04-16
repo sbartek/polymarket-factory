@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 from datetime import UTC, datetime
 
-from ..esport_ratings import get_win_probability, MAX_TRADEABLE_RD
+from ..esport_ratings import get_win_probability, MAX_TRADEABLE_RD, MIN_MATCHES
 from ..feed import event_url, get_yes_price
 from ..models import Signal
 from .base import Strategy
@@ -148,8 +148,10 @@ class Esport48V2Strategy(Strategy):
             if not result:
                 continue
 
-            # Skip if RD is too high (uncertain ratings)
+            # Skip if RD is too high or not enough matches
             if result["team1_rd"] > MAX_TRADEABLE_RD or result["team2_rd"] > MAX_TRADEABLE_RD:
+                continue
+            if result["team1_matches"] < MIN_MATCHES or result["team2_matches"] < MIN_MATCHES:
                 continue
 
             glicko_prob = result["p1_win"]  # probability team_a (YES) wins
