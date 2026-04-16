@@ -25,7 +25,8 @@ DEFAULT_RATING = 1500.0
 DEFAULT_RD = 350.0
 DEFAULT_VOL = 0.06
 # RD above this = too uncertain to trade on
-MAX_TRADEABLE_RD = 200.0
+# Start generous (280) — will tighten as we accumulate more match data
+MAX_TRADEABLE_RD = 280.0
 
 
 def _expected_score(r1: float, rd1: float, r2: float, rd2: float) -> float:
