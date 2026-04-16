@@ -8,6 +8,7 @@ from .celebrity_tabloid import CelebrityTabloidStrategy
 from .correlated_laggard import CorrelatedLaggardStrategy
 from .correlated_pairs import CorrelatedPairsStrategy
 from .esport48 import Esport48Strategy
+from .esport48_v2 import Esport48V2Strategy
 from .ev_news import EvNewsStrategy
 from .ev_news_v2 import EvNewsV2Strategy
 from .fade_certainty_v2 import FadeCertaintyV2Strategy
@@ -70,7 +71,8 @@ STRATEGIES = [
     StaleMarketStrategy(),
     CorrelatedPairsStrategy(),
     CorrelatedLaggardStrategy(),
-    Esport48Strategy(),
+    Esport48Strategy(),  # paused — 0% WR, superseded by esport48_v2
+    Esport48V2Strategy(),
     CelebrityTabloidStrategy(),
     CarryRewardsStrategy(),
     ConditionalProbabilityMispricingStrategy(),

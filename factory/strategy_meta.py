@@ -39,7 +39,8 @@ STRATEGY_EXPOSURE_CAPS = {
     "stale_market": 50.0,
     "correlated_pairs": 30.0,
     "correlated_laggard": 25.0,
-    "esport48": 25.0,
+    "esport48": 0.0,
+    "esport48_v2": 0.0,
     "celebrity_tabloid": 25.0,
     "carry_rewards": 25.0,
     "polling_vs_market": 30.0,
@@ -65,7 +66,7 @@ STRATEGY_EXPOSURE_CAPS = {
 
 
 
-ACTIVE_STRATEGIES = {"ev_news_v2", "spread_arb_v2", "stale_market", "correlated_pairs", "correlated_laggard", "esport48", "celebrity_tabloid", "carry_rewards", "polling_vs_market", "mutually_exclusive_oversum", "conditional_probability_mispricing", "conditional_outcome_count_asymmetry", "conditional_outcome_drift", "news_impact_fade_by_recency", "base_rate_knn", "fade_certainty_v2", "resolution_hunter_v2", "weather_edge_v2", "weather_oversum", "weather_convergence", "weather_autocorrelation", "price_move_fade", "overnight_gap_fade", "thin_market_impact_fade", "volume_divergence_stale", "expiry_convergence_buy"}
+ACTIVE_STRATEGIES = {"ev_news_v2", "spread_arb_v2", "stale_market", "correlated_pairs", "correlated_laggard", "esport48_v2", "celebrity_tabloid", "carry_rewards", "polling_vs_market", "mutually_exclusive_oversum", "conditional_probability_mispricing", "conditional_outcome_count_asymmetry", "conditional_outcome_drift", "news_impact_fade_by_recency", "base_rate_knn", "fade_certainty_v2", "resolution_hunter_v2", "weather_edge_v2", "weather_oversum", "weather_convergence", "weather_autocorrelation", "price_move_fade", "overnight_gap_fade", "thin_market_impact_fade", "volume_divergence_stale", "expiry_convergence_buy"}
 
 
 def expected_window_from_days(min_days: float | int, max_days: float | int) -> TimeWindow:

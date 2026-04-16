@@ -12,6 +12,8 @@ dependencies = [
     "fastapi",
     "uvicorn[standard]",
     "psycopg2-binary>=2.9.11",
+    "glicko2>=2.1.0",
+    "hltv-async-api>=0.8.0",
 ]
 
 [project.optional-dependencies]
