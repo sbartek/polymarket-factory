@@ -22,10 +22,13 @@ MAX_PRICE = 0.92
 MIN_EDGE_PP = 7.0
 MAX_ALERTS_PER_RUN = 5
 
-ESPORT_TERMS = {
-    "esport", "esports", "cs2", "counter strike", "counter-strike",
+CS2_TERMS = {
+    "cs2", "counter strike", "counter-strike",
     "iem", "esl", "blast", "pgl", "cct",
 }
+
+# Exclude non-CS2 esport titles
+NON_CS2_PREFIXES = {"lol:", "valorant:", "dota", "league of legends", "overwatch"}
 
 
 def _parse_dt(raw: str | None) -> datetime | None:
@@ -62,14 +65,22 @@ def _event_text(ev: dict) -> str:
 
 def _is_cs2_event(ev: dict) -> bool:
     text = _event_text(ev)
-    return any(term in text for term in ESPORT_TERMS)
+    title_lower = (ev.get("title") or "").lower()
+    # Exclude non-CS2 esport titles
+    if any(title_lower.startswith(p) for p in NON_CS2_PREFIXES):
+        return False
+    return any(term in text for term in CS2_TERMS)
 
 
 def _extract_team_names(title: str) -> tuple[str, str] | None:
-    """Extract two team names from 'Team A vs Team B (BO3) - Event'."""
-    cleaned = re.sub(r"\s*\(BO\d\).*", "", title, flags=re.IGNORECASE)
+    """Extract two team names from 'Counter-Strike: Team A vs Team B (BO3) - Event'."""
+    cleaned = title
+    # Strip game prefix
+    cleaned = re.sub(r"^(Counter-Strike|CS2|CS:GO)\s*:\s*", "", cleaned, flags=re.IGNORECASE)
+    # Strip BO and event suffix
+    cleaned = re.sub(r"\s*\(BO\d\).*", "", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(
-        r"\s*-\s*(VCT|PGL|LEC|LCK|LPL|ESL|BLAST|IEM|CCT|DreamLeague|VCL).*",
+        r"\s*-\s*(VCT|PGL|LEC|LCK|LPL|ESL|BLAST|IEM|CCT|DreamLeague|VCL|NODWIN).*",
         "", cleaned, flags=re.IGNORECASE,
     )
     parts = re.split(r"\s+vs\.?\s+", cleaned, maxsplit=1, flags=re.IGNORECASE)
