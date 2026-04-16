@@ -160,7 +160,7 @@ async def _fetch_hltv_results(days: int = 90, max_results: int = 200) -> list[di
 
     hltv = Hltv()
     try:
-        results = await hltv.get_results(days=days, max=max_results)
+        results = await hltv.get_results(days=days, max=max_results, min_rating=0)
         if not results:
             return []
         return [
