@@ -634,16 +634,21 @@ class FactoryDB:
             return [dict(r) for r in cur.fetchall()]
 
     def has_open_position(self, market_id: str, strategy: str, mode: str | None = None) -> bool:
+        # Normalize: match both bare numeric ("1940777") and composite ("slug:1940777")
+        numeric_id = market_id.split(":")[-1] if ":" in market_id else market_id
+        like_suffix = f"%:{numeric_id}"
         with self._conn() as (conn, cur):
+            id_clause = "(market_id = %s OR market_id = %s OR market_id LIKE %s)"
+            id_params = [market_id, numeric_id, like_suffix]
             if mode == "paper":
                 cur.execute(
-                    "SELECT 1 FROM trades WHERE market_id = %s AND strategy = %s AND status = 'open' AND COALESCE(NULLIF(mode, ''), 'paper') = 'paper' LIMIT 1",
-                    (market_id, strategy),
+                    f"SELECT 1 FROM trades WHERE {id_clause} AND strategy = %s AND status = 'open' AND COALESCE(NULLIF(mode, ''), 'paper') = 'paper' LIMIT 1",
+                    (*id_params, strategy),
                 )
             elif mode:
-                cur.execute("SELECT 1 FROM trades WHERE market_id = %s AND strategy = %s AND status = 'open' AND mode = %s LIMIT 1", (market_id, strategy, mode))
+                cur.execute(f"SELECT 1 FROM trades WHERE {id_clause} AND strategy = %s AND status = 'open' AND mode = %s LIMIT 1", (*id_params, strategy, mode))
             else:
-                cur.execute("SELECT 1 FROM trades WHERE market_id = %s AND strategy = %s AND status = 'open' LIMIT 1", (market_id, strategy))
+                cur.execute(f"SELECT 1 FROM trades WHERE {id_clause} AND strategy = %s AND status = 'open' LIMIT 1", (*id_params, strategy))
             return cur.fetchone() is not None
 
     def insert_trade(self, trade: dict):
@@ -755,16 +760,21 @@ class FactoryDB:
 
     def has_recent_signal(self, strategy: str, market_id: str, hours: float = 24.0, consumed_only: bool = False) -> bool:
         cutoff = (datetime.now(UTC) - timedelta(hours=hours)).isoformat(timespec="seconds")
+        # Normalize: match both bare numeric and composite slug:numeric
+        numeric_id = market_id.split(":")[-1] if ":" in market_id else market_id
+        like_suffix = f"%:{numeric_id}"
+        id_clause = "(market_id = %s OR market_id = %s OR market_id LIKE %s)"
+        id_params = [market_id, numeric_id, like_suffix]
         with self._conn() as (conn, cur):
             if consumed_only:
                 cur.execute(
-                    "SELECT 1 FROM signals WHERE strategy = %s AND market_id = %s AND created_at >= %s AND consumed_by_run_id IS NOT NULL LIMIT 1",
-                    (strategy, market_id, cutoff),
+                    f"SELECT 1 FROM signals WHERE strategy = %s AND {id_clause} AND created_at >= %s AND consumed_by_run_id IS NOT NULL LIMIT 1",
+                    (strategy, *id_params, cutoff),
                 )
             else:
                 cur.execute(
-                    "SELECT 1 FROM signals WHERE strategy = %s AND market_id = %s AND created_at >= %s LIMIT 1",
-                    (strategy, market_id, cutoff),
+                    f"SELECT 1 FROM signals WHERE strategy = %s AND {id_clause} AND created_at >= %s LIMIT 1",
+                    (strategy, *id_params, cutoff),
                 )
             return cur.fetchone() is not None
 
