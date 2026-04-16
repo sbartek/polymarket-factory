@@ -81,6 +81,14 @@ def fetch_by_tag(tag_slug: str, limit: int = 5) -> list[dict]:
     return resp.json()
 
 
+def fetch_by_slug(slug: str) -> list[dict]:
+    """Fetch event(s) by slug, regardless of active/closed status."""
+    params = {"slug": slug}
+    resp = requests.get(f"{GAMMA_EVENTS}?{urllib.parse.urlencode(params)}", timeout=10)
+    resp.raise_for_status()
+    return resp.json()
+
+
 def fetch_closed(slug: str) -> list[dict]:
     params = {"slug": slug, "closed": "true"}
     resp = requests.get(f"{GAMMA_EVENTS}?{urllib.parse.urlencode(params)}", timeout=10)

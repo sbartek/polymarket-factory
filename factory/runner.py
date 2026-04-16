@@ -23,7 +23,7 @@ from .db import FactoryDB
 from .environment import classify_strategy_execution, get_environment_policy
 from .live_broker import LiveBroker
 from .execution import build_market_index, snapshot_for_signal
-from .feed import fetch_top, fetch_top_paginated, fetch_closed, get_market_winner, get_submarket_outcome
+from .feed import fetch_top, fetch_top_paginated, fetch_by_slug, fetch_closed, get_market_winner, get_submarket_outcome
 from .models import Signal
 from .notify import send_notification, send_whatsapp
 from .portfolio import summary, format_summary, format_wa_table, snapshot_open_positions
@@ -306,7 +306,24 @@ def _execute_signal(
     # --- Open position ---
     def _get_market_dict():
         entry = market_index.get(sig.market_id, {})
-        return entry.get("market") or (entry.get("event", {}).get("markets") or [None])[0]
+        market = entry.get("market") or (entry.get("event", {}).get("markets") or [None])[0]
+        if market:
+            return market
+        # Fallback: fetch the event by slug from Gamma API
+        event_slug = sig.market_id.split(":")[0] if ":" in sig.market_id else sig.market_id
+        try:
+            events = fetch_by_slug(event_slug)
+            if events:
+                new_entries = build_market_index(events)
+                market_index.update(new_entries)
+                entry = market_index.get(sig.market_id, {})
+                market = entry.get("market") or (entry.get("event", {}).get("markets") or [None])[0]
+                if market:
+                    print(f"  [{strategy_name}] fetched market data for {sig.market_id} via fallback")
+                    return market
+        except Exception as e:
+            print(f"  [{strategy_name}] fallback fetch failed for {event_slug}: {e}")
+        return None
 
     def _try_live_open():
         if not live_broker or dry_run or live_dup:
