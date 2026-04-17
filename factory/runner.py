@@ -326,8 +326,17 @@ def _execute_signal(
         market = entry.get("market") or (entry.get("event", {}).get("markets") or [None])[0]
         if market:
             return market
+        # For bare numeric IDs, scan the index for a composite key ending with :numeric_id
+        if ":" not in sig.market_id:
+            for key, val in market_index.items():
+                if key.endswith(f":{sig.market_id}"):
+                    market = val.get("market")
+                    if market:
+                        return market
         # Fallback: fetch the event by slug from Gamma API
-        event_slug = sig.market_id.split(":")[0] if ":" in sig.market_id else sig.market_id
+        event_slug = sig.market_id.split(":")[0] if ":" in sig.market_id else None
+        if not event_slug:
+            return None
         try:
             events = fetch_by_slug(event_slug)
             if events:
