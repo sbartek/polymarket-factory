@@ -151,6 +151,15 @@ def _log_strategy_details(db: FactoryDB, run_id: str, strategy):
             db.log_event(run_id, "info", f"{strategy.name}_checks", strategy=strategy.name, payload={"checks": details})
 
 
+def _find_event_slug_for_numeric_id(numeric_id: str, all_positions: list[dict]) -> str | None:
+    """Find the event slug for a bare numeric market_id by checking sibling trades."""
+    for t in all_positions:
+        mid = t.get("market_id", "")
+        if ":" in mid and mid.endswith(f":{numeric_id}"):
+            return mid.split(":")[0]
+    return None
+
+
 def resolve_open_positions(broker, dry_run: bool = False, db: FactoryDB | None = None, run_id: str | None = None):
     open_positions = broker.get_open_positions()
     closed_count = 0
@@ -162,9 +171,17 @@ def resolve_open_positions(broker, dry_run: bool = False, db: FactoryDB | None =
         if ":" in market_id:
             event_slug, submarket_id = market_id.split(":", 1)
         else:
-            event_slug, submarket_id = market_id, None
+            # Bare numeric ID — try to find the event slug from sibling trades
+            sibling_slug = _find_event_slug_for_numeric_id(market_id, open_positions)
+            if sibling_slug:
+                event_slug, submarket_id = sibling_slug, market_id
+            else:
+                event_slug, submarket_id = market_id, None
         try:
             events = fetch_closed(event_slug)
+            if not events:
+                # Fallback: try fetch_by_slug (includes active events that may have resolved submarkets)
+                events = fetch_by_slug(event_slug)
             if not events:
                 continue
             ev = events[0]
