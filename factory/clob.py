@@ -41,9 +41,9 @@ def place_market_order(token_id: str, size: float, timeout: int = 10) -> dict:
     def _timeout_handler(signum, frame):
         raise TimeoutError(f"CLOB order timed out after {timeout}s")
 
-    from py_clob_client.clob_types import OrderArgs, OrderType
+    from py_clob_client.clob_types import MarketOrderArgs, OrderType
     client = _client()
-    order = client.create_market_order(OrderArgs(token_id=token_id, amount=size))
+    order = client.create_market_order(MarketOrderArgs(token_id=token_id, amount=size))
     old = _signal.signal(_signal.SIGALRM, _timeout_handler)
     _signal.alarm(timeout)
     try:
