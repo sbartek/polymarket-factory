@@ -43,7 +43,7 @@ def place_market_order(token_id: str, size: float, timeout: int = 10) -> dict:
 
     from py_clob_client.clob_types import MarketOrderArgs, OrderType
     client = _client()
-    order = client.create_market_order(MarketOrderArgs(token_id=token_id, amount=size))
+    order = client.create_market_order(MarketOrderArgs(token_id=token_id, amount=size, side="BUY"))
     old = _signal.signal(_signal.SIGALRM, _timeout_handler)
     _signal.alarm(timeout)
     try:
