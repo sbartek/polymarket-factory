@@ -351,23 +351,36 @@ def _execute_signal(
             print(f"  [{strategy_name}] fallback fetch failed for {event_slug}: {e}")
         return None
 
-    def _try_live_open():
+    def _try_live_enqueue():
+        """Enqueue a live order for the Mac executor instead of trading directly (VM is geoblocked)."""
         if not live_broker or dry_run or live_dup:
             return
         try:
             market_dict = _get_market_dict()
-            live_trade = live_broker.open_position(sig, amount, market=market_dict)
-            if live_trade:
-                print(f"  [{strategy_name}] LIVE {sig.outcome} {sig.market_title[:45]} | EV +{sig.ev_pp:.0f}pp | ${amount} | {sig.confidence}")
-                db.log_decision(run_id, "execution", "live_open", strategy=strategy_name, market_id=sig.market_id, reason="dual_execution",
+            if not market_dict:
+                print(f"  [{strategy_name}] LIVE SKIP {sig.market_title[:45]} | no market data for queue")
+                db.log_decision(run_id, "execution", "live_enqueue_failed", strategy=strategy_name, market_id=sig.market_id, reason="no_market_data",
                                 details={"amount": amount, "ev_pp": sig.ev_pp, "confidence": sig.confidence, **log_details})
-            else:
-                print(f"  [{strategy_name}] LIVE FAILED {sig.outcome} {sig.market_title[:45]} | ${amount}")
-                db.log_decision(run_id, "execution", "live_open_failed", strategy=strategy_name, market_id=sig.market_id, reason="broker_returned_none",
+                return
+            from .clob import get_clob_token_ids
+            yes_id, no_id = get_clob_token_ids(market_dict)
+            token_id = yes_id if sig.outcome == "YES" else no_id
+            if not token_id:
+                print(f"  [{strategy_name}] LIVE SKIP {sig.market_title[:45]} | no token_id")
+                db.log_decision(run_id, "execution", "live_enqueue_failed", strategy=strategy_name, market_id=sig.market_id, reason="no_token_id",
                                 details={"amount": amount, "ev_pp": sig.ev_pp, "confidence": sig.confidence, **log_details})
+                return
+            # Check live exposure cap
+            if live_broker._live_exposure() + amount > live_broker.__class__.__dict__.get("LIVE_EXPOSURE_CAP_USDC", 150.0):
+                print(f"  [{strategy_name}] LIVE SKIP {sig.market_title[:45]} | exposure cap")
+                return
+            db.enqueue_live_order(run_id, sig, amount, token_id)
+            print(f"  [{strategy_name}] LIVE QUEUED {sig.outcome} {sig.market_title[:45]} | EV +{sig.ev_pp:.0f}pp | ${amount}")
+            db.log_decision(run_id, "execution", "live_enqueued", strategy=strategy_name, market_id=sig.market_id, reason="queued_for_mac",
+                            details={"amount": amount, "ev_pp": sig.ev_pp, "confidence": sig.confidence, **log_details})
         except Exception as e:
-            print(f"  [{strategy_name}] LIVE ERROR {sig.market_title[:45]} | {e}")
-            db.log_decision(run_id, "execution", "live_open_failed", strategy=strategy_name, market_id=sig.market_id, reason=f"exception: {e}",
+            print(f"  [{strategy_name}] LIVE QUEUE ERROR {sig.market_title[:45]} | {e}")
+            db.log_decision(run_id, "execution", "live_enqueue_failed", strategy=strategy_name, market_id=sig.market_id, reason=f"exception: {e}",
                             details={"amount": amount, "ev_pp": sig.ev_pp, "confidence": sig.confidence, **log_details})
 
     if is_live:
@@ -377,7 +390,7 @@ def _execute_signal(
     elif is_dual:
         broker.open_position(sig, amount)
         track = True
-        _try_live_open()
+        _try_live_enqueue()
     else:
         broker.open_position(sig, amount)
         track = True

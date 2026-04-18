@@ -405,6 +405,29 @@ CREATE INDEX IF NOT EXISTS idx_market_trades_slug ON market_trades(slug);
 CREATE INDEX IF NOT EXISTS idx_market_trades_condition_id ON market_trades(condition_id);
 CREATE INDEX IF NOT EXISTS idx_market_trades_trade_timestamp ON market_trades(trade_timestamp);
 CREATE INDEX IF NOT EXISTS idx_market_trades_fetched_at ON market_trades(fetched_at);
+
+CREATE TABLE IF NOT EXISTS live_order_queue (
+    id SERIAL PRIMARY KEY,
+    run_id TEXT,
+    strategy TEXT NOT NULL,
+    market_id TEXT NOT NULL,
+    market_title TEXT,
+    outcome TEXT NOT NULL,
+    amount_usdc REAL NOT NULL,
+    market_price REAL,
+    ev_pp REAL,
+    confidence TEXT,
+    token_id TEXT NOT NULL,
+    closes TEXT,
+    url TEXT,
+    rationale TEXT,
+    status TEXT NOT NULL DEFAULT 'pending',
+    error_message TEXT,
+    trade_id TEXT,
+    created_at TEXT NOT NULL,
+    executed_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_live_order_queue_status ON live_order_queue(status);
 """
 
 SQLITE_SCHEMA_SQL = (
@@ -980,6 +1003,45 @@ class FactoryDB:
                     "overdue": age_min > p["expected_interval_min"],
                 })
         return results
+
+    # --- Live order queue ---
+
+    def enqueue_live_order(self, run_id: str, signal, amount: float, token_id: str):
+        now = datetime.now(UTC).isoformat(timespec="seconds")
+        with self._conn() as (conn, cur):
+            cur.execute("""
+                INSERT INTO live_order_queue
+                    (run_id, strategy, market_id, market_title, outcome, amount_usdc,
+                     market_price, ev_pp, confidence, token_id, closes, url, rationale,
+                     status, created_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'pending', %s)
+            """, (
+                run_id, signal.strategy, signal.market_id, signal.market_title,
+                signal.outcome, round(amount, 2),
+                signal.market_price, signal.ev_pp, signal.confidence,
+                token_id, signal.closes, signal.url, signal.rationale,
+                now,
+            ))
+            conn.commit()
+
+    def get_pending_live_orders(self) -> list[dict]:
+        with self._conn() as (conn, cur):
+            cur.execute("""
+                SELECT * FROM live_order_queue
+                WHERE status = 'pending'
+                ORDER BY created_at ASC
+            """)
+            return [dict(r) for r in cur.fetchall()]
+
+    def update_live_order(self, order_id: int, status: str, trade_id: str | None = None, error: str | None = None):
+        now = datetime.now(UTC).isoformat(timespec="seconds")
+        with self._conn() as (conn, cur):
+            cur.execute("""
+                UPDATE live_order_queue
+                SET status = %s, executed_at = %s, trade_id = %s, error_message = %s
+                WHERE id = %s
+            """, (status, now, trade_id, error, order_id))
+            conn.commit()
 
     def get_trade_volume_by_slug(self, slug: str, since_hours: float = 24.0) -> dict:
         """Aggregate trade volume and count for a market slug in the last N hours."""
