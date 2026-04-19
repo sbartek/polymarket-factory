@@ -34,7 +34,7 @@ MIN_DAYS_TO_CLOSE = 1       # skip same-day — too late for base rate edge
 MAX_SIGNALS_PER_RUN = 3
 MIN_GAP_PP = 18.0      # raised from 15 — need stronger signal
 MIN_NEIGHBORS = 5       # need enough data for confidence
-MIN_AVG_SIMILARITY = 0.08  # raised from 0.05 — neighbors must be relevant
+MIN_AVG_SIMILARITY = 0.50  # raised from 0.08 — need strong semantic match for reliable base rates
 
 # Categories where base rates from title similarity are meaningless
 EXCLUDED_KEYWORDS = [
@@ -44,7 +44,7 @@ EXCLUDED_KEYWORDS = [
     "champions league", "serie a", "la liga", "bundesliga", "ligue 1",
     # Esports — same problem
     "esport", "valorant", "cs2", "counter-strike", "dota", "league of legends",
-    "lol:", "bo3", "bo5",
+    "lol:", "bo3", "bo5", "iem ", "esl ", "pgl ", "blast ",
     # Weather — "highest temperature in X" always matches other cities, not useful
     "temperature", "highest temp", "lowest temp", "weather",
     # Price targets — "bitcoin above $X" base rate depends on $X, not the title
