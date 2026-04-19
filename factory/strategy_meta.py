@@ -56,7 +56,7 @@ STRATEGY_EXPOSURE_CAPS = {
     "news_impact_fade_by_recency": 20.0,
     "price_move_fade": 40.0,
     "weather_oversum": 0.0,
-    "weather_convergence": 0.0,
+    "weather_convergence": 20.0,
     "weather_autocorrelation": 0.0,
     "overnight_gap_fade": 25.0,
     "thin_market_impact_fade": 35.0,
