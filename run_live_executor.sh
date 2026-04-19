@@ -6,7 +6,7 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 if [[ -f "$SCRIPT_DIR/.env" ]]; then set -a; source "$SCRIPT_DIR/.env"; set +a; fi
-export PATH="/Users/barteks/.local/bin:$PATH"
+export PATH="/Users/barteks/local/bin:/Users/barteks/.local/bin:$PATH"
 
 # SSH tunnel to Cloud SQL via VM (if not already running)
 if ! nc -z localhost 5433 2>/dev/null; then
