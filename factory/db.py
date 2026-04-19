@@ -406,6 +406,16 @@ CREATE INDEX IF NOT EXISTS idx_market_trades_condition_id ON market_trades(condi
 CREATE INDEX IF NOT EXISTS idx_market_trades_trade_timestamp ON market_trades(trade_timestamp);
 CREATE INDEX IF NOT EXISTS idx_market_trades_fetched_at ON market_trades(fetched_at);
 
+CREATE TABLE IF NOT EXISTS base_rate_embeddings (
+    slug TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    resolved_yes INTEGER,
+    end_date TEXT,
+    volume REAL,
+    embedding vector(768),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS live_order_queue (
     id SERIAL PRIMARY KEY,
     run_id TEXT,
