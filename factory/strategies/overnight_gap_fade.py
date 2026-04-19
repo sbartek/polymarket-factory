@@ -46,8 +46,8 @@ def _is_excluded(title: str) -> bool:
 
 class OvernightGapFadeStrategy(Strategy):
     name = "overnight_gap_fade"
-    alert_only = True
-    trading_enabled = False
+    alert_only = False
+    trading_enabled = True
     promotable = True
     promotion_criteria = "20 signals with >55% reversion within 12h"
     min_ev_pp = 8.0

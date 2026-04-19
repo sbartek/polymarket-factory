@@ -141,8 +141,8 @@ class ConditionalProbabilityMispricingStrategy(Strategy):
     scan_frequency = "3x/day"
     max_position_usdc = 10.0
     min_ev_pp = MIN_GAP_PP
-    alert_only = True
-    trading_enabled = False
+    alert_only = False
+    trading_enabled = True
     promotable = True
     promotion_criteria = "20 signals with >70% profit (violations should revert reliably)"
     signal_cooldown_hours = 12.0
