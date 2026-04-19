@@ -238,6 +238,25 @@ class _ExecuteResult:
     is_live_open: bool = False
 
 
+CONFLUENCE_SIZE_BOOST = 1.5  # 1.5x size when 2+ strategies agree
+
+
+def _confluence_key(market_id: str, outcome: str) -> str:
+    """Normalize market_id for confluence matching (bare numeric matches composite)."""
+    numeric = market_id.split(":")[-1] if ":" in market_id else market_id
+    return f"{numeric}:{outcome}"
+
+
+def _build_confluence_map(rows: list[dict]) -> dict[str, int]:
+    """Count how many distinct strategies signal the same market+direction."""
+    from collections import defaultdict
+    key_strategies: dict[str, set[str]] = defaultdict(set)
+    for row in rows:
+        key = _confluence_key(row.get("market_id", ""), row.get("outcome", ""))
+        key_strategies[key].add(row.get("strategy", ""))
+    return {k: len(v) for k, v in key_strategies.items()}
+
+
 def _execute_signal(
     sig: Signal,
     strategy_name: str,
@@ -257,6 +276,7 @@ def _execute_signal(
     dry_run: bool,
     skip_cooldown: bool = False,
     extra_log_details: dict | None = None,
+    confluence_boost: int = 1,
 ) -> _ExecuteResult:
     """Shared execution logic for a single signal. Returns result indicating what happened."""
     log_details = extra_log_details or {}
@@ -308,6 +328,10 @@ def _execute_signal(
             return _ExecuteResult("skip")
 
     amount = strategy.size(sig)
+    if confluence_boost >= 2:
+        base_amount = amount
+        amount = round(amount * CONFLUENCE_SIZE_BOOST, 2)
+        print(f"  [{strategy_name}] confluence x{confluence_boost} → size ${base_amount:.2f} → ${amount:.2f}")
     if amount < 1.0:
         db.log_decision(run_id, "size_check", "skip", strategy=strategy_name, market_id=sig.market_id, reason="tiny_size", details={"amount": amount})
         return _ExecuteResult("skip")
@@ -848,6 +872,13 @@ def run(environment: str = "paper", dry_run: bool = False, send: bool = True, fa
                 print(f"Loaded {len(cached_rows)} cached signals from scan phase.\n")
                 db.log_event(run_id, "info", "cached_signals_loaded", payload={"count": len(cached_rows)})
 
+            # --- Confluence detection: count how many strategies signal the same market+direction ---
+            confluence_map = _build_confluence_map(cached_rows)
+            if any(v > 1 for v in confluence_map.values()):
+                confluent = {k: v for k, v in confluence_map.items() if v > 1}
+                print(f"  Confluence detected: {len(confluent)} markets with 2+ strategy agreement")
+                db.log_event(run_id, "info", "confluence_detected", payload={"count": len(confluent), "markets": {k: v for k, v in list(confluent.items())[:5]}})
+
             for row in cached_rows:
                 consumed_ids.append(row["id"])
                 sig = _reconstruct_signal(row)
@@ -855,6 +886,10 @@ def run(environment: str = "paper", dry_run: bool = False, send: bool = True, fa
                 if not strategy:
                     db.log_decision(run_id, "execute", "skip", strategy=sig.strategy, market_id=sig.market_id, reason="unknown_strategy")
                     continue
+
+                # Confluence boost: size up when multiple strategies agree
+                confluence_key = _confluence_key(sig.market_id, sig.outcome)
+                confluence_count = confluence_map.get(confluence_key, 1)
 
                 strategy_meta_item = meta.get(sig.strategy, {})
                 execution_decision = classify_strategy_execution(policy, strategy, strategy_meta_item)
@@ -864,7 +899,8 @@ def run(environment: str = "paper", dry_run: bool = False, send: bool = True, fa
                     db=db, run_id=run_id, meta=meta, market_index=market_index,
                     exposure_by_strategy=exposure_by_strategy, exposure_by_window=exposure_by_window,
                     alert_signals=alert_signals, dry_run=dry_run,
-                    extra_log_details={"phase": "execute"},
+                    extra_log_details={"phase": "execute", "confluence": confluence_count},
+                    confluence_boost=confluence_count,
                 )
                 if result.action == "opened":
                     new_trades.append((sig, result.amount))
