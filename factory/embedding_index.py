@@ -175,9 +175,64 @@ class EmbeddingIndex:
         if not neighbors:
             return {"base_rate": 0.5, "n_neighbors": 0, "neighbors": []}
 
-        base_rate = sum(n["resolved_yes"] for n in neighbors) / len(neighbors)
+        # Naive base rate (simple mean, ignores polarity)
+        naive_rate = sum(n["resolved_yes"] for n in neighbors) / len(neighbors)
+
+        # LLM-calibrated base rate: accounts for polarity inversions
+        llm_rate = _llm_evaluate_base_rate(title, neighbors)
+        base_rate = llm_rate if llm_rate is not None else naive_rate
+
         return {
             "base_rate": round(base_rate, 4),
+            "naive_base_rate": round(naive_rate, 4),
+            "llm_calibrated": llm_rate is not None,
             "n_neighbors": len(neighbors),
             "neighbors": neighbors,
         }
+
+
+def _llm_evaluate_base_rate(query_title: str, neighbors: list[dict]) -> float | None:
+    """Use Gemini to evaluate base rate considering polarity and relevance.
+
+    The LLM sees the query market and its retrieved neighbors (with outcomes),
+    then reasons about whether each neighbor supports YES or NO for the query,
+    accounting for polarity inversions (e.g. "war declared NO" supports "ceasefire YES").
+    """
+    neighbor_lines = []
+    for i, n in enumerate(neighbors, 1):
+        outcome = "YES" if n["resolved_yes"] else "NO"
+        neighbor_lines.append(f"  {i}. \"{n['title']}\" → resolved {outcome} (similarity: {n['similarity']})")
+
+    prompt = f"""You are estimating the base rate probability for a prediction market question.
+
+QUESTION: "{query_title}"
+
+I found these similar historical markets and their resolutions:
+{chr(10).join(neighbor_lines)}
+
+For each historical market, consider:
+1. Is it truly relevant to the question, or just superficially similar?
+2. Is the polarity ALIGNED or INVERTED? (e.g. "Will war happen? → NO" is INVERTED evidence for "Will ceasefire hold? → YES")
+3. How much weight should this neighbor get?
+
+Based on this analysis, estimate the probability that "{query_title}" resolves YES.
+
+Respond with ONLY a JSON object, no other text:
+{{"probability": 0.XX, "reasoning": "one sentence explanation"}}"""
+
+    try:
+        from .claude import call_gemini
+        raw = call_gemini(prompt, max_tokens=256, timeout=15)
+        # Parse JSON from response
+        import json
+        import re
+        # Extract JSON from response (may have markdown fences)
+        match = re.search(r'\{[^}]+\}', raw)
+        if match:
+            data = json.loads(match.group())
+            prob = float(data.get("probability", 0.5))
+            if 0.0 <= prob <= 1.0:
+                return round(prob, 4)
+    except Exception as e:
+        print(f"  [embedding_index] LLM evaluation failed: {e}")
+    return None
