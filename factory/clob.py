@@ -15,7 +15,11 @@ def _client():
         api_secret=os.environ["POLYMARKET_API_SECRET"],
         api_passphrase=os.environ["POLYMARKET_PASSPHRASE"],
     )
-    return ClobClient(CLOB_HOST, key=key, chain_id=CHAIN_ID, creds=creds)
+    funder = os.environ.get("POLYMARKET_PROXY_ADDRESS", "")
+    return ClobClient(
+        CLOB_HOST, key=key, chain_id=CHAIN_ID, creds=creds,
+        signature_type=2, funder=funder or None,
+    )
 
 
 def get_clob_token_ids(market: dict) -> tuple[str | None, str | None]:
