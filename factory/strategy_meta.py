@@ -76,6 +76,7 @@ ACTIVE_STRATEGIES = {
     "news_impact_fade_by_recency", "base_rate_knn",
     "weather_oversum", "weather_convergence", "weather_autocorrelation",
     "overnight_gap_fade", "expiry_convergence_buy",
+    "outcome_volume_concentration",
 }
 
 
