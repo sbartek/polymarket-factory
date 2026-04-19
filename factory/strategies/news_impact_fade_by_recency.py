@@ -62,11 +62,11 @@ class NewsImpactFadeByRecencyStrategy(Strategy):
     target_hold_min_days = 0.05
     target_hold_max_days = 1.0
     scan_frequency = "3x/day"
-    max_position_usdc = 0.0
-    min_position_usdc = 0.0
+    max_position_usdc = 5.0
+    min_position_usdc = 1.0
     min_ev_pp = 8.0
-    alert_only = True
-    trading_enabled = False
+    alert_only = False
+    trading_enabled = True
     promotable = True
     live_ready = False
     promotion_criteria = "25 alerts with >55% half-reversion within 6h of news-linked move"

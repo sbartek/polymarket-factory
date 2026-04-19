@@ -53,7 +53,7 @@ STRATEGY_EXPOSURE_CAPS = {
     "conditional_probability_mispricing": 30.0,
     "conditional_outcome_count_asymmetry": 0.0,
     "conditional_outcome_drift": 0.0,
-    "news_impact_fade_by_recency": 0.0,
+    "news_impact_fade_by_recency": 20.0,
     "price_move_fade": 40.0,
     "weather_oversum": 0.0,
     "weather_convergence": 0.0,
