@@ -161,7 +161,11 @@ class BaseRateAnchorStrategy(Strategy):
                     "avg_similarity": avg_sim,
                 })
 
-        candidates.sort(key=lambda c: c["abs_gap"], reverse=True)
+        # Score: edge size * time preference (shorter markets score higher)
+        for c in candidates:
+            time_boost = 1.0 / max(c["days"] ** 0.5, 1.0)
+            c["score"] = c["abs_gap"] * time_boost
+        candidates.sort(key=lambda c: c["score"], reverse=True)
         return self._build_signals(candidates[:MAX_SIGNALS_PER_RUN])
 
     def _scan_with_tfidf(self, markets: list[dict], index: BaseRateIndex) -> list[Signal]:
@@ -223,7 +227,11 @@ class BaseRateAnchorStrategy(Strategy):
                     "avg_similarity": avg_sim,
                 })
 
-        candidates.sort(key=lambda c: c["abs_gap"], reverse=True)
+        # Score: edge size * time preference (shorter markets score higher)
+        for c in candidates:
+            time_boost = 1.0 / max(c["days"] ** 0.5, 1.0)
+            c["score"] = c["abs_gap"] * time_boost
+        candidates.sort(key=lambda c: c["score"], reverse=True)
         return self._build_signals(candidates[:MAX_SIGNALS_PER_RUN])
 
     def _build_signals(self, selected: list[dict]) -> list[Signal]:
