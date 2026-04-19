@@ -143,8 +143,8 @@ class WeatherAutocorrelationStrategy(Strategy):
     scan_frequency = "3x/day"
     max_position_usdc = 5.0
     min_ev_pp = 10.0
-    alert_only = True
-    trading_enabled = False
+    alert_only = False
+    trading_enabled = True
 
     def __init__(self):
         self._geo_cache: dict = {}
