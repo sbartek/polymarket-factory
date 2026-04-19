@@ -68,6 +68,8 @@ class SpreadArbV2Strategy(Strategy):
     min_position_usdc = 1.0
     alert_only = False
     trading_enabled = True
+    mode = "live"
+    live_ready = True
 
     def size(self, signal: Signal) -> float:
         # NO price = 1 - YES price; size based on NO entry cost
