@@ -149,7 +149,11 @@ class PriceMoveFadeStrategy(Strategy):
                 rationale=f"price_move_fade:{price_move:+.2f}pp in {move.get('cur_time', '?')[:16]}-{move.get('prev_time', '?')[:16]}",
             ))
 
-        signals.sort(key=lambda s: s.ev_pp, reverse=True)
+        # Score: ev * time preference (shorter markets rank higher)
+        for sig in signals:
+            d = _days_to_close(sig.closes) or 7
+            sig._score = sig.ev_pp / max(d ** 0.5, 1.0)
+        signals.sort(key=lambda s: s._score, reverse=True)
         signals = signals[:MAX_ALERTS_PER_RUN]
         print(f"  [{self.name}] {len(moves)} moves found, {len(signals)} alerts")
         return signals

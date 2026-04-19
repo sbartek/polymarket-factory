@@ -342,7 +342,15 @@ class WeatherEdgeV4Strategy(Strategy):
                 if signal:
                     signals.append(signal)
 
-        signals.sort(key=lambda s: s.ev_pp, reverse=True)
+        # Score: ev * time preference (shorter markets rank higher)
+        def _score(s):
+            from datetime import date as _date
+            try:
+                d = max((_date.fromisoformat(s.closes[:10]) - _date.today()).days, 1)
+            except (ValueError, TypeError):
+                d = 3
+            return s.ev_pp / d ** 0.5
+        signals.sort(key=_score, reverse=True)
         signals = signals[:MAX_ALERTS_PER_RUN]
         print(f"  [{self.name}] {len(signals)} alerts "
               f"({sum(1 for s in signals if s.outcome=='YES')} YES, "

@@ -327,7 +327,11 @@ class ConditionalProbabilityMispricingStrategy(Strategy):
         # Pattern 3: Stage chain violations
         all_violations.extend(self._find_stage_violations(markets))
 
-        all_violations.sort(key=lambda v: v["gap_pp"], reverse=True)
+        # Score: gap * time preference (shorter markets rank higher)
+        for v in all_violations:
+            d = _days_to_close(v.get("closes")) or 7
+            v["_score"] = v["gap_pp"] / max(d ** 0.5, 1.0)
+        all_violations.sort(key=lambda v: v["_score"], reverse=True)
 
         signals: list[Signal] = []
         seen: set[str] = set()

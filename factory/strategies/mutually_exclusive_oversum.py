@@ -159,8 +159,8 @@ class MutuallyExclusiveOversumStrategy(Strategy):
             if c:
                 candidates.append(c)
 
-        # Sort by oversum magnitude descending
-        candidates.sort(key=lambda c: c.oversum_pp, reverse=True)
+        # Sort by oversum * time preference (shorter markets rank higher)
+        candidates.sort(key=lambda c: c.oversum_pp / max(c.days_to_close ** 0.5, 1.0), reverse=True)
         selected = candidates[:MAX_ALERTS_PER_RUN]
         selected_slugs = {c.event_slug for c in selected}
 
