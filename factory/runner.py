@@ -815,10 +815,10 @@ def run(environment: str = "paper", dry_run: bool = False, send: bool = True, fa
             closed_trades = []
             print("Skipping open-position resolution in research environment.\n")
 
-        # Fast pass: fetch 1000 markets for price observations
-        print("Fast pass: fetching 1000 markets for observations...", end=" ", flush=True)
+        # Fast pass: fetch 2000 markets for price observations
+        print("Fast pass: fetching 2000 markets for observations...", end=" ", flush=True)
         try:
-            all_markets = fetch_top_paginated(total=1000)
+            all_markets = fetch_top_paginated(total=2000)
         except Exception as e:
             print(f"FAILED after retries: {e}")
             db.log_event(run_id, "error", f"fetch_top_paginated failed: {e}")

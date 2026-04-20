@@ -14,7 +14,7 @@ from .feed import fetch_top_paginated
 from .runner import _extract_market_observations
 
 
-def observe(market_limit: int = 1000):
+def observe(market_limit: int = 2000):
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
     db = FactoryDB()
     run_id = db.start_run(mode="observer")
