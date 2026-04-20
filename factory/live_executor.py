@@ -71,15 +71,41 @@ def execute_pending_orders(db: FactoryDB, dry_run: bool = False) -> int:
             print(f"  [{strategy}] DRY {outcome} {title} | ${amount} | token={token_id[:20]}...")
             continue
 
-        # Place the order
+        # Place the order with slippage protection
         market_price = float(order.get("market_price") or 0.5)
         price = market_price if outcome == "YES" else (1.0 - market_price)
         size = round(amount / max(price, 0.01), 4)
 
+        # Slippage guard: check current price before placing order
+        MAX_SLIPPAGE_PP = 10.0  # reject if entry would be >10pp worse than signal
+        try:
+            from .feed import fetch_by_slug
+            import json
+            event_slug = order["market_id"].split(":")[0] if ":" in order["market_id"] else None
+            if event_slug:
+                events = fetch_by_slug(event_slug)
+                if events:
+                    for m in events[0].get("markets", []):
+                        mid = order["market_id"].split(":")[-1] if ":" in order["market_id"] else order["market_id"]
+                        if str(m.get("id")) == mid:
+                            prices_raw = m.get("outcomePrices", "[]")
+                            prices = json.loads(prices_raw) if isinstance(prices_raw, str) else prices_raw
+                            current_yes = float(prices[0]) if prices else None
+                            if current_yes is not None:
+                                current_price = current_yes if outcome == "YES" else (1.0 - current_yes)
+                                slippage = (current_price - price) * 100
+                                if slippage > MAX_SLIPPAGE_PP:
+                                    print(f"  [{strategy}] SKIP {title} | slippage {slippage:+.1f}pp (signal={price:.3f} current={current_price:.3f})")
+                                    db.update_live_order(oid, "skipped", error=f"slippage_{slippage:.0f}pp")
+                                    continue
+                            break
+        except Exception as e:
+            print(f"  [{strategy}] slippage check failed ({e}), proceeding anyway")
+
         try:
             resp = place_market_order(token_id, size)
             clob_order_id = resp.get("orderID", "?")
-            print(f"  [{strategy}] EXECUTED {outcome} {title} | ${amount} | order={clob_order_id}")
+            print(f"  [{strategy}] EXECUTED {outcome} {title} | ${amount} @ {price:.3f} | order={clob_order_id}")
 
             # Record trade
             trade_id = str(uuid.uuid4())[:8]
