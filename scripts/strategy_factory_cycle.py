@@ -585,7 +585,7 @@ def generate_strategy_specs(eval_text: str) -> list[dict]:
     Return JSON only.
     """)
     try:
-        raw = call_claude(prompt, max_tokens=3000, model="claude-sonnet-4-5-20250514")
+        raw = call_claude(prompt, max_tokens=3000, model="claude-sonnet-4-5-20250514", timeout=120)
         payload = _extract_json_block(raw, "[")
         specs = json.loads(payload)
         if not isinstance(specs, list) or len(specs) != 2:
