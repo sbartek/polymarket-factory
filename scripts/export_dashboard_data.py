@@ -641,20 +641,9 @@ def fetch_overview(conn: object, experiments: list[dict], warnings: list[str], b
         ",".join("?" for _ in ACTIVE_STRATEGIES)
     ), tuple(sorted(ACTIVE_STRATEGIES)), 0)
 
-    execution = fetch_execution_summary(conn)
-    benchmark_scopes = (benchmarks or {}).get("scopes", {})
-    alert_only_benchmark = benchmark_scopes.get("alert-only") or {}
-    alert_only_rows = alert_only_benchmark.get("strategies") or []
-    top_alert_only = alert_only_rows[0] if alert_only_rows else None
-    observed_alert_only = sum(int(row.get("observed_signals") or 0) for row in alert_only_rows)
-    labeled_alert_only = sum(int(row.get("labeled_signals") or 0) for row in alert_only_rows)
-    missing_alert_only = sum(int(row.get("no_forward_observation_signals") or 0) for row in alert_only_rows)
-
     alerts = []
     if latest and normalize_status(latest["status"]) != "ok":
         alerts.append({"level": "warning", "message": f"Latest run status is {normalize_status(latest['status'])}."})
-    if execution["checks_30d"] == 0:
-        alerts.append({"level": "warning", "message": "No Phase A execution checks recorded in the last 30 days."})
     if storage and storage.get("disk_free_alert"):
         disk_free_gb = float(storage.get("disk_free_bytes") or 0) / (1024 ** 3)
         disk_free_pct = float(storage.get("disk_free_pct") or 0) * 100
@@ -685,21 +674,6 @@ def fetch_overview(conn: object, experiments: list[dict], warnings: list[str], b
         "open_position_count_active": int(open_active_count or 0),
         "open_exposure_legacy": round(float(open_legacy_exposure or 0.0), 2),
         "open_position_count_legacy": int(open_legacy_count or 0),
-        "active_strategy_count": len(ACTIVE_STRATEGIES),
-        "active_experiment_count": sum(1 for e in experiments if e["status"] in {"active", "review_due"}),
-        "execution_checks_30d": execution["checks_30d"],
-        "strategies_with_execution_checks_30d": execution["strategies_with_checks_30d"],
-        "avg_ev_after_slippage_50_pp_30d": execution["avg_ev_after_slippage_50_pp_30d"],
-        "avg_max_size_positive_ev_30d": execution["avg_max_size_positive_ev_30d"],
-        "execution_source_confidence_counts_30d": execution["source_confidence_counts_30d"],
-        "benchmark_scope_count": len((benchmarks or {}).get("available_scopes", [])),
-        "benchmark_strategy_count_alert_only": int(alert_only_benchmark.get("strategy_count") or 0),
-        "benchmark_signal_count_alert_only": int(alert_only_benchmark.get("signal_count") or 0),
-        "benchmark_observed_signal_count_alert_only": observed_alert_only,
-        "benchmark_labeled_signal_count_alert_only": labeled_alert_only,
-        "benchmark_missing_forward_signal_count_alert_only": missing_alert_only,
-        "benchmark_top_strategy_alert_only": top_alert_only.get("strategy") if top_alert_only else None,
-        "benchmark_top_score_alert_only": top_alert_only.get("benchmark_score") if top_alert_only else None,
         "strategy_factory": strategy_factory,
         "strategy_factory_history": strategy_factory_history or [],
         "alerts": alerts,
@@ -1136,22 +1110,15 @@ def main() -> None:
     benchmarks = load_benchmarks()
     runs = fetch_runs(conn)
     strategies = fetch_strategies(conn, warnings, benchmarks)
-    execution_checks = fetch_execution_checks(conn)
     positions_open = fetch_positions_open(conn)
-    storage = fetch_storage(conn)
     strategy_factory = load_strategy_factory_status()
     strategy_factory_history = load_strategy_factory_history()
-    overview = fetch_overview(conn, experiments, warnings, benchmarks, storage, strategy_factory, strategy_factory_history)
+    overview = fetch_overview(conn, experiments, warnings, benchmarks, None, strategy_factory, strategy_factory_history)
 
     write_json(OUTPUT_DIR / "overview.json", overview)
     write_json(OUTPUT_DIR / "runs.json", runs)
     write_json(OUTPUT_DIR / "strategies.json", strategies)
-    write_json(OUTPUT_DIR / "execution-checks.json", execution_checks)
-    write_json(OUTPUT_DIR / "experiments.json", experiments)
-    write_json(OUTPUT_DIR / "approvals.json", proposals)
     write_json(OUTPUT_DIR / "positions-open.json", positions_open)
-    write_json(OUTPUT_DIR / "benchmarks.json", benchmarks)
-    write_json(OUTPUT_DIR / "storage.json", storage)
 
     run_history = fetch_run_history(conn)
     write_json(OUTPUT_DIR / "run-history.json", run_history)
@@ -1162,12 +1129,7 @@ def main() -> None:
     print(f"- runs.json ({len(runs)} rows)")
     print(f"- run-history.json ({len(run_history['timeline'])} runs, {len(run_history['daily'])} days)")
     print(f"- strategies.json ({len(strategies)} rows)")
-    print(f"- execution-checks.json ({len(execution_checks)} rows)")
-    print(f"- experiments.json ({len(experiments)} rows)")
-    print(f"- approvals.json ({len(proposals)} rows)")
     print(f"- positions-open.json ({len(positions_open)} rows)")
-    print(f"- benchmarks.json ({len(benchmarks.get('available_scopes', []))} scope(s))")
-    print(f"- storage.json")
 
     if warnings:
         print("Warnings:")

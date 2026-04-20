@@ -72,20 +72,17 @@ const dataPath = (name) => {
 };
 
 async function loadSnapshot() {
-  const [manifest, overview, strategies, runs, experiments, executionChecks, evaluation, benchmarks, storage, approvals, runHistory] = await Promise.all([
+  const [manifest, overview, strategies, runs, experiments, evaluation, benchmarks, runHistory] = await Promise.all([
     loadJson(dataPath('manifest')),
     loadJson(dataPath('overview')),
     loadJson(dataPath('strategies')),
     loadJson(dataPath('runs')),
-    loadJson(dataPath('experiments')),
-    loadJson(dataPath('execution-checks')).catch(() => []),
+    loadJson(dataPath('experiments')).catch(() => []),
     loadJson(dataPath('evaluation')).catch(() => null),
     loadJson(dataPath('benchmarks')).catch(() => null),
-    loadJson(dataPath('storage')).catch(() => null),
-    loadJson(dataPath('approvals')).catch(() => []),
     loadJson(dataPath('run-history')).catch(() => null),
   ]);
-  return { manifest, overview, strategies, runs, experiments, executionChecks, evaluation, benchmarks, storage, approvals, runHistory };
+  return { manifest, overview, strategies, runs, experiments, evaluation, benchmarks, runHistory };
 }
 
 function renderChrome(snapshot, pageTitle) {

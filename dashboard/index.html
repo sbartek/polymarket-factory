@@ -42,49 +42,8 @@
 
       <section class="grid two-up section-gap">
         <article class="panel">
-          <div class="panel-header"><h2>Evaluation summary</h2><span id="evaluation-meta" class="muted"></span></div>
-          <div id="evaluation-panel" class="stack muted">No evaluation summary yet.</div>
-        </article>
-
-        <article class="panel">
           <div class="panel-header"><h2>Strategy factory</h2><span id="strategy-factory-meta" class="muted"></span></div>
           <div id="strategy-factory-panel" class="stack muted">No strategy-factory run record yet.</div>
-          <div id="strategy-factory-history" class="stack section-gap muted"></div>
-        </article>
-
-        <article class="panel">
-          <div class="panel-header"><h2>Strategy snapshot</h2><span id="strategy-summary" class="muted"></span></div>
-          <div class="table-wrap">
-            <table>
-              <thead><tr><th>Strategy</th><th>Status</th><th>Open exposure</th><th>Open positions</th><th>Exec checks</th><th>Avg EV @ $50</th></tr></thead>
-              <tbody id="strategies-body"></tbody>
-            </table>
-          </div>
-        </article>
-
-        <article class="panel">
-          <div class="panel-header"><h2>Replay benchmark</h2><span id="benchmark-meta" class="muted"></span></div>
-          <div id="benchmark-panel" class="stack muted">No benchmark snapshot yet.</div>
-        </article>
-
-        <article class="panel">
-          <div class="panel-header"><h2>Storage</h2><span id="storage-meta" class="muted"></span></div>
-          <div id="storage-panel" class="stack muted">No storage snapshot yet.</div>
-        </article>
-
-        <article class="panel">
-          <div class="panel-header"><h2>Current experiments</h2><span id="experiment-summary" class="muted"></span></div>
-          <div id="experiments-list" class="stack"></div>
-        </article>
-
-        <article class="panel">
-          <div class="panel-header"><h2>Pending strategy approvals</h2><span id="approval-summary" class="muted"></span></div>
-          <div id="approval-list" class="stack"></div>
-        </article>
-
-        <article class="panel">
-          <div class="panel-header"><h2>Cleanup / non-strategy items</h2><span id="cleanup-summary" class="muted"></span></div>
-          <div id="cleanup-list" class="stack"></div>
         </article>
       </section>
     </div>
@@ -98,12 +57,7 @@
         const cards = [
           ['Active exposure', `${Dashboard.fmtNumber(snapshot.overview.open_exposure_active)} USDC`, `${Dashboard.fmtInt(snapshot.overview.open_position_count_active)} active open positions`],
           ['Legacy exposure', `${Dashboard.fmtNumber(snapshot.overview.open_exposure_legacy)} USDC`, `${Dashboard.fmtInt(snapshot.overview.open_position_count_legacy)} paused / legacy open positions`],
-          ['Active strategies', Dashboard.fmtInt(snapshot.overview.active_strategy_count), 'Current active stack size'],
-          ['Current experiments', Dashboard.fmtInt(snapshot.overview.active_experiment_count), 'Counts active + review_due threads'],
-          ['Phase A checks (30d)', Dashboard.fmtInt(snapshot.overview.execution_checks_30d), `${Dashboard.fmtInt(snapshot.overview.strategies_with_execution_checks_30d)} strategies with execution evidence`],
-          ['Benchmark labels', Dashboard.fmtInt(snapshot.overview.benchmark_labeled_signal_count_alert_only), `${Dashboard.fmtInt(snapshot.overview.benchmark_observed_signal_count_alert_only)} observed · ${Dashboard.fmtInt(snapshot.overview.benchmark_missing_forward_signal_count_alert_only)} missing forward obs`],
-          ['Avg EV @ $50 (30d)', `${Dashboard.fmtNumber(snapshot.overview.avg_ev_after_slippage_50_pp_30d)} pp`, `avg max +EV size ${Dashboard.fmtNumber(snapshot.overview.avg_max_size_positive_ev_30d)} USD`],
-          ['Latest run duration', Dashboard.fmtDuration(snapshot.overview.latest_run_duration_seconds), Dashboard.fmtDate(snapshot.overview.latest_run_started_at)],
+          ['Latest run', snapshot.overview.latest_run_status, Dashboard.fmtDate(snapshot.overview.latest_run_started_at)],
         ];
         document.getElementById('overview-cards').innerHTML = cards.map(([label, value, sub]) => `<article class="kpi-card"><div class="kpi-label">${label}</div><div class="kpi-value">${value}</div><div class="kpi-sub">${sub}</div></article>`).join('');
 
@@ -146,105 +100,20 @@
           }).join('');
           return `<article class="panel"><div class="panel-header"><h2>${label}</h2><span class="pill ${pillCls}">${items.length}</span></div>${items.length ? `<div class="table-wrap"><table><thead><tr><th>Strategy</th><th>Open</th><th>Exposure</th><th>PnL (all)</th><th>Signals (30d)</th></tr></thead><tbody>${rows}</tbody></table></div>` : '<div class="muted">None</div>'}</article>`;
         }).join('');
-        modeSection.innerHTML = livePanel + paperPanel + otherPanels;
+        const pnlWarning = '<div class="alert" style="margin-top:12px;font-size:0.82rem">Paper PnL for NO-side trades before 2026-04-20 may be overstated due to a pricing bug (fixed).</div>';
+        modeSection.innerHTML = livePanel + paperPanel + pnlWarning + otherPanels;
 
-        const evaluation = snapshot.evaluation;
-        const evaluationPanel = document.getElementById('evaluation-panel');
-        const evaluationMeta = document.getElementById('evaluation-meta');
-        if (evaluation) {
-          evaluationMeta.textContent = Dashboard.fmtDate(evaluation.generated_at);
-          evaluationPanel.classList.remove('muted');
-          evaluationPanel.innerHTML = [
-            `<div><strong>${evaluation.headline || 'Aggressive evaluation cycle'}</strong></div>`,
-            ...((evaluation.summary_lines || []).map((line) => `<div>• ${line}</div>`)),
-            ((evaluation.new_strategies || []).length ? `<div class="section-gap"><strong>New strategies</strong></div>${(evaluation.new_strategies || []).map((line) => `<div>• ${line}</div>`).join('')}` : ''),
-            (evaluation.risk_note ? `<div class="muted section-gap">${evaluation.risk_note}</div>` : ''),
-          ].join('');
-        }
-
+        // Strategy factory: simplified status indicator
         const strategyFactory = snapshot.overview.strategy_factory;
-        const strategyFactoryHistory = snapshot.overview.strategy_factory_history || [];
         const strategyFactoryPanel = document.getElementById('strategy-factory-panel');
         const strategyFactoryMeta = document.getElementById('strategy-factory-meta');
-        const strategyFactoryHistoryPanel = document.getElementById('strategy-factory-history');
         if (strategyFactory) {
-          strategyFactoryMeta.textContent = Dashboard.fmtDate(strategyFactory.finished_at || strategyFactory.started_at);
+          const sfStatus = strategyFactory.status === 'failed' ? 'failed' : (strategyFactory.degraded ? 'degraded' : 'ok');
+          const lastDate = strategyFactory.finished_at || strategyFactory.started_at;
+          strategyFactoryMeta.textContent = Dashboard.fmtDate(lastDate);
           strategyFactoryPanel.classList.remove('muted');
-          strategyFactoryPanel.innerHTML = [
-            `<div><strong>Latest local strategy-factory run</strong> <span class="${Dashboard.pillClass(strategyFactory.status)}">${strategyFactory.status}</span></div>`,
-            `<div class="muted">Eval source ${strategyFactory.eval_source || 'unknown'} · generated ${Dashboard.fmtInt(strategyFactory.generated_count)} · archived ${Dashboard.fmtInt(strategyFactory.archived_count)}</div>`,
-            `<div class="muted">Preflight ${strategyFactory.preflight_ok ? 'ok' : 'failed'} · push ${strategyFactory.push_ok ? 'ok' : 'failed'} · heartbeat ${strategyFactory.heartbeat_ok ? 'ok' : 'failed'}</div>`,
-            strategyFactory.degraded ? '<div class="muted section-gap">This run completed in degraded mode and used cached evaluation input.</div>' : '',
-            strategyFactory.error ? `<div class="muted section-gap"><strong>Error:</strong> ${Dashboard.cleanSummary(strategyFactory.error)}</div>` : '',
-          ].join('');
+          strategyFactoryPanel.innerHTML = `<div><span class="${Dashboard.pillClass(sfStatus)}">${sfStatus}</span> · last success ${Dashboard.fmtDate(lastDate)}</div>${strategyFactory.error ? `<div class="muted section-gap">${Dashboard.cleanSummary(strategyFactory.error)}</div>` : ''}`;
         }
-        if (strategyFactoryHistory.length) {
-          strategyFactoryHistoryPanel.classList.remove('muted');
-          strategyFactoryHistoryPanel.innerHTML = [
-            '<div><strong>Recent runs</strong></div>',
-            '<div class="table-wrap"><table><thead><tr><th>Started</th><th>Status</th><th>Eval</th><th>Generated</th><th>Archived</th></tr></thead><tbody>' +
-              strategyFactoryHistory.map((row) => `<tr><td>${Dashboard.fmtDate(row.started_at)}</td><td><span class="${Dashboard.pillClass(row.status)}">${row.status}</span></td><td>${row.eval_source || 'unknown'}</td><td>${Dashboard.fmtInt(row.generated_count)}</td><td>${Dashboard.fmtInt(row.archived_count)}</td></tr>`).join('') +
-            '</tbody></table></div>',
-          ].join('');
-        } else {
-          strategyFactoryHistoryPanel.textContent = 'No recent strategy-factory run history.';
-        }
-
-        const benchmarkPanel = document.getElementById('benchmark-panel');
-        const benchmarkMeta = document.getElementById('benchmark-meta');
-        const storagePanel = document.getElementById('storage-panel');
-        const storageMeta = document.getElementById('storage-meta');
-        const alertOnlyBenchmark = snapshot.benchmarks && snapshot.benchmarks.scopes ? snapshot.benchmarks.scopes['alert-only'] : null;
-        if (alertOnlyBenchmark && (alertOnlyBenchmark.strategies || []).length) {
-          const rows = alertOnlyBenchmark.strategies.slice(0, 5);
-          benchmarkMeta.textContent = `${Dashboard.fmtDate(alertOnlyBenchmark.generated_at)} · ${rows.length}/${alertOnlyBenchmark.strategy_count} shown`;
-          benchmarkPanel.classList.remove('muted');
-          benchmarkPanel.innerHTML = [
-            `<div><strong>Alert-only replay benchmark</strong></div>`,
-            `<div class="muted">${Dashboard.fmtInt(alertOnlyBenchmark.signal_count)} signals across ${Dashboard.fmtInt(alertOnlyBenchmark.strategy_count)} strategies</div>`,
-            '<div class="table-wrap section-gap"><table><thead><tr><th>Strategy</th><th>Score</th><th>Signals</th><th>Observed</th><th>Labels</th><th>Missing</th><th>EV @ $10</th></tr></thead><tbody>' +
-              rows.map((row) => `<tr><td>${row.strategy}</td><td>${Dashboard.fmtNumber(row.benchmark_score, 3)}</td><td>${Dashboard.fmtInt(row.signals)}</td><td>${Dashboard.fmtInt(row.observed_signals)}</td><td>${Dashboard.fmtInt(row.labeled_signals)}</td><td>${Dashboard.fmtInt(row.no_forward_observation_signals)}</td><td>${Dashboard.fmtNumber(row.avg_ev_after_slippage_10_pp)} pp</td></tr>`).join('') +
-            '</tbody></table></div>',
-            `<div class="muted">Top strategy: ${rows[0].strategy} · score ${Dashboard.fmtNumber(rows[0].benchmark_score, 3)} · observed ${Dashboard.fmtInt(rows[0].observed_signals)} / ${Dashboard.fmtInt(rows[0].signals)}</div>`,
-          ].join('');
-        }
-
-        if (snapshot.storage) {
-          const archives = snapshot.storage.recent_snapshot_archives || [];
-          const maxPayload = Math.max(...archives.map((row) => row.payload_bytes || 0), 1);
-          storageMeta.textContent = Dashboard.fmtDate(snapshot.storage.generated_at);
-          storagePanel.classList.remove('muted');
-          storagePanel.innerHTML = [
-            `<div><strong>Current storage footprint</strong></div>`,
-            `<div class="muted">Project ${Dashboard.fmtBytes(snapshot.storage.project_storage_bytes)} · DB ${Dashboard.fmtBytes(snapshot.storage.database_bytes)} · raw snapshot payloads ${Dashboard.fmtBytes(snapshot.storage.raw_snapshot_archive_bytes)} across ${Dashboard.fmtInt(snapshot.storage.raw_snapshot_archive_runs)} runs</div>`,
-            `<div class="muted">dashboard-data ${Dashboard.fmtBytes(snapshot.storage.dashboard_data_bytes)} · benchmark-data ${Dashboard.fmtBytes(snapshot.storage.benchmark_data_bytes)} · observations ${Dashboard.fmtInt(snapshot.storage.market_observation_rows)} rows</div>`,
-            `<div class="muted">Policy: retain raw snapshots for ${Dashboard.fmtInt(snapshot.storage.raw_snapshot_retention_days)} days · alert near ${Dashboard.fmtBytes(snapshot.storage.project_storage_hard_limit_bytes)}</div>`,
-            archives.length ? `<div class="mini-bars section-gap">${archives.map((row) => `<div class="mini-bar-wrap"><div class="mini-bar" style="height:${Math.max(8, Math.round(((row.payload_bytes || 0) / maxPayload) * 96))}px"></div><div class="mini-bar-label">${Dashboard.fmtBytes(row.payload_bytes)}</div></div>`).join('')}</div>` : '<div class="muted section-gap">No raw snapshot archive history yet.</div>',
-            archives.length ? `<div class="muted">Recent raw snapshot payload sizes by run</div>` : '',
-          ].join('');
-        }
-
-        const strategies = snapshot.strategies;
-        document.getElementById('strategies-body').innerHTML = strategies.map((s) => `<tr><td><div class="strategy-name">${s.strategy_name}</div>${s.is_generated ? `<div class="muted">generated · ${s.generated_lifecycle || 'generated'}${s.generated_benchmark_score !== null && s.generated_benchmark_score !== undefined ? ` · score ${Dashboard.fmtNumber(s.generated_benchmark_score, 3)}` : ''}</div>` : ''}${s.benchmark_signals ? `<div class="muted">obs ${Dashboard.fmtInt(s.benchmark_observed_signals)} · labels ${Dashboard.fmtInt(s.benchmark_labeled_signals)} · missing ${Dashboard.fmtInt(s.benchmark_missing_forward_signals)}</div>` : ''}${s.warnings?.length ? `<div class="muted">${s.warnings.join(' ')}</div>` : ''}</td><td><span class="${Dashboard.pillClass(s.status)}">${s.status}</span></td><td>${Dashboard.fmtNumber(s.open_exposure)} USDC</td><td>${Dashboard.fmtInt(s.open_positions)}</td><td>${Dashboard.fmtInt(s.execution_checks_count_30d)}</td><td>${Dashboard.fmtNumber(s.avg_ev_after_slippage_50_pp_30d)} pp</td></tr>`).join('');
-        document.getElementById('strategy-summary').textContent = `${strategies.filter((s) => s.status === 'active').length} active · ${strategies.filter((s) => s.status === 'paused').length} paused · ${strategies.filter((s) => s.is_generated).length} generated tracked`;
-
-        const current = snapshot.experiments.filter((e) => ['active', 'review_due'].includes(e.status));
-        document.getElementById('experiments-list').innerHTML = current.map((e) => `<article class="experiment-card"><div class="panel-header"><div><h3>${e.title}</h3><div class="muted code">${e.experiment_id}</div></div><span class="${Dashboard.pillClass(e.status)}">${e.status}</span></div><p>${Dashboard.cleanSummary(e.summary || e.hypothesis)}</p><div class="card-meta"><span class="pill pill-info">${e.scope_type}</span><span class="pill pill-neutral">${e.scope_label}</span></div></article>`).join('') || '<div class="muted">No current experiments.</div>';
-        document.getElementById('experiment-summary').textContent = `${current.length} current threads`;
-
-        const pendingApprovals = (snapshot.approvals || []).filter((p) => p.proposal_category === 'strategy' && ['draft', 'under_review', 'pending_benchmark_review', 'deferred'].includes(p.status));
-        document.getElementById('approval-list').innerHTML = pendingApprovals.map((p) => {
-          const statusCls = p.status === 'deferred' ? 'paused' : (p.status === 'pending_benchmark_review' ? 'review_due' : p.status);
-          const reason = p.status === 'deferred' && p.deferred_reason ? `<div class="muted section-gap"><strong>Deferred:</strong> ${Dashboard.cleanSummary(p.deferred_reason)}</div>` : `<div class="muted section-gap"><strong>Why waiting:</strong> ${Dashboard.cleanSummary(p.approval_summary)}</div>`;
-          return `<article class="experiment-card"><div class="panel-header"><div><h3>${p.strategy_name}</h3><div class="muted code">${p.proposal_id}</div></div><span class="${Dashboard.pillClass(statusCls)}">${p.status}</span></div><p>${Dashboard.cleanSummary(p.plain_language_idea || p.thesis)}</p><div class="card-meta"><span class="pill pill-info">${p.edge_type || 'unknown edge'}</span><span class="pill pill-neutral">${p.time_window || 'unknown window'}</span></div>${reason}<div class="muted">${p.path}</div></article>`;
-        }).join('') || '<div class="muted">No strategies currently waiting for approval.</div>';
-        const deferredCount = pendingApprovals.filter(p => p.status === 'deferred').length;
-        const pendingCount = pendingApprovals.length - deferredCount;
-        document.getElementById('approval-summary').textContent = `${pendingCount} pending · ${deferredCount} deferred`;
-
-        const cleanupItems = (snapshot.approvals || []).filter((p) => p.proposal_category !== 'strategy');
-        document.getElementById('cleanup-list').innerHTML = cleanupItems.map((p) => `<article class="experiment-card"><div class="panel-header"><div><h3>${p.strategy_name}</h3><div class="muted code">${p.proposal_id}</div></div><span class="pill pill-neutral">${p.proposal_category === 'cleanup' ? 'cleanup' : 'non-strategy'}</span></div><p>${Dashboard.cleanSummary(p.plain_language_idea || p.thesis || 'Administrative item')}</p><div class="muted section-gap"><strong>Why here:</strong> ${p.proposal_category === 'cleanup' ? 'Stale or template-like proposal that should be cleaned up or clarified.' : 'Tracked file in proposals/, but not a real strategy approval candidate.'}</div><div class="muted">${p.path}</div></article>`).join('') || '<div class="muted">No cleanup or non-strategy items.</div>';
-        document.getElementById('cleanup-summary').textContent = `${cleanupItems.length} awkward leftovers that should not count as live approval candidates`;
       }).catch((err) => {
         document.body.innerHTML = `<div class="shell"><div class="panel"><h1>Dashboard failed to load</h1><p>${err.message}</p></div></div>`;
       });

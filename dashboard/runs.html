@@ -48,18 +48,18 @@
           <h3>Success rate by pipeline</h3>
           <canvas id="chart-success-rate"></canvas>
         </div>
-        <div class="chart-panel">
-          <h3>Run duration over time</h3>
-          <canvas id="chart-duration"></canvas>
-        </div>
-        <div class="chart-panel">
-          <h3>Positions opened / closed per run</h3>
-          <canvas id="chart-positions"></canvas>
-        </div>
       </section>
 
       <!-- Run list -->
-      <section class="list-grid" id="runs-list"></section>
+      <section class="panel section-gap">
+        <div class="panel-header"><h2>Recent runs</h2></div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Started</th><th>Status</th><th>Duration</th><th>Strategies</th><th>Signals</th><th>Decisions</th><th>Summary</th></tr></thead>
+            <tbody id="runs-body"></tbody>
+          </table>
+        </div>
+      </section>
     </div>
     <script src="./dashboard.js"></script>
     <script>
@@ -170,84 +170,6 @@
         });
       }
 
-      function renderDurationChart(timeline) {
-        // Show last 100 runs with duration
-        const recent = timeline.filter(r => r.duration_seconds != null).slice(-100);
-        const labels = recent.map(r => {
-          const d = new Date(r.started_at);
-          return `${d.getMonth()+1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
-        });
-        const pipelineMap = {
-          paper: 'manual_combined', paper_scan: 'scanner', paper_execute: 'execute',
-          paper_dry_run: 'manual_combined', paper_fast_dry_run: 'manual_combined',
-          observer: 'observer', trade_fetcher: 'trade_fetcher',
-        };
-        const pipelines = [...new Set(recent.map(r => pipelineMap[r.mode] || 'other'))];
-        const datasets = pipelines.map(p => ({
-          label: PIPELINE_LABELS[p] || p,
-          data: recent.map((r, i) => (pipelineMap[r.mode] || 'other') === p ? r.duration_seconds : null),
-          borderColor: PIPELINE_COLORS[p] || PIPELINE_COLORS.other,
-          backgroundColor: (PIPELINE_COLORS[p] || PIPELINE_COLORS.other) + '40',
-          pointRadius: 2,
-          spanGaps: false,
-          showLine: false,
-        }));
-        new Chart(document.getElementById('chart-duration'), {
-          type: 'scatter',
-          data: {
-            labels,
-            datasets: datasets.map(ds => ({
-              ...ds,
-              data: ds.data.map((v, i) => v != null ? { x: i, y: v } : null).filter(Boolean),
-            })),
-          },
-          options: {
-            responsive: true,
-            scales: {
-              x: {
-                type: 'linear',
-                title: { display: true, text: 'Run #' },
-                ticks: { callback: (v) => labels[v] || '' },
-              },
-              y: { beginAtZero: true, title: { display: true, text: 'Seconds' } },
-            },
-            plugins: { legend: { position: 'bottom' } },
-          },
-        });
-      }
-
-      function renderPositionsChart(timeline) {
-        // Split paper mode only opens/closes positions during execute runs.
-        const relevant = timeline.filter(r =>
-          ['paper_execute'].includes(r.mode) &&
-          (r.new_positions > 0 || r.closed > 0)
-        ).slice(-50);
-        if (!relevant.length) {
-          document.getElementById('chart-positions').parentElement.innerHTML =
-            '<h3>Positions opened / closed per run</h3><div class="muted">No position data yet.</div>';
-          return;
-        }
-        const labels = relevant.map(r => {
-          const d = new Date(r.started_at);
-          return `${d.getMonth()+1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
-        });
-        new Chart(document.getElementById('chart-positions'), {
-          type: 'bar',
-          data: {
-            labels,
-            datasets: [
-              { label: 'Opened', data: relevant.map(r => r.new_positions), backgroundColor: '#4ade80', borderRadius: 2 },
-              { label: 'Closed', data: relevant.map(r => r.closed), backgroundColor: '#f87171', borderRadius: 2 },
-            ],
-          },
-          options: {
-            responsive: true,
-            scales: { y: { beginAtZero: true, title: { display: true, text: 'Count' } } },
-            plugins: { legend: { position: 'bottom' } },
-          },
-        });
-      }
-
       Dashboard.renderNav('runs');
       Dashboard.loadSnapshot().then((snapshot) => {
         Dashboard.renderChrome(snapshot, 'Runs');
@@ -260,14 +182,12 @@
           renderHealthCards(history.health);
           renderDailyRunsChart(history.daily);
           renderSuccessRateChart(history.daily);
-          renderDurationChart(history.timeline);
-          renderPositionsChart(history.timeline);
         } else {
           document.getElementById('health-grid').innerHTML = '<div class="muted">No run history data. Re-export dashboard to generate.</div>';
         }
 
         // Run list
-        document.getElementById('runs-list').innerHTML = snapshot.runs.map((r) => `<article class="run-card"><div class="panel-header"><div><h3>${Dashboard.fmtDate(r.started_at)}</h3><div class="muted code">${r.run_id}</div></div><span class="${Dashboard.pillClass(r.status)}">${r.status}</span></div><p>${r.summary}</p><div class="card-meta"><span class="pill pill-neutral">duration ${Dashboard.fmtDuration(r.duration_seconds)}</span><span class="pill pill-neutral">strategies ${Dashboard.fmtInt(r.strategies_checked)}</span><span class="pill pill-neutral">signals ${Dashboard.fmtInt(r.signals_generated)}</span><span class="pill pill-neutral">decisions ${Dashboard.fmtInt(r.decisions_logged)}</span></div></article>`).join('');
+        document.getElementById('runs-body').innerHTML = snapshot.runs.map((r) => `<tr><td>${Dashboard.fmtDate(r.started_at)}<div class="muted code">${r.run_id.slice(0, 8)}</div></td><td><span class="${Dashboard.pillClass(r.status)}">${r.status}</span></td><td>${Dashboard.fmtDuration(r.duration_seconds)}</td><td>${Dashboard.fmtInt(r.strategies_checked)}</td><td>${Dashboard.fmtInt(r.signals_generated)}</td><td>${Dashboard.fmtInt(r.decisions_logged)}</td><td class="muted">${r.summary}</td></tr>`).join('');
       }).catch((err) => {
         document.body.innerHTML = `<div class="shell"><div class="panel"><h1>Dashboard failed to load</h1><p>${err.message}</p></div></div>`;
       });
