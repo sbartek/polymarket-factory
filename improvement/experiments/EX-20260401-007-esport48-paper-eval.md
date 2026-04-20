@@ -5,7 +5,7 @@
 - **related_change_id:** 
 - **component:** esport48 paper-eval checklist
 - **owner:** Bartek
-- **status:** active
+- **status:** closed
 
 ## Hypothesis
 

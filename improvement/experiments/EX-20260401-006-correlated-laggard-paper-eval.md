@@ -5,7 +5,7 @@
 - **related_change_id:** 
 - **component:** correlated_laggard paper-eval checklist
 - **owner:** Bartek
-- **status:** active
+- **status:** closed
 
 ## Hypothesis
 
