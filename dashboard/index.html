@@ -88,8 +88,11 @@
 
         const otherGroups = {
           'Alert (collecting signals)': classified.alert_active,
-          'Alert (no signals)': classified.alert_dead,
         };
+        // Only show "no signals" group if it has entries
+        if (classified.alert_dead && classified.alert_dead.length > 0) {
+          otherGroups['Alert (no signals)'] = classified.alert_dead;
+        }
         const modeSection = document.getElementById('execution-mode-section');
         const livePanel = `<article class="panel"><div class="panel-header"><h2>Live</h2><span class="pill pill-live">${classified.paper_and_live.length}</span></div>${classified.paper_and_live.length ? `<div class="table-wrap"><table><thead><tr><th>Strategy</th><th>Open</th><th>Closed</th><th>Exposure</th><th>PnL (all)</th></tr></thead><tbody>${liveRows}</tbody></table></div>` : '<div class="muted">None</div>'}</article>`;
         const paperPanel = `<article class="panel"><div class="panel-header"><h2>Paper trading</h2><span class="pill pill-paper">${allPaper.length}</span></div><div class="table-wrap"><table><thead><tr><th>Strategy</th><th>Open</th><th>Closed</th><th>Exposure</th><th>PnL (all)</th><th>Signals (30d)</th></tr></thead><tbody>${paperRows}</tbody></table></div></article>`;
@@ -102,7 +105,7 @@
           }).join('');
           return `<article class="panel"><div class="panel-header"><h2>${label}</h2><span class="pill ${pillCls}">${items.length}</span></div>${items.length ? `<div class="table-wrap"><table><thead><tr><th>Strategy</th><th>Open</th><th>Exposure</th><th>PnL (all)</th><th>Signals (30d)</th></tr></thead><tbody>${rows}</tbody></table></div>` : '<div class="muted">None</div>'}</article>`;
         }).join('');
-        const pnlWarning = '<div class="alert" style="margin-top:12px;font-size:0.82rem">Paper PnL for NO-side trades before 2026-04-20 may be overstated due to a pricing bug (fixed).</div>';
+        const pnlWarning = '<p class="muted" style="margin:8px 0;font-size:0.78rem;padding:6px 10px;border-left:2px solid #aa0">⚠ Paper PnL for NO-side trades before 2026-04-20 may be overstated due to a pricing bug (fixed).</p>';
         modeSection.innerHTML = livePanel + paperPanel + pnlWarning + otherPanels;
 
         // Strategy factory: simplified status indicator
