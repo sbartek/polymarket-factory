@@ -57,5 +57,24 @@ def place_market_order(token_id: str, size: float, timeout: int = 10) -> dict:
         _signal.signal(_signal.SIGALRM, old)
 
 
+def sell_market_order(token_id: str, size: float, timeout: int = 10) -> dict:
+    """Sell `size` tokens at market (FOK). Returns order response dict."""
+    import signal as _signal
+
+    def _timeout_handler(signum, frame):
+        raise TimeoutError(f"CLOB sell order timed out after {timeout}s")
+
+    from py_clob_client.clob_types import MarketOrderArgs, OrderType
+    client = _client()
+    order = client.create_market_order(MarketOrderArgs(token_id=token_id, amount=size, side="SELL"))
+    old = _signal.signal(_signal.SIGALRM, _timeout_handler)
+    _signal.alarm(timeout)
+    try:
+        return client.post_order(order, OrderType.FOK)
+    finally:
+        _signal.alarm(0)
+        _signal.signal(_signal.SIGALRM, old)
+
+
 def cancel_all() -> dict:
     return _client().cancel_all()
