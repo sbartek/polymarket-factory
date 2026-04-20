@@ -54,10 +54,12 @@
         Dashboard.renderChrome(snapshot, 'Overview');
         Dashboard.renderAlerts(snapshot);
 
+        const confluenceCount = snapshot.overview.confluence_boosted_24h || 0;
         const cards = [
           ['Active exposure', `${Dashboard.fmtNumber(snapshot.overview.open_exposure_active)} USDC`, `${Dashboard.fmtInt(snapshot.overview.open_position_count_active)} active open positions`],
           ['Legacy exposure', `${Dashboard.fmtNumber(snapshot.overview.open_exposure_legacy)} USDC`, `${Dashboard.fmtInt(snapshot.overview.open_position_count_legacy)} paused / legacy open positions`],
           ['Latest run', snapshot.overview.latest_run_status, Dashboard.fmtDate(snapshot.overview.latest_run_started_at)],
+          ['Confluence', `${confluenceCount}`, 'trades boosted by 2+ strategy agreement'],
         ];
         document.getElementById('overview-cards').innerHTML = cards.map(([label, value, sub]) => `<article class="kpi-card"><div class="kpi-label">${label}</div><div class="kpi-value">${value}</div><div class="kpi-sub">${sub}</div></article>`).join('');
 

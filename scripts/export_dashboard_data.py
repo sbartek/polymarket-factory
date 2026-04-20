@@ -665,8 +665,17 @@ def fetch_overview(conn: object, experiments: list[dict], warnings: list[str], b
                 "message": f"Strategy factory degraded: using {strategy_factory.get('eval_source') or 'non-primary'} eval source.",
             })
 
+    # Confluence stats (24h)
+    confluence_24h = scalar(conn, """
+        SELECT COUNT(*) FROM decisions
+        WHERE details_json LIKE '%"confluence": 2%'
+           OR details_json LIKE '%"confluence": 3%'
+           OR details_json LIKE '%"confluence": 4%'
+    """, (), 0)
+
     return {
         "generated_at": utc_now_iso(),
+        "confluence_boosted_24h": int(confluence_24h or 0),
         "latest_run_status": normalize_status(latest["status"]) if latest else "unknown",
         "latest_run_started_at": latest["started_at"] if latest else None,
         "latest_run_duration_seconds": seconds_between(latest["started_at"], latest["finished_at"]) if latest else None,
