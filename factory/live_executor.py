@@ -78,6 +78,7 @@ def execute_pending_orders(db: FactoryDB, dry_run: bool = False) -> int:
 
         # Slippage guard: check current price before placing order
         MAX_SLIPPAGE_PP = 10.0  # reject if entry would be >10pp worse than signal
+        skip_due_to_slippage = False
         try:
             from .feed import fetch_by_slug
             import json
@@ -85,8 +86,8 @@ def execute_pending_orders(db: FactoryDB, dry_run: bool = False) -> int:
             if event_slug:
                 events = fetch_by_slug(event_slug)
                 if events:
+                    mid = order["market_id"].split(":")[-1] if ":" in order["market_id"] else order["market_id"]
                     for m in events[0].get("markets", []):
-                        mid = order["market_id"].split(":")[-1] if ":" in order["market_id"] else order["market_id"]
                         if str(m.get("id")) == mid:
                             prices_raw = m.get("outcomePrices", "[]")
                             prices = json.loads(prices_raw) if isinstance(prices_raw, str) else prices_raw
@@ -97,10 +98,13 @@ def execute_pending_orders(db: FactoryDB, dry_run: bool = False) -> int:
                                 if slippage > MAX_SLIPPAGE_PP:
                                     print(f"  [{strategy}] SKIP {title} | slippage {slippage:+.1f}pp (signal={price:.3f} current={current_price:.3f})")
                                     db.update_live_order(oid, "skipped", error=f"slippage_{slippage:.0f}pp")
-                                    continue
+                                    skip_due_to_slippage = True
                             break
         except Exception as e:
             print(f"  [{strategy}] slippage check failed ({e}), proceeding anyway")
+
+        if skip_due_to_slippage:
+            continue
 
         try:
             resp = place_market_order(token_id, size)
