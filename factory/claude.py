@@ -107,7 +107,7 @@ def _call_codex(prompt: str) -> str:
     return result.stdout.strip() or result.stderr.strip()
 
 
-def call_claude(prompt: str, max_tokens: int = 2048, timeout: int | None = None) -> str:
+def call_claude(prompt: str, max_tokens: int = 2048, timeout: int | None = None, model: str = "claude-haiku-4-5") -> str:
     timeout = timeout or CALL_TIMEOUT_SECONDS
     request_id = uuid.uuid4().hex[:12]
 
@@ -119,14 +119,14 @@ def call_claude(prompt: str, max_tokens: int = 2048, timeout: int | None = None)
 
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if api_key:
-        _log_prompt(request_id, prompt, "api")
+        _log_prompt(request_id, prompt, f"api:{model}")
         t0 = time.monotonic()
         try:
             import anthropic
             client = anthropic.Anthropic(api_key=api_key, timeout=timeout)
             def _api_call():
                 return client.messages.create(
-                    model="claude-haiku-4-5",
+                    model=model,
                     max_tokens=max_tokens,
                     messages=[{"role": "user", "content": prompt}],
                 )

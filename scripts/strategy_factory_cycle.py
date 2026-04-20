@@ -464,7 +464,11 @@ def _build_strategy_history_context() -> str:
             for p in d.glob("auto_*.py"):
                 name_match = re.search(r'name\s*=\s*"([^"]+)"', p.read_text(encoding="utf-8"))
                 if name_match:
-                    previously_generated.add(name_match.group(1))
+                    raw_name = name_match.group(1)
+                    previously_generated.add(raw_name)
+                    # Also add the base concept name (strip date suffix)
+                    base_name = re.sub(r"_\d{8}(_gen)?$", "", raw_name)
+                    previously_generated.add(base_name)
 
     # Proposals dir — count how many times each base idea appeared
     proposals_dir = PROJECT_ROOT / "improvement" / "proposals"
@@ -476,7 +480,8 @@ def _build_strategy_history_context() -> str:
             base = re.sub(r"_\d{8}(_gen)?$", "", name)
             idea_counts[base] = idea_counts.get(base, 0) + 1
 
-    repeated = {k: v for k, v in idea_counts.items() if v >= 3}
+    # Lower threshold to 2 — if an idea was generated twice, it's already been tried
+    repeated = {k: v for k, v in idea_counts.items() if v >= 2}
 
     lines = []
     if repeated:
@@ -484,30 +489,48 @@ def _build_strategy_history_context() -> str:
         for name, count in sorted(repeated.items(), key=lambda x: -x[1]):
             lines.append(f"  - {name} ({count} times)")
 
-    lines.append("\nMANUALLY BUILT strategies (working, do not duplicate their concepts):")
-    lines.append("  - stale_market: LLM judges if market lags news (profitable, +$10)")
-    lines.append("  - ev_news: LLM estimates p_hat from DuckDuckGo news (profitable)")
-    lines.append("  - spread_arb_v2: multi-outcome oversum arbitrage (profitable, +$15)")
-    lines.append("  - price_move_fade: fade large price moves on short-term markets (80% WR)")
-    lines.append("  - thin_market_impact_fade: fade transient impact on thin books (77% accuracy)")
-    lines.append("  - conditional_probability_mispricing: nested threshold/deadline/stage violations (100% so far)")
-    lines.append("  - expiry_convergence_buy: buy 75-92% leaders 3-7 days from expiry (new)")
-    lines.append("  - overnight_gap_fade: fade overnight thin-book moves (20% accuracy — failing)")
-    lines.append("  - volume_divergence_stale: triple-confirmation stale detection (0 signals — too strict)")
-    lines.append("  - esport48: Pinnacle odds comparison via OddsPapi (new, awaiting data)")
-    lines.append("  - base_rate_knn: semantic embedding kNN base rate estimation (new)")
-    lines.append("  - weather strategies (6): ECMWF ensemble temperature forecasts (parsing fixed)")
-    lines.append("  - correlated_laggard: token-overlap market pairing (improved matching)")
-    lines.append("  - resolution_hunter_v2: LLM resolution detection (50% accuracy)")
-    lines.append("  - celebrity_tabloid: gossip corroboration from tabloid sites")
-    lines.append("  - polling_vs_market: polling data vs market price (+$20, tiny sample)")
+    lines.append("\nMANUALLY BUILT strategies (do not duplicate their concepts):")
+    lines.append("  LIVE: spread_arb_v2 (multi-outcome NO arb, +$119), stale_market (LLM news lag, +$14), price_move_fade (fade large moves, -$8)")
+    lines.append("  PAPER: thin_market_impact_fade (+$6), weather_edge_v4 (ECMWF ensemble), weather_convergence (forecast narrowing), weather_autocorrelation (temp surprise persistence)")
+    lines.append("  PAPER: conditional_probability_mispricing (threshold/deadline violations), overnight_gap_fade (fade overnight moves), news_impact_fade_by_recency (fade news overreaction)")
+    lines.append("  PAPER: polling_vs_market (+$20 n=1), ev_news_v2 (LLM news), mutually_exclusive_oversum (oversum fade), correlated_pairs, celebrity_tabloid")
+    lines.append("  ALERT: base_rate_knn (embedding+LLM base rates), esport48_v2 (Glicko-2 CS2 ratings), carry_rewards (holding rewards carry)")
+    lines.append("  KILLED: ev_news v1, esport48 v1, fade_certainty, resolution_hunter, spread_arb v1, weather_edge v1/v2, correlated_laggard")
+    lines.append("  META: multi-strategy confluence sizing (1.5x boost when 2+ strategies agree)")
+    lines.append("  EDGE TYPES COVERED: structural, stale_repricing, statistical_fade, model_vs_market, information, logical_inconsistency, odds_comparison")
+    lines.append("  EDGE TYPES NOT YET COVERED: order_book_microstructure, sentiment_analysis, cross-platform_arbitrage, flow_tracking")
 
     return "\n".join(lines)
+
+
+def _build_ideas_backlog_context() -> str:
+    """Read curated ideas from improvement/ideas/ that are in backlog status."""
+    ideas_dir = PROJECT_ROOT / "improvement" / "ideas"
+    if not ideas_dir.exists():
+        return ""
+    backlog_ideas = []
+    for p in sorted(ideas_dir.glob("ID-*.md")):
+        text = p.read_text(encoding="utf-8")
+        if "backlog" not in text.lower():
+            continue
+        # Extract title and thesis
+        title_match = re.search(r"\*\*title:\*\*\s*(.+)", text, re.IGNORECASE)
+        thesis_match = re.search(r"One-line thesis\s*\n+(.+?)(?:\n\n|\n##)", text)
+        title = title_match.group(1).strip() if title_match else p.stem
+        thesis = thesis_match.group(1).strip() if thesis_match else ""
+        if thesis:
+            backlog_ideas.append(f"  - {title}: {thesis}")
+        else:
+            backlog_ideas.append(f"  - {title}")
+    if not backlog_ideas:
+        return ""
+    return "BACKLOG IDEAS (curated, vetted — prefer implementing these over inventing new ones):\n" + "\n".join(backlog_ideas)
 
 
 def generate_strategy_specs(eval_text: str) -> list[dict]:
     existing = ", ".join(load_existing_strategy_names())
     history_context = _build_strategy_history_context()
+    ideas_context = _build_ideas_backlog_context()
     prompt = dedent(f"""
     You are generating two NEW Polymarket strategy ideas for an experimental research repo.
 
@@ -516,6 +539,17 @@ def generate_strategy_specs(eval_text: str) -> list[dict]:
 
     {history_context}
 
+    GAP ANALYSIS — where we DON'T have coverage:
+    - Market segments without strategies: crypto DeFi/protocol markets, entertainment/media,
+      technology/product launches, legal/regulatory outcomes, climate/environment
+    - Behavioral biases not exploited: availability bias (headline-driven overpricing),
+      round-number anchoring, recency bias on streaks, favorite-longshot bias
+    - Data sources not used: social media sentiment, Google Trends, on-chain data,
+      cross-platform odds (Kalshi, Metaculus)
+    - Time patterns not exploited: end-of-month/quarter rebalancing, pre-event volatility crush
+
+    {ideas_context}
+
     Recent evaluation report:
     {eval_text[:8000]}
 
@@ -523,7 +557,8 @@ def generate_strategy_specs(eval_text: str) -> list[dict]:
     - Return EXACTLY 2 strategy specs as JSON array.
     - DO NOT propose strategies that overlap with the manually-built ones listed above.
     - DO NOT propose ideas from the REJECTED list — they have been tried and failed.
-    - Each idea must be genuinely novel — a different edge type, data source, or market segment.
+    - Focus on UNCOVERED edge types, market segments, or data sources from the gap analysis.
+    - If there are BACKLOG IDEAS above, prefer implementing those over inventing new ones.
     - Prefer concrete, auditable ideas over vague LLM fantasies.
     - Include realistic caveats about fillability/capacity when relevant.
     - Keep them suitable for initial ALERT-ONLY implementation.
@@ -550,7 +585,7 @@ def generate_strategy_specs(eval_text: str) -> list[dict]:
     Return JSON only.
     """)
     try:
-        raw = call_claude(prompt, max_tokens=3000)
+        raw = call_claude(prompt, max_tokens=3000, model="claude-sonnet-4-5-20250514")
         payload = _extract_json_block(raw, "[")
         specs = json.loads(payload)
         if not isinstance(specs, list) or len(specs) != 2:
@@ -635,19 +670,20 @@ def generate_strategy_code(spec: dict, module_name: str, *, force_paused: bool =
         'failure_modes': spec['failure_modes'],
     }, ensure_ascii=False)
 
-    # Skip LLM call if strategy explicitly requires unavailable external data
+    # Skip entirely if strategy requires unavailable external data
     needs_external = spec.get('requires_external_data', False)
-    if force_paused or needs_external:
-        if needs_external and not force_paused:
-            print(f"  [factory] {spec['name']} requires external data — using paused skeleton")
+    if needs_external and not force_paused:
+        print(f"  [factory] {spec['name']} requires external data — skipping entirely")
+        return None
+    if force_paused:
         scan_body = _paused_scan_body()
         is_paused = True
     else:
         scan_body = _generate_scan_body(spec)
         is_paused = scan_body is None
         if is_paused:
-            print(f"  [factory] LLM code gen failed for {spec['name']} — using paused skeleton")
-            scan_body = _paused_scan_body()
+            print(f"  [factory] LLM code gen failed for {spec['name']} — skipping (no skeleton)")
+            return None
 
     indented_body = _indent_for_class(scan_body)
 
@@ -704,12 +740,18 @@ def write_generated_strategy(spec: dict, prefix: str, seq: int) -> dict | None:
     py_path = GENERATED_DIR / f"{module_name}.py"
     md_path = PROPOSALS_DIR / f"{proposal_id}-{safe_name}.md"
 
-    py_path.write_text(generate_strategy_code(spec, module_name), encoding="utf-8")
+    code = generate_strategy_code(spec, module_name)
+    if code is None:
+        print(f"  [factory] code generation returned None for {spec['name']} — skipping entirely")
+        return None
 
-    # Smoke test: if import or scan([]) fail, overwrite with paused skeleton
+    py_path.write_text(code, encoding="utf-8")
+
+    # Smoke test: if import or scan([]) fail, delete the file and skip
     if not _smoke_test_generated(py_path, spec['name']):
-        print(f"  [factory] smoke test failed — rewriting {spec['name']} as paused skeleton")
-        py_path.write_text(generate_strategy_code(spec, module_name, force_paused=True), encoding="utf-8")
+        print(f"  [factory] smoke test failed for {spec['name']} — deleting and skipping")
+        py_path.unlink(missing_ok=True)
+        return None
 
     md_path.write_text(build_proposal_markdown(spec, proposal_id, date_human), encoding="utf-8")
     return {
