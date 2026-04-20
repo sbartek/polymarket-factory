@@ -22,7 +22,12 @@ class PaperBroker:
         return self.db.has_open_position(market_id, strategy, mode="paper")
 
     def open_position(self, signal: Signal, amount_usdc: float) -> Trade:
-        fill_price = min(signal.market_price + self.slippage, 0.99)
+        # market_price is always YES price; adjust for NO trades
+        if signal.outcome == "NO":
+            raw_price = 1.0 - signal.market_price
+        else:
+            raw_price = signal.market_price
+        fill_price = min(raw_price + self.slippage, 0.99)
         meta = strategy_metadata().get(signal.strategy, {})
         trade = Trade(
             id=str(uuid.uuid4())[:8],
