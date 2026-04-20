@@ -665,14 +665,12 @@ def fetch_overview(conn: object, experiments: list[dict], warnings: list[str], b
                 "message": f"Strategy factory degraded: using {strategy_factory.get('eval_source') or 'non-primary'} eval source.",
             })
 
-    # Confluence stats (24h)
+    # Confluence stats — trades boosted by multi-strategy agreement
     try:
-        row = conn.execute("""
-            SELECT COUNT(*) FROM decisions
-            WHERE details_json LIKE '%"confluence": 2%'
-               OR details_json LIKE '%"confluence": 3%'
-               OR details_json LIKE '%"confluence": 4%'
-        """).fetchone()
+        row = conn.execute(
+            "SELECT COUNT(*) FROM decisions WHERE details_json LIKE ? AND details_json NOT LIKE ?",
+            ('%confluence%', '%"confluence": 1%')
+        ).fetchone()
         confluence_24h = int(row[0]) if row else 0
     except Exception:
         confluence_24h = 0
