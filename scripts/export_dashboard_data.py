@@ -666,12 +666,16 @@ def fetch_overview(conn: object, experiments: list[dict], warnings: list[str], b
             })
 
     # Confluence stats (24h)
-    confluence_24h = scalar(conn, """
-        SELECT COUNT(*) FROM decisions
-        WHERE details_json LIKE '%"confluence": 2%'
-           OR details_json LIKE '%"confluence": 3%'
-           OR details_json LIKE '%"confluence": 4%'
-    """, (), 0)
+    try:
+        row = conn.execute("""
+            SELECT COUNT(*) FROM decisions
+            WHERE details_json LIKE '%"confluence": 2%'
+               OR details_json LIKE '%"confluence": 3%'
+               OR details_json LIKE '%"confluence": 4%'
+        """).fetchone()
+        confluence_24h = int(row[0]) if row else 0
+    except Exception:
+        confluence_24h = 0
 
     return {
         "generated_at": utc_now_iso(),
