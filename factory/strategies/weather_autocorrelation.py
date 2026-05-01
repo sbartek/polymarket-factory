@@ -23,7 +23,8 @@ HISTORICAL_URL = "https://api.open-meteo.com/v1/forecast"
 WEATHER_KEYWORDS = ["highest temperature", "lowest temperature"]
 MIN_SURPRISE_DEG = 2.0     # today must have deviated ≥2° from ensemble median
 MAX_DAYS_TO_CLOSE = 2
-MIN_EV_PP = 10.0
+MIN_EV_PP = 15.0
+MIN_MARKET_PRICE = 0.18    # skip sub-18c bins — 0% WR below this threshold (n=79)
 MAX_ALERTS_PER_RUN = 4
 AUTOCORR_FACTOR = 0.3      # 30% of yesterday's surprise expected to persist tomorrow
 MAX_P_HAT = 0.70           # cap ensemble-derived probability to prevent overconfidence
@@ -142,7 +143,7 @@ class WeatherAutocorrelationStrategy(Strategy):
     target_hold_max_days = 2
     scan_frequency = "3x/day"
     max_position_usdc = 5.0
-    min_ev_pp = 10.0
+    min_ev_pp = 15.0
     alert_only = False
     trading_enabled = True
 
@@ -259,6 +260,9 @@ class WeatherAutocorrelationStrategy(Strategy):
                     lo, hi = b["parsed"]["lo"], b["parsed"]["hi"]
                     count = sum(1 for v in shifted if lo <= v < hi)
                     adj_prob = round(min(count / n, MAX_P_HAT), 4)
+
+                    if b["yes_price"] < MIN_MARKET_PRICE:
+                        continue
 
                     ev_pp = round((adj_prob - b["yes_price"]) * 100, 1)
                     if ev_pp < MIN_EV_PP:
