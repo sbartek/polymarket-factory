@@ -61,7 +61,7 @@ STRATEGY_EXPOSURE_CAPS = {
     "overnight_gap_fade": 25.0,
     "thin_market_impact_fade": 35.0,
     "volume_divergence_stale": 0.0,
-    "expiry_convergence_buy": 0.0,
+    "expiry_convergence_buy": 25.0,
 }
 
 

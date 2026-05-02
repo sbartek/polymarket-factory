@@ -7,7 +7,7 @@ Hypothesis: Markets within 3-7 days of expiry where the leading outcome is
             uncertainty collapses.
 Method: Deterministic — filter for near-expiry markets with stable high-
         probability leaders. No LLM, no external API.
-Status: ALERT-ONLY — collecting data for promotion evaluation.
+Status: PAPER TRADING — promoted 2026-05-02 after 76 signals over 16 days.
 """
 from __future__ import annotations
 
@@ -64,10 +64,10 @@ class ExpiryConvergenceBuyStrategy(Strategy):
     target_hold_min_days = 1
     target_hold_max_days = 7
     scan_frequency = "3x/day"
-    max_position_usdc = 8.0
+    max_position_usdc = 5.0
     min_ev_pp = 5.0
-    alert_only = True
-    trading_enabled = False
+    alert_only = False
+    trading_enabled = True
     promotable = True
     promotion_criteria = "20 signals with >70% reaching 95c+ by expiry"
     signal_cooldown_hours = 24.0
