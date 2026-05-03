@@ -87,8 +87,8 @@ class StaleMarketStrategy(Strategy):
     max_position_usdc = 5.0   # conservative for live — was 12 for paper
     min_ev_pp = 12.0
     min_position_usdc = 2.0
-    mode = "live"
-    live_ready = True
+    mode = "paper_and_live"
+    live_ready = False  # demoted 2026-05-03: 2W/8L live, -$8.74
     fast_dry_run_candidates = 4
 
     def _candidate_score(self, ev: dict, days: int, price: float, news_count: int) -> float:
