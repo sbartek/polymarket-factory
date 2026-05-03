@@ -1,4 +1,4 @@
-"""Polymarket CLOB API wrapper — thin layer over py-clob-client."""
+"""Polymarket CLOB API wrapper — thin layer over py-clob-client-v2."""
 import json
 import os
 
@@ -7,8 +7,8 @@ CHAIN_ID = 137  # Polygon mainnet
 
 
 def _client():
-    from py_clob_client.client import ClobClient
-    from py_clob_client.clob_types import ApiCreds
+    from py_clob_client_v2 import ClobClient
+    from py_clob_client_v2.clob_types import ApiCreds
     key = os.environ["POLYMARKET_WALLET_PRIVATE_KEY"]
     creds = ApiCreds(
         api_key=os.environ["POLYMARKET_API_KEY"],
@@ -45,9 +45,9 @@ def place_market_order(token_id: str, size: float, timeout: int = 10) -> dict:
     def _timeout_handler(signum, frame):
         raise TimeoutError(f"CLOB order timed out after {timeout}s")
 
-    from py_clob_client.clob_types import MarketOrderArgs, OrderType
+    from py_clob_client_v2.clob_types import MarketOrderArgsV2, OrderType
     client = _client()
-    order = client.create_market_order(MarketOrderArgs(token_id=token_id, amount=size, side="BUY"))
+    order = client.create_market_order(MarketOrderArgsV2(token_id=token_id, amount=size, side="BUY"))
     old = _signal.signal(_signal.SIGALRM, _timeout_handler)
     _signal.alarm(timeout)
     try:
@@ -64,9 +64,9 @@ def sell_market_order(token_id: str, size: float, timeout: int = 10) -> dict:
     def _timeout_handler(signum, frame):
         raise TimeoutError(f"CLOB sell order timed out after {timeout}s")
 
-    from py_clob_client.clob_types import MarketOrderArgs, OrderType
+    from py_clob_client_v2.clob_types import MarketOrderArgsV2, OrderType
     client = _client()
-    order = client.create_market_order(MarketOrderArgs(token_id=token_id, amount=size, side="SELL"))
+    order = client.create_market_order(MarketOrderArgsV2(token_id=token_id, amount=size, side="SELL"))
     old = _signal.signal(_signal.SIGALRM, _timeout_handler)
     _signal.alarm(timeout)
     try:
