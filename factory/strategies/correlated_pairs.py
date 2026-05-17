@@ -67,6 +67,8 @@ class CorrelatedPairsStrategy(Strategy):
     min_ev_pp = MIN_EV_PP
     min_position_usdc = 2.0
     fast_dry_run_candidates = 4
+    alert_only = True
+    trading_enabled = False  # killed 2026-05-17: 0W/11L, LLM miscalibrates rare-event probabilities
 
     def _eligible(self, ev: dict) -> bool:
         vol = float(ev.get("volume24hr") or ev.get("volume") or 0)
