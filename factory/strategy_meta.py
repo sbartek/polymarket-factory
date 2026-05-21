@@ -40,7 +40,7 @@ STRATEGY_EXPOSURE_CAPS = {
     "correlated_pairs": 30.0,
     "correlated_laggard": 25.0,
     "esport48": 0.0,
-    "esport48_v2": 0.0,
+    "esport48_v2": 20.0,
     "celebrity_tabloid": 25.0,
     "carry_rewards": 25.0,
     "polling_vs_market": 30.0,

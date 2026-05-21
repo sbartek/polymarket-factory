@@ -100,8 +100,8 @@ class Esport48V2Strategy(Strategy):
     scan_frequency = "3x/day"
     max_position_usdc = 5.0
     min_ev_pp = MIN_EDGE_PP
-    alert_only = True
-    trading_enabled = False
+    alert_only = False
+    trading_enabled = True  # promoted to paper 2026-05-21: 139 signals over 19 days
     promotable = True
     promotion_criteria = "20 signals with >55% directional accuracy"
     signal_cooldown_hours = 12.0
