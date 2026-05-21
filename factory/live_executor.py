@@ -157,11 +157,68 @@ def execute_pending_orders(db: FactoryDB, dry_run: bool = False) -> int:
     return executed
 
 
+def redeem_resolved_positions() -> int:
+    """Redeem all resolved positions via poly-web3 + relayer."""
+    import os
+
+    builder_key = os.environ.get("BUILDER_KEY")
+    if not builder_key:
+        return 0  # builder creds not configured, skip silently
+
+    try:
+        from py_clob_client_v2 import ClobClient
+        from py_clob_client_v2.clob_types import ApiCreds
+        from py_builder_relayer_client.client import RelayClient
+        from py_builder_signing_sdk.config import BuilderConfig
+        from py_builder_signing_sdk.sdk_types import BuilderApiKeyCreds
+        from poly_web3 import RELAYER_URL, PolyWeb3Service
+
+        key = os.environ["POLYMARKET_WALLET_PRIVATE_KEY"]
+        creds = ApiCreds(
+            api_key=os.environ["POLYMARKET_API_KEY"],
+            api_secret=os.environ["POLYMARKET_API_SECRET"],
+            api_passphrase=os.environ["POLYMARKET_PASSPHRASE"],
+        )
+        funder = os.environ.get("POLYMARKET_PROXY_ADDRESS", "")
+        client = ClobClient(
+            "https://clob.polymarket.com", key=key, chain_id=137, creds=creds,
+            signature_type=2, funder=funder or None,
+        )
+        relayer = RelayClient(
+            RELAYER_URL, 137, key,
+            BuilderConfig(
+                local_builder_creds=BuilderApiKeyCreds(
+                    key=os.environ["BUILDER_KEY"],
+                    secret=os.environ["BUILDER_SECRET"],
+                    passphrase=os.environ["BUILDER_PASSPHRASE"],
+                )
+            ),
+        )
+        service = PolyWeb3Service(
+            clob_client=client, relayer_client=relayer,
+            rpc_url="https://polygon-bor.publicnode.com",
+        )
+
+        result = service.redeem_all(batch_size=10)
+        redeemed = len(result.success_list) if hasattr(result, "success_list") else 0
+        errors = result.error_list if hasattr(result, "error_list") else []
+        if redeemed:
+            print(f"[live_executor] redeemed {redeemed} resolved positions")
+        if errors:
+            print(f"[live_executor] redeem errors: {len(errors)}")
+        return redeemed
+    except Exception as e:
+        print(f"[live_executor] redeem failed: {e}")
+        return 0
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Execute pending live orders via CLOB")
     parser.add_argument("--dry", action="store_true", help="Dry run — show but don't execute")
     args = parser.parse_args()
 
     db = FactoryDB()
+    if not args.dry:
+        redeem_resolved_positions()
     count = execute_pending_orders(db, dry_run=args.dry)
     print(f"\n[live_executor] {'would execute' if args.dry else 'executed'} {count} orders")
