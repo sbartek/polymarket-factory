@@ -68,7 +68,7 @@ class NewsImpactFadeByRecencyStrategy(Strategy):
     alert_only = False
     trading_enabled = True
     promotable = True
-    live_ready = False
+    live_ready = True  # promoted 2026-05-21: 7W/4L (70% WR), +$5.97 paper
     promotion_criteria = "25 alerts with >55% half-reversion within 6h of news-linked move"
     last_check_details: list[dict] = []
 
