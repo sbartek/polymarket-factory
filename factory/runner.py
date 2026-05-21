@@ -838,14 +838,8 @@ def run(environment: str = "paper", dry_run: bool = False, send: bool = True, fa
         new_trades: list[tuple[Signal, float]] = []
         alert_signals: list[Signal] = []
         skipped_this_cycle: list[str] = []
+        # Paper cap only counts paper exposure; live has its own cap in _try_live_enqueue
         exposure_by_strategy, exposure_by_window = _current_exposure_by_strategy_and_window(broker, meta)
-        # Merge live exposure into caps so dual strategies don't exceed limits
-        if live_broker:
-            live_by_strategy, live_by_window = _current_exposure_by_strategy_and_window(live_broker, meta)
-            for k, v in live_by_strategy.items():
-                exposure_by_strategy[k] = exposure_by_strategy.get(k, 0.0) + v
-            for k, v in live_by_window.items():
-                exposure_by_window[k] = exposure_by_window.get(k, 0.0) + v
         market_index = build_market_index(markets)
 
         # Auto-close unhedged partial-fill positions (live only)
