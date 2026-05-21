@@ -28,6 +28,7 @@ from .base import Strategy
 
 MIN_VOLUME = 5_000
 MIN_GAP_PP = 3.0
+MIN_BUY_PRICE = 0.50  # skip sub-50c entries — 3% WR below this (n=53), 52%+ WR above
 MAX_ALERTS_PER_RUN = 5
 
 MONTH_MAP = {
@@ -343,6 +344,8 @@ class ConditionalProbabilityMispricingStrategy(Strategy):
         for v in all_violations:
             buy_id = v["buy_id"]
             if buy_id in seen:
+                continue
+            if v["buy_price"] < MIN_BUY_PRICE:
                 continue
             seen.add(buy_id)
 

@@ -25,7 +25,7 @@ MIN_DAYS = 7
 MAX_DAYS = 60
 MAX_ALERTS_PER_RUN = 3
 MIN_LEG_PRICE = 0.03
-MAX_LEG_PRICE = 0.97
+MAX_LEG_PRICE = 0.50  # only bet NO on legs priced <=50c (NO side >=50c); 60% WR at 30-50c, losing above
 
 # Same keyword sets as spread_arb for completeness checks
 MANY_OUTCOMES_KEYWORDS = [
