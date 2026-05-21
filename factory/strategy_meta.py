@@ -33,7 +33,7 @@ TIME_WINDOW_EXPOSURE_CAPS = {
 
 STRATEGY_EXPOSURE_CAPS = {
     "spread_arb": 0.0,
-    "spread_arb_v2": 100.0,
+    "spread_arb_v2": 200.0,
     "ev_news": 0.0,
     "ev_news_v2": 30.0,
     "stale_market": 50.0,
